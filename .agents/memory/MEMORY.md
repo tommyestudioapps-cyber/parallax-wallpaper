@@ -1,0 +1,1 @@
+- [Expo SDK package resolution](expo-sdk-package-resolution.md) — check the workspace registry when SDK-matched module aliases are unavailable.

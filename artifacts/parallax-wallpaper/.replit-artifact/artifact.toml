@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/"
+title = "Parallax Wallpaper"
+description = "Aplicativo mobile offline para criar wallpapers com três camadas e efeito Parallax 3D suave usando fotos do usuário, edição local, gestos e sensores do aparelho."
+version = "1.0.0"
+id = "artifacts/parallax-wallpaper"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 24158
+
+[services.development]
+run = "pnpm --filter @workspace/parallax-wallpaper run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/parallax-wallpaper", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/parallax-wallpaper", "run", "serve" ]
+
+[services.env]
+PORT = "24158"
+BASE_PATH = "/"
