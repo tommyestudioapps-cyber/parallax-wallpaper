@@ -758,7 +758,7 @@ export default function HomeScreen() {
           <Progress mode={mode} colors={colors} />
           <View style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             {edit.backgroundRemoved ? <TransparencyGrid colors={colors} /> : null}
-            {edit.uri ? <Image source={{ uri: edit.uri }} style={[styles.editImage, { transform: [{ scale: 1 + edit.crop / 180 }] }]} resizeMode="cover" /> : null}
+            {edit.uri ? <Image source={{ uri: edit.uri }} style={[styles.editImage, { transform: [{ scale: 1 + edit.crop / 180 }] }]} resizeMode="contain" /> : null}
             <View style={[styles.editOverlay, { backgroundColor: colors.background }]}>
               <Ionicons name={edit.uri ? (edit.backgroundRemoved ? 'cut' : 'checkmark-circle') : 'image-outline'} size={15} color={edit.uri ? colors.success : colors.mutedForeground} />
               <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
@@ -1031,7 +1031,7 @@ const styles = StyleSheet.create({
   primaryButtonText: { fontSize: 14, fontFamily: 'Inter_700Bold' },
   processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 14 },
   savedText: { textAlign: 'center', fontSize: 11, fontFamily: 'Inter_500Medium', paddingTop: 12 },
-  editPreview: { height: 230, borderRadius: 22, borderWidth: 1, overflow: 'hidden', marginBottom: 20 },
+  editPreview: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: 'center', borderRadius: 22, borderWidth: 1, overflow: 'hidden', marginBottom: 20 },
   transparencyGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   transparencyCell: { width: '12.5%', height: '12.5%' },
   editImage: { width: '100%', height: '100%' },
