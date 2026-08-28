@@ -7,4 +7,4 @@ When adding Expo modules, verify the version actually available through the work
 
 **Why:** The registry can omit the expected SDK-matched alias while exposing a newer SDK-tagged release, so a direct install may fail even when the package is valid.
 
-**How to apply:** Try the SDK-matched version first; if the registry rejects it, inspect available releases and choose the newest compatible version that resolves before continuing.
+**How to apply:** Try the SDK-matched version first; if the registry rejects it, inspect available releases and choose the newest compatible version that resolves before continuing. Native ML modules still need a development build; Expo Go can only use their graceful fallback.

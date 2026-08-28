@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
+import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -40,6 +41,7 @@ type Layer = {
   contrast: number;
   saturation: number;
   crop: number;
+  backgroundRemoved: boolean;
   scale: number;
   x: number;
   y: number;
@@ -78,6 +80,7 @@ function createLayer(id: LayerId): Layer {
     contrast: 0,
     saturation: 0,
     crop: 0,
+    backgroundRemoved: false,
     scale: id === 'background' ? 1 : 0.78,
     x: 0,
     y: 0,
@@ -286,7 +289,7 @@ function LayerPreview({
         styles.layerPreview,
         {
           borderColor: selected ? colors.primary : colors.border,
-          backgroundColor: colors.muted,
+          backgroundColor: layer.id === 'background' ? colors.muted : 'transparent',
           transform: [{ translateX: layer.x }, { translateY: layer.y }, { scale: layer.scale }],
         },
       ]}
@@ -391,11 +394,26 @@ export default function HomeScreen() {
         const maxDimension = 1440;
         const largest = Math.max(asset.width ?? maxDimension, asset.height ?? maxDimension);
         const resize = largest > maxDimension ? [{ resize: { width: asset.width && asset.width >= (asset.height ?? 0) ? maxDimension : undefined, height: asset.height && asset.height > (asset.width ?? 0) ? maxDimension : undefined } }] : [];
+        const isCutoutLayer = id !== 'background';
         const optimized = await ImageManipulator.manipulateAsync(asset.uri, resize, {
-          compress: 0.72,
-          format: ImageManipulator.SaveFormat.JPEG,
+          compress: isCutoutLayer ? 0.86 : 0.72,
+          // JPEG removes alpha. Nearby layers stay PNG so transparent subjects
+          // never acquire a black rectangle during composition.
+          format: isCutoutLayer ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
         });
-        updateLayer(id, { uri: optimized.uri });
+        let finalUri = optimized.uri;
+        let backgroundRemoved = false;
+        if (isCutoutLayer && Platform.OS !== 'web') {
+          try {
+            if (await isNativeBackgroundRemovalSupported()) {
+              finalUri = await removeBackground(optimized.uri, { trim: false });
+              backgroundRemoved = true;
+            }
+          } catch {
+            // Keep the transparent-safe PNG when native ML is unavailable.
+          }
+        }
+        updateLayer(id, { uri: finalUri, backgroundRemoved });
         setEditingLayer(id);
         setMode('edit');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -409,7 +427,7 @@ export default function HomeScreen() {
   );
 
   const resetProject = () => {
-    Alert.alert('Começar de novo?', 'As três camadas atuais serão removidas deste aparelho.', [
+    Alert.alert('Começar de novo?', 'As camadas atuais serão removidas deste aparelho.', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Remover',
@@ -425,8 +443,8 @@ export default function HomeScreen() {
   };
 
   const goToCompose = () => {
-    if (!project.layers.background.uri || !project.layers.middle.uri || !project.layers.foreground.uri) {
-      Alert.alert('Faltam camadas', 'Adicione uma imagem em cada um dos três espaços para continuar.');
+    if (Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length < 2) {
+      Alert.alert('Adicione mais uma camada', 'Duas imagens já são suficientes para criar o efeito Parallax.');
       return;
     }
     setMode('compose');
@@ -463,7 +481,8 @@ export default function HomeScreen() {
   }, [mode, motionX, motionY, project.intensity]);
 
   const edit = project.layers[editingLayer];
-  const allReady = Object.values(project.layers).every((layer) => Boolean(layer.uri));
+  const readyCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
+  const canCompose = readyCount >= 2;
   const canvasResponder = useMemo(
     () =>
       PanResponder.create({
@@ -490,7 +509,7 @@ export default function HomeScreen() {
             );
             const nextScale = clamp(
               gestureStart.current.scale * (distance / gestureStart.current.distance),
-              0.55,
+              0.12,
               1.25,
             );
             updateLayer(activeLayer, { scale: nextScale });
@@ -609,7 +628,7 @@ export default function HomeScreen() {
             <Text style={[styles.sliderLabel, { color: colors.mutedForeground }]}>Escala <Text style={{ color: colors.foreground }}>{Math.round(project.layers[project.activeLayer].scale * 100)}%</Text></Text>
             <Slider
               value={project.layers[project.activeLayer].scale}
-              min={0.55}
+              min={0.12}
               max={1.25}
               onChange={(value) => updateLayer(project.activeLayer, { scale: value })}
               colors={colors}
@@ -647,7 +666,9 @@ export default function HomeScreen() {
             {edit.uri ? <Image source={{ uri: edit.uri }} style={[styles.editImage, { transform: [{ scale: 1 + edit.crop / 180 }] }]} resizeMode="cover" /> : null}
             <View style={[styles.editOverlay, { backgroundColor: colors.background }]}>
               <Ionicons name={edit.uri ? 'checkmark-circle' : 'image-outline'} size={15} color={edit.uri ? colors.success : colors.mutedForeground} />
-              <Text style={[styles.editOverlayText, { color: colors.foreground }]}>{edit.uri ? 'Imagem otimizada localmente' : 'Adicione uma imagem'}</Text>
+              <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
+                {edit.uri ? (edit.backgroundRemoved ? 'Fundo removido com ML local' : 'Imagem otimizada localmente') : 'Adicione uma imagem'}
+              </Text>
             </View>
           </View>
           <View style={styles.editTitleRow}>
@@ -684,8 +705,10 @@ export default function HomeScreen() {
                       <Ionicons name="crop-outline" size={18} color={colors.primaryForeground} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.controlLabel, { color: colors.foreground }]}>Preparar recorte</Text>
-                      <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>Ajuste o enquadramento antes da separação inteligente.</Text>
+                      <Text style={[styles.controlLabel, { color: colors.foreground }]}>Recorte inteligente</Text>
+                      <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>
+                        {edit.backgroundRemoved ? 'Fundo removido no aparelho. Ajuste o enquadramento para refinar a composição.' : 'O app preserva a transparência e tenta separar o sujeito com ML local.'}
+                      </Text>
                     </View>
                   </View>
                   <Slider value={edit.crop} min={0} max={100} onChange={(value) => updateLayer(editingLayer, { crop: value })} colors={colors} testID="recorte" />
@@ -733,7 +756,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      <Header title="Parallax" subtitle="Wallpaper studio" colors={colors} onReset={allReady ? resetProject : undefined} />
+      <Header title="Parallax" subtitle="Wallpaper studio" colors={colors} onReset={readyCount > 0 ? resetProject : undefined} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Progress mode={mode} colors={colors} />
         <View style={styles.hero}>
@@ -747,9 +770,9 @@ export default function HomeScreen() {
         <View style={styles.layersHeader}>
           <View>
             <Text style={[styles.sectionKicker, { color: colors.primary }]}>SEU PROJETO</Text>
-            <Text style={[styles.screenTitleSmall, { color: colors.foreground }]}>Monte as três camadas</Text>
+            <Text style={[styles.screenTitleSmall, { color: colors.foreground }]}>Monte sua cena</Text>
           </View>
-          <Text style={[styles.layerCount, { color: colors.mutedForeground }]}>{Object.values(project.layers).filter((layer) => layer.uri).length}/3 prontas</Text>
+          <Text style={[styles.layerCount, { color: colors.mutedForeground }]}>{Object.values(project.layers).filter((layer) => layer.uri).length}/3 · 2 mín.</Text>
         </View>
         <View style={styles.layerList}>
           {(Object.keys(project.layers) as LayerId[]).map((id, index) => {
@@ -788,7 +811,7 @@ export default function HomeScreen() {
           <Ionicons name="flash-outline" size={18} color={colors.accent} />
           <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>Dica: use fotos com elementos em distâncias diferentes para um efeito mais cinematográfico.</Text>
         </View>
-        <PrimaryButton title={allReady ? 'Continuar para composição' : 'Adicionar primeira camada'} onPress={allReady ? goToCompose : () => pickLayer('background')} colors={colors} icon="arrow-forward" />
+        <PrimaryButton title={canCompose ? 'Continuar para composição' : 'Adicionar primeira camada'} onPress={canCompose ? goToCompose : () => pickLayer('background')} colors={colors} icon="arrow-forward" />
         {processing ? (
           <View style={styles.processingRow}>
             <Ionicons name="sync-outline" size={16} color={colors.primary} />
