@@ -375,6 +375,31 @@ export default function HomeScreen() {
     setProject((current) => ({ ...current, layers: { ...current.layers, [id]: { ...current.layers[id], ...patch } } }));
   }, []);
 
+  const activateSmartCutout = useCallback(async () => {
+    const id = editingLayer;
+    const uri = projectRef.current.layers[id].uri;
+    if (id === 'background' || !uri || processing) return;
+    setProcessing(true);
+    try {
+      if (Platform.OS === 'web') {
+        Alert.alert('Recorte inteligente', 'O isolamento de pessoas usa ML nativo e fica disponível no app instalado no Android ou iOS.');
+        return;
+      }
+      const supported = await isNativeBackgroundRemovalSupported();
+      if (!supported) {
+        Alert.alert('Recorte indisponível', 'Este aparelho não oferece o modelo nativo necessário para isolar a pessoa.');
+        return;
+      }
+      const transparentUri = await removeBackground(uri, { trim: false });
+      updateLayer(id, { uri: transparentUri, backgroundRemoved: true });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert('Não foi possível isolar a pessoa', 'Tente novamente com uma foto em que o sujeito esteja mais nítido e separado do fundo.');
+    } finally {
+      setProcessing(false);
+    }
+  }, [editingLayer, processing, updateLayer]);
+
   const pickLayer = useCallback(
     async (id: LayerId) => {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -711,6 +736,29 @@ export default function HomeScreen() {
                       </Text>
                     </View>
                   </View>
+                  <Pressable
+                    testID="remover-fundo"
+                    accessibilityRole="button"
+                    accessibilityLabel={edit.backgroundRemoved ? 'Fundo transparente ativo' : 'Remover fundo e isolar pessoa'}
+                    disabled={processing || edit.backgroundRemoved}
+                    onPress={activateSmartCutout}
+                    style={({ pressed }) => [
+                      styles.removeBackgroundButton,
+                      {
+                        backgroundColor: edit.backgroundRemoved ? colors.success : colors.primary,
+                        opacity: processing ? 0.6 : pressed ? 0.78 : 1,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={edit.backgroundRemoved ? 'checkmark-circle-outline' : processing ? 'sync-outline' : 'cut-outline'}
+                      size={18}
+                      color={edit.backgroundRemoved ? colors.primaryForeground : colors.primaryForeground}
+                    />
+                    <Text style={[styles.removeBackgroundText, { color: colors.primaryForeground }]}>
+                      {edit.backgroundRemoved ? 'Fundo transparente ativo' : processing ? 'Separando pessoa…' : 'Remover fundo e isolar pessoa'}
+                    </Text>
+                  </Pressable>
                   <Slider value={edit.crop} min={0} max={100} onChange={(value) => updateLayer(editingLayer, { crop: value })} colors={colors} testID="recorte" />
                 </View>
               ) : (
@@ -893,6 +941,8 @@ const styles = StyleSheet.create({
   cropCopy: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 11 },
   cropIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   infoRow: { borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 },
+  removeBackgroundButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
+  removeBackgroundText: { fontSize: 11, fontFamily: 'Inter_700Bold' },
   emptyEdit: { gap: 18, paddingVertical: 8 },
   editNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
   textButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 4 },
