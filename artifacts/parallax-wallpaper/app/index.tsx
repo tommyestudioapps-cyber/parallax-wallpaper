@@ -37,6 +37,7 @@ type Layer = {
   eyebrow: string;
   helper: string;
   uri: string | null;
+  enabled: boolean;
   brightness: number;
   contrast: number;
   saturation: number;
@@ -52,6 +53,8 @@ type Project = {
   intensity: number;
   activeLayer: LayerId;
 };
+
+const LAYER_IDS: LayerId[] = ['background', 'middle', 'foreground'];
 
 const layerMeta: Record<LayerId, Pick<Layer, 'label' | 'eyebrow' | 'helper'>> = {
   background: {
@@ -76,6 +79,7 @@ function createLayer(id: LayerId): Layer {
     id,
     ...layerMeta[id],
     uri: null,
+    enabled: true,
     brightness: 0,
     contrast: 0,
     saturation: 0,
@@ -269,6 +273,24 @@ function Slider({
   );
 }
 
+const transparencyCells = Array.from({ length: 64 }, (_, index) => ({
+  index,
+  dark: (Math.floor(index / 8) + (index % 8)) % 2 === 0,
+}));
+
+function TransparencyGrid({ colors }: { colors: ReturnType<typeof useColors> }) {
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.transparencyGrid, { backgroundColor: colors.secondary }]}>
+      {transparencyCells.map((cell) => (
+        <View
+          key={cell.index}
+          style={[styles.transparencyCell, { backgroundColor: cell.dark ? colors.card : colors.border }]}
+        />
+      ))}
+    </View>
+  );
+}
+
 function LayerPreview({
   layer,
   colors,
@@ -280,6 +302,7 @@ function LayerPreview({
   selected?: boolean;
   onPress?: () => void;
 }) {
+  if (!layer.enabled) return null;
   const tint = layer.saturation < -10 ? colors.secondary : layer.brightness > 10 ? colors.accent : undefined;
   return (
     <Pressable
@@ -356,7 +379,18 @@ export default function HomeScreen() {
       .then((stored) => {
         if (stored) {
           try {
-            setProject(JSON.parse(stored) as Project);
+            const parsed = JSON.parse(stored) as Partial<Project>;
+            const defaults = createProject();
+            const layers = LAYER_IDS.reduce((result, id) => {
+              const savedLayer = parsed.layers?.[id];
+              result[id] = {
+                ...defaults.layers[id],
+                ...savedLayer,
+                enabled: savedLayer?.enabled !== false,
+              };
+              return result;
+            }, {} as Record<LayerId, Layer>);
+            setProject({ ...defaults, ...parsed, layers });
           } catch {
             setProject(createProject());
           }
@@ -375,6 +409,40 @@ export default function HomeScreen() {
     setProject((current) => ({ ...current, layers: { ...current.layers, [id]: { ...current.layers[id], ...patch } } }));
   }, []);
 
+  const toggleLayer = useCallback((id: LayerId) => {
+    setProject((current) => {
+      const nextEnabled = !current.layers[id].enabled;
+      let activeLayer = current.activeLayer;
+      if (!nextEnabled && activeLayer === id) {
+        const fallback = LAYER_IDS.find(
+          (candidate) => candidate !== id && current.layers[candidate].uri && current.layers[candidate].enabled,
+        );
+        if (fallback) activeLayer = fallback;
+      }
+      return {
+        ...current,
+        activeLayer,
+        layers: { ...current.layers, [id]: { ...current.layers[id], enabled: nextEnabled } },
+      };
+    });
+    Haptics.selectionAsync();
+  }, []);
+
+  const removeLayer = useCallback((id: LayerId) => {
+    const label = projectRef.current.layers[id].label;
+    Alert.alert(`Remover ${label.toLowerCase()}?`, 'A imagem selecionada será removida deste aparelho.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Remover',
+        style: 'destructive',
+        onPress: () => {
+          setProject((current) => ({ ...current, layers: { ...current.layers, [id]: createLayer(id) } }));
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        },
+      },
+    ]);
+  }, []);
+
   const activateSmartCutout = useCallback(async () => {
     const id = editingLayer;
     const uri = projectRef.current.layers[id].uri;
@@ -391,7 +459,7 @@ export default function HomeScreen() {
         return;
       }
       const transparentUri = await removeBackground(uri, { trim: false });
-      updateLayer(id, { uri: transparentUri, backgroundRemoved: true });
+      updateLayer(id, { uri: transparentUri, enabled: true, backgroundRemoved: true });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       Alert.alert('Não foi possível isolar a pessoa', 'Tente novamente com uma foto em que o sujeito esteja mais nítido e separado do fundo.');
@@ -438,7 +506,7 @@ export default function HomeScreen() {
             // Keep the transparent-safe PNG when native ML is unavailable.
           }
         }
-        updateLayer(id, { uri: finalUri, backgroundRemoved });
+      updateLayer(id, { uri: finalUri, enabled: true, backgroundRemoved });
         setEditingLayer(id);
         setMode('edit');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -468,7 +536,7 @@ export default function HomeScreen() {
   };
 
   const goToCompose = () => {
-    if (Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length < 2) {
+    if (Object.values(project.layers).filter((layer) => Boolean(layer.uri) && layer.enabled).length < 2) {
       Alert.alert('Adicione mais uma camada', 'Duas imagens já são suficientes para criar o efeito Parallax.');
       return;
     }
@@ -506,7 +574,8 @@ export default function HomeScreen() {
   }, [mode, motionX, motionY, project.intensity]);
 
   const edit = project.layers[editingLayer];
-  const readyCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
+  const importedCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
+  const readyCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri) && layer.enabled).length;
   const canCompose = readyCount >= 2;
   const canvasResponder = useMemo(
     () =>
@@ -688,11 +757,12 @@ export default function HomeScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Progress mode={mode} colors={colors} />
           <View style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            {edit.backgroundRemoved ? <TransparencyGrid colors={colors} /> : null}
             {edit.uri ? <Image source={{ uri: edit.uri }} style={[styles.editImage, { transform: [{ scale: 1 + edit.crop / 180 }] }]} resizeMode="cover" /> : null}
             <View style={[styles.editOverlay, { backgroundColor: colors.background }]}>
-              <Ionicons name={edit.uri ? 'checkmark-circle' : 'image-outline'} size={15} color={edit.uri ? colors.success : colors.mutedForeground} />
+              <Ionicons name={edit.uri ? (edit.backgroundRemoved ? 'cut' : 'checkmark-circle') : 'image-outline'} size={15} color={edit.uri ? colors.success : colors.mutedForeground} />
               <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
-                {edit.uri ? (edit.backgroundRemoved ? 'Fundo removido com ML local' : 'Imagem otimizada localmente') : 'Adicione uma imagem'}
+                {edit.uri ? (edit.backgroundRemoved ? 'Transparência visível · ML local' : 'Imagem otimizada localmente') : 'Adicione uma imagem'}
               </Text>
             </View>
           </View>
@@ -804,7 +874,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      <Header title="Parallax" subtitle="Wallpaper studio" colors={colors} onReset={readyCount > 0 ? resetProject : undefined} />
+      <Header title="Parallax" subtitle="Wallpaper studio" colors={colors} onReset={importedCount > 0 ? resetProject : undefined} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Progress mode={mode} colors={colors} />
         <View style={styles.hero}>
@@ -820,38 +890,79 @@ export default function HomeScreen() {
             <Text style={[styles.sectionKicker, { color: colors.primary }]}>SEU PROJETO</Text>
             <Text style={[styles.screenTitleSmall, { color: colors.foreground }]}>Monte sua cena</Text>
           </View>
-          <Text style={[styles.layerCount, { color: colors.mutedForeground }]}>{Object.values(project.layers).filter((layer) => layer.uri).length}/3 · 2 mín.</Text>
+          <Text style={[styles.layerCount, { color: colors.mutedForeground }]}>{readyCount}/3 ativas · 2 mín.</Text>
         </View>
         <View style={styles.layerList}>
-          {(Object.keys(project.layers) as LayerId[]).map((id, index) => {
+          {LAYER_IDS.map((id, index) => {
             const layer = project.layers[id];
             return (
-              <Pressable
+              <View
                 key={id}
-                testID={`slot-${id}`}
-                onPress={() => {
-                  setEditingLayer(id);
-                  if (layer.uri) setMode('edit');
-                  else pickLayer(id);
-                }}
-                style={({ pressed }) => [
+                style={[
                   styles.layerRow,
-                  { backgroundColor: colors.card, borderColor: layer.uri ? colors.primary : colors.border, opacity: pressed ? 0.8 : 1 },
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: layer.uri && layer.enabled ? colors.primary : colors.border,
+                    opacity: layer.uri && !layer.enabled ? 0.58 : 1,
+                  },
                 ]}
               >
-                <View style={[styles.layerThumbnail, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                  {layer.uri ? <Image source={{ uri: layer.uri }} style={styles.thumbnailImage} /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
-                </View>
-                <View style={styles.layerRowCopy}>
-                  <Text style={[styles.layerEyebrow, { color: colors.primary }]}>{layer.eyebrow}</Text>
-                  <Text style={[styles.layerRowTitle, { color: colors.foreground }]}>{layer.label}</Text>
-                  <Text style={[styles.layerRowHelper, { color: colors.mutedForeground }]}>{layer.uri ? 'Pronta para editar' : layer.helper}</Text>
-                </View>
-                <View style={[styles.layerStatus, { backgroundColor: layer.uri ? colors.primary : colors.secondary }]}>
-                  <Ionicons name={layer.uri ? 'checkmark' : 'arrow-up-outline'} size={16} color={layer.uri ? colors.primaryForeground : colors.foreground} />
-                </View>
+                <Pressable
+                  testID={`slot-${id}`}
+                  onPress={() => {
+                    setEditingLayer(id);
+                    if (layer.uri) setMode('edit');
+                    else pickLayer(id);
+                  }}
+                  style={({ pressed }) => [styles.layerRowMain, pressed && styles.pressed]}
+                >
+                  <View style={[styles.layerThumbnail, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                    {layer.uri ? <Image source={{ uri: layer.uri }} style={styles.thumbnailImage} /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
+                  </View>
+                  <View style={styles.layerRowCopy}>
+                    <Text style={[styles.layerEyebrow, { color: colors.primary }]}>{layer.eyebrow}</Text>
+                    <Text style={[styles.layerRowTitle, { color: colors.foreground }]}>{layer.label}</Text>
+                    <Text style={[styles.layerRowHelper, { color: colors.mutedForeground }]}>
+                      {layer.uri ? (layer.enabled ? 'Ativa · pronta para editar' : 'Desativada · não entra na cena') : layer.helper}
+                    </Text>
+                  </View>
+                  {!layer.uri ? (
+                    <View style={[styles.layerStatus, { backgroundColor: colors.secondary }]}>
+                      <Ionicons name="arrow-up-outline" size={16} color={colors.foreground} />
+                    </View>
+                  ) : null}
+                </Pressable>
+                {layer.uri ? (
+                  <View style={styles.layerActions}>
+                    <Pressable
+                      testID={`toggle-${id}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={layer.enabled ? `Desativar camada ${layer.label}` : `Ativar camada ${layer.label}`}
+                      onPress={() => toggleLayer(id)}
+                      style={({ pressed }) => [
+                        styles.layerAction,
+                        {
+                          backgroundColor: layer.enabled ? colors.primary : colors.secondary,
+                          borderColor: layer.enabled ? colors.primary : colors.border,
+                        },
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Ionicons name={layer.enabled ? 'checkmark' : 'ellipse-outline'} size={17} color={layer.enabled ? colors.primaryForeground : colors.mutedForeground} />
+                    </Pressable>
+                    <Pressable
+                      testID={`remove-${id}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remover camada ${layer.label}`}
+                      onPress={() => removeLayer(id)}
+                      style={({ pressed }) => [styles.layerAction, { backgroundColor: colors.secondary, borderColor: colors.border }, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={colors.accent} />
+                    </Pressable>
+                  </View>
+                ) : null}
                 {index < 2 ? <View style={[styles.layerConnector, { backgroundColor: colors.border }]} /> : null}
-              </Pressable>
+              </View>
             );
           })}
         </View>
@@ -904,6 +1015,7 @@ const styles = StyleSheet.create({
   layerCount: { fontSize: 11, fontFamily: 'Inter_500Medium', marginBottom: 2 },
   layerList: { gap: 10, marginBottom: 18 },
   layerRow: { minHeight: 86, borderWidth: 1, borderRadius: 18, padding: 10, flexDirection: 'row', alignItems: 'center' },
+  layerRowMain: { flex: 1, minHeight: 64, flexDirection: 'row', alignItems: 'center' },
   layerThumbnail: { width: 64, height: 64, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   thumbnailImage: { width: '100%', height: '100%' },
   layerRowCopy: { flex: 1, paddingHorizontal: 12 },
@@ -911,6 +1023,8 @@ const styles = StyleSheet.create({
   layerRowTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold', marginTop: 2 },
   layerRowHelper: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 3 },
   layerStatus: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  layerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  layerAction: { width: 32, height: 32, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   layerConnector: { position: 'absolute', width: 1, height: 10, left: 41, bottom: -10, zIndex: 3 },
   tipCard: { borderWidth: 1, borderRadius: 15, padding: 13, flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 16 },
   primaryButton: { minHeight: 54, borderRadius: 16, borderWidth: 1, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
@@ -918,6 +1032,8 @@ const styles = StyleSheet.create({
   processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 14 },
   savedText: { textAlign: 'center', fontSize: 11, fontFamily: 'Inter_500Medium', paddingTop: 12 },
   editPreview: { height: 230, borderRadius: 22, borderWidth: 1, overflow: 'hidden', marginBottom: 20 },
+  transparencyGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  transparencyCell: { width: '12.5%', height: '12.5%' },
   editImage: { width: '100%', height: '100%' },
   editOverlay: { position: 'absolute', left: 12, bottom: 12, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.92 },
   editOverlayText: { fontSize: 10, fontFamily: 'Inter_500Medium' },
