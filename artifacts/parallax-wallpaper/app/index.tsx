@@ -3,15 +3,18 @@ import {
   Alert,
   Animated,
   Dimensions,
-  Image,
+  GestureResponderEvent,
   Linking,
   PanResponder,
+  PanResponderGestureState,
   Platform,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   View,
+  ViewStyle,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +23,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Defs, FeColorMatrix, Filter, Image as SvgImage } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 
@@ -243,8 +247,11 @@ function Slider({
   const responder = useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponderCapture: () => true,
         onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
         onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (event) => updateFromX(event.nativeEvent.locationX),
         onPanResponderMove: (event) => updateFromX(event.nativeEvent.locationX),
       }),
@@ -270,6 +277,80 @@ function Slider({
         />
       </View>
     </View>
+  );
+}
+
+function createColorMatrix(layer: Pick<Layer, 'brightness' | 'contrast' | 'saturation'>) {
+  const saturation = 1 + layer.saturation / 50;
+  const contrast = 1 + layer.contrast / 50;
+  const brightness = layer.brightness / 100;
+  const luminance = [0.213, 0.715, 0.072];
+  const saturationMatrix = [
+    (1 - saturation) * luminance[0] + saturation,
+    (1 - saturation) * luminance[1],
+    (1 - saturation) * luminance[2],
+    (1 - saturation) * luminance[0],
+    (1 - saturation) * luminance[1] + saturation,
+    (1 - saturation) * luminance[2],
+    (1 - saturation) * luminance[0],
+    (1 - saturation) * luminance[1],
+    (1 - saturation) * luminance[2] + saturation,
+  ];
+  const offset = (1 - contrast) / 2 + brightness;
+
+  return [
+    contrast * saturationMatrix[0],
+    contrast * saturationMatrix[1],
+    contrast * saturationMatrix[2],
+    0,
+    offset,
+    contrast * saturationMatrix[3],
+    contrast * saturationMatrix[4],
+    contrast * saturationMatrix[5],
+    0,
+    offset,
+    contrast * saturationMatrix[6],
+    contrast * saturationMatrix[7],
+    contrast * saturationMatrix[8],
+    0,
+    offset,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ];
+}
+
+function ColorAdjustedImage({
+  uri,
+  layer,
+  style,
+  preserveAspectRatio = 'xMidYMid slice',
+}: {
+  uri: string;
+  layer: Pick<Layer, 'id' | 'brightness' | 'contrast' | 'saturation'>;
+  style?: StyleProp<ViewStyle>;
+  preserveAspectRatio?: string;
+}) {
+  const filterId = `color-adjustment-${layer.id}`;
+  return (
+    <Svg style={style} viewBox="0 0 100 100">
+      <Defs>
+        <Filter id={filterId} x="-10%" y="-10%" width="120%" height="120%">
+          <FeColorMatrix type="matrix" values={createColorMatrix(layer)} />
+        </Filter>
+      </Defs>
+      <SvgImage
+        x="0"
+        y="0"
+        width="100"
+        height="100"
+        href={{ uri }}
+        preserveAspectRatio={preserveAspectRatio}
+        filter={`url(#${filterId})`}
+      />
+    </Svg>
   );
 }
 
@@ -303,7 +384,6 @@ function LayerPreview({
   onPress?: () => void;
 }) {
   if (!layer.enabled) return null;
-  const tint = layer.saturation < -10 ? colors.secondary : layer.brightness > 10 ? colors.accent : undefined;
   return (
     <Pressable
       testID={`layer-${layer.id}`}
@@ -318,13 +398,7 @@ function LayerPreview({
       ]}
     >
       {layer.uri ? (
-        <>
-          <Image source={{ uri: layer.uri }} style={styles.layerImage} resizeMode="cover" />
-          {tint ? <View style={[StyleSheet.absoluteFill, { backgroundColor: tint, opacity: 0.14 }]} /> : null}
-          {layer.brightness > 15 ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.foreground, opacity: 0.08 }]} />
-          ) : null}
-        </>
+        <ColorAdjustedImage uri={layer.uri} layer={layer} style={styles.layerImage} />
       ) : (
         <View style={styles.previewPlaceholder}>
           <Ionicons name={layer.id === 'background' ? 'image-outline' : 'person-outline'} size={24} color={colors.mutedForeground} />
@@ -577,12 +651,22 @@ export default function HomeScreen() {
   const importedCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
   const readyCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri) && layer.enabled).length;
   const canCompose = readyCount >= 2;
+  const shouldHandleCanvasGesture = useCallback((event: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+    const touches = event.nativeEvent.touches;
+    if (touches.length >= 2) return true;
+    const activeLayer = projectRef.current.layers[projectRef.current.activeLayer];
+    const moved = Math.max(Math.abs(gestureState.dx), Math.abs(gestureState.dy)) > 4;
+    if (!moved) return false;
+    if (activeLayer.scale > 0.95) return true;
+    return Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+  }, []);
   const canvasResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onStartShouldSetPanResponderCapture: () => true,
-        onMoveShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: (event) => event.nativeEvent.touches.length >= 2,
+        onStartShouldSetPanResponderCapture: (event) => event.nativeEvent.touches.length >= 2,
+        onMoveShouldSetPanResponder: shouldHandleCanvasGesture,
+        onMoveShouldSetPanResponderCapture: shouldHandleCanvasGesture,
         onPanResponderGrant: (event) => {
           const layer = projectRef.current.layers[projectRef.current.activeLayer];
           const touches = event.nativeEvent.touches;
@@ -596,26 +680,31 @@ export default function HomeScreen() {
         onPanResponderMove: (event, gestureState) => {
           const touches = event.nativeEvent.touches;
           const activeLayer = projectRef.current.activeLayer;
-          if (touches.length >= 2 && gestureStart.current.distance > 0) {
+          if (touches.length >= 2) {
             const distance = Math.hypot(
               touches[0].pageX - touches[1].pageX,
               touches[0].pageY - touches[1].pageY,
             );
+            if (!gestureStart.current.distance) {
+              gestureStart.current = { ...gestureStart.current, distance };
+              return;
+            }
             const nextScale = clamp(
               gestureStart.current.scale * (distance / gestureStart.current.distance),
               0.12,
               1.25,
             );
             updateLayer(activeLayer, { scale: nextScale });
-          } else if (activeLayer !== 'background') {
+          } else {
             updateLayer(activeLayer, {
               x: clamp(gestureStart.current.x + gestureState.dx, -80, 80),
               y: clamp(gestureStart.current.y + gestureState.dy, -100, 100),
             });
           }
         },
+        onPanResponderTerminationRequest: () => false,
       }),
-    [updateLayer],
+    [shouldHandleCanvasGesture, updateLayer],
   );
 
   if (isLoading) {
@@ -756,16 +845,30 @@ export default function HomeScreen() {
         <Header title={edit.label} subtitle={`${edit.eyebrow}  ·  Ajustes locais`} colors={colors} onBack={() => setMode('home')} onReset={resetProject} />
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Progress mode={mode} colors={colors} />
-          <View style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+          <Pressable
+            testID="add-image-preview"
+            accessibilityRole={!edit.uri ? 'button' : undefined}
+            accessibilityLabel={!edit.uri ? 'Adicionar uma imagem' : undefined}
+            disabled={Boolean(edit.uri)}
+            onPress={!edit.uri ? () => pickLayer(editingLayer) : undefined}
+            style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}
+          >
             {edit.backgroundRemoved ? <TransparencyGrid colors={colors} /> : null}
-            {edit.uri ? <Image source={{ uri: edit.uri }} style={[styles.editImage, { transform: [{ scale: 1 + edit.crop / 180 }] }]} resizeMode="contain" /> : null}
-            <View style={[styles.editOverlay, { backgroundColor: colors.background }]}>
+            {edit.uri ? (
+              <ColorAdjustedImage
+                uri={edit.uri}
+                layer={edit}
+                preserveAspectRatio="xMidYMid meet"
+                style={[styles.editImage, { transform: [{ scale: 1 + edit.crop / 180 }] }]}
+              />
+            ) : null}
+            <View pointerEvents="none" style={[styles.editOverlay, { backgroundColor: colors.background }]}>
               <Ionicons name={edit.uri ? (edit.backgroundRemoved ? 'cut' : 'checkmark-circle') : 'image-outline'} size={15} color={edit.uri ? colors.success : colors.mutedForeground} />
               <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
                 {edit.uri ? (edit.backgroundRemoved ? 'Transparência visível · ML local' : 'Imagem otimizada localmente') : 'Adicione uma imagem'}
               </Text>
             </View>
-          </View>
+          </Pressable>
           <View style={styles.editTitleRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sectionKicker, { color: colors.primary }]}>{edit.eyebrow}</Text>
@@ -917,7 +1020,7 @@ export default function HomeScreen() {
                   style={({ pressed }) => [styles.layerRowMain, pressed && styles.pressed]}
                 >
                   <View style={[styles.layerThumbnail, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                    {layer.uri ? <Image source={{ uri: layer.uri }} style={styles.thumbnailImage} /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
+                    {layer.uri ? <ColorAdjustedImage uri={layer.uri} layer={layer} style={styles.thumbnailImage} preserveAspectRatio="xMidYMid slice" /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
                   </View>
                   <View style={styles.layerRowCopy}>
                     <Text style={[styles.layerEyebrow, { color: colors.primary }]}>{layer.eyebrow}</Text>
