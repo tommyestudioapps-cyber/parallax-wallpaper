@@ -31,11 +31,18 @@
       ],
       "expo-font",
       "expo-dev-client",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withMlKitSubjectSegmentDependency"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5e0f6b4b-e860-4610-9fb7-e43043987b14"
+      }
+    },
+    "owner": "tommyestudioapps"
   }
 }
