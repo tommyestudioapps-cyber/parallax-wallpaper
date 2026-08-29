@@ -1067,7 +1067,6 @@ export default function HomeScreen() {
                       {edit.backgroundRemoved ? 'Fundo transparente ativo' : processing ? 'Separando pessoa…' : 'Remover fundo e isolar pessoa'}
                     </Text>
                   </Pressable>
-                  <Slider value={edit.crop} min={0} max={100} onChange={(value) => updateLayer(editingLayer, { crop: value })} colors={colors} testID="recorte" />
                 </View>
               ) : (
                 <View style={[styles.infoRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
