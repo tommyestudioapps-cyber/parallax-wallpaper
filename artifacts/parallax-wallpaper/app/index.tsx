@@ -240,12 +240,15 @@ function Slider({
   testID: string;
 }) {
   const trackWidth = useRef(0);
-  const updateFromX = useCallback(
-    (x: number) => {
+  const onChangeRef = useRef(onChange);
+  const gestureStartValue = useRef(value);
+  onChangeRef.current = onChange;
+  const updateFromDelta = useCallback(
+    (deltaX: number) => {
       if (!trackWidth.current) return;
-      onChange(clamp(min + (x / trackWidth.current) * (max - min), min, max));
+      onChangeRef.current(clamp(gestureStartValue.current + (deltaX / trackWidth.current) * (max - min), min, max));
     },
-    [max, min, onChange],
+    [max, min],
   );
   const responder = useMemo(
     () =>
@@ -255,10 +258,14 @@ function Slider({
         onMoveShouldSetPanResponderCapture: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: (event) => updateFromX(event.nativeEvent.locationX),
-        onPanResponderMove: (event) => updateFromX(event.nativeEvent.locationX),
+        onPanResponderGrant: (event) => {
+          if (!trackWidth.current) return;
+          gestureStartValue.current = clamp(min + (event.nativeEvent.locationX / trackWidth.current) * (max - min), min, max);
+          onChangeRef.current(gestureStartValue.current);
+        },
+        onPanResponderMove: (_event, gestureState) => updateFromDelta(gestureState.dx),
       }),
-    [updateFromX],
+    [max, min, updateFromDelta],
   );
   const percentage = ((value - min) / (max - min)) * 100;
   return (
