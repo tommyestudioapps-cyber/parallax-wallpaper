@@ -398,7 +398,12 @@ function LayerPreview({
       ]}
     >
       {layer.uri ? (
-        <ColorAdjustedImage uri={layer.uri} layer={layer} style={styles.layerImage} />
+        <ColorAdjustedImage
+          uri={layer.uri}
+          layer={layer}
+          style={styles.layerImage}
+          preserveAspectRatio={layer.id === 'background' ? 'xMidYMid slice' : 'xMidYMid meet'}
+        />
       ) : (
         <View style={styles.previewPlaceholder}>
           <Ionicons name={layer.id === 'background' ? 'image-outline' : 'person-outline'} size={24} color={colors.mutedForeground} />
@@ -445,7 +450,7 @@ export default function HomeScreen() {
   const motionX = useRef(new Animated.Value(0)).current;
   const motionY = useRef(new Animated.Value(0)).current;
   const projectRef = useRef(project);
-  const gestureStart = useRef({ x: 0, y: 0, scale: 1, distance: 0 });
+  const gestureStart = useRef({ x: 0, y: 0, scale: 1, distance: 0, focalX: 0, focalY: 0 });
   projectRef.current = project;
 
   useEffect(() => {
@@ -568,19 +573,7 @@ export default function HomeScreen() {
           // never acquire a black rectangle during composition.
           format: isCutoutLayer ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
         });
-        let finalUri = optimized.uri;
-        let backgroundRemoved = false;
-        if (isCutoutLayer && Platform.OS !== 'web') {
-          try {
-            if (await isNativeBackgroundRemovalSupported()) {
-              finalUri = await removeBackground(optimized.uri, { trim: false });
-              backgroundRemoved = true;
-            }
-          } catch {
-            // Keep the transparent-safe PNG when native ML is unavailable.
-          }
-        }
-      updateLayer(id, { uri: finalUri, enabled: true, backgroundRemoved });
+        updateLayer(id, { uri: optimized.uri, enabled: true, backgroundRemoved: false });
         setEditingLayer(id);
         setMode('edit');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -651,15 +644,26 @@ export default function HomeScreen() {
   const importedCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
   const readyCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri) && layer.enabled).length;
   const canCompose = readyCount >= 2;
-  const shouldHandleCanvasGesture = useCallback((event: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-    const touches = event.nativeEvent.touches;
-    if (touches.length >= 2) return true;
-    const activeLayer = projectRef.current.layers[projectRef.current.activeLayer];
-    const moved = Math.max(Math.abs(gestureState.dx), Math.abs(gestureState.dy)) > 4;
-    if (!moved) return false;
-    if (activeLayer.scale > 0.95) return true;
-    return Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+  const gestureLayerId = mode === 'edit' ? editingLayer : project.activeLayer;
+  const getTranslationBounds = useCallback((scale: number) => {
+    return {
+      x: Math.max(80, CANVAS_WIDTH * 0.55 * scale),
+      y: Math.max(100, CANVAS_HEIGHT * 0.55 * scale),
+    };
   }, []);
+  const shouldHandleCanvasGesture = useCallback(
+    (event: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+      const activeLayer = projectRef.current.layers[gestureLayerId];
+      const touches = event.nativeEvent.touches;
+      if (!activeLayer.uri || (mode === 'compose' && gestureLayerId === 'background')) return false;
+      if (touches.length >= 2) return true;
+      const moved = Math.max(Math.abs(gestureState.dx), Math.abs(gestureState.dy)) > 4;
+      if (!moved) return false;
+      if (activeLayer.scale > 0.95) return true;
+      return Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+    },
+    [gestureLayerId, mode],
+  );
   const canvasResponder = useMemo(
     () =>
       PanResponder.create({
@@ -668,25 +672,35 @@ export default function HomeScreen() {
         onMoveShouldSetPanResponder: shouldHandleCanvasGesture,
         onMoveShouldSetPanResponderCapture: shouldHandleCanvasGesture,
         onPanResponderGrant: (event) => {
-          const layer = projectRef.current.layers[projectRef.current.activeLayer];
+          const layer = projectRef.current.layers[gestureLayerId];
           const touches = event.nativeEvent.touches;
           const distance =
             touches.length >= 2
               ? Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY)
               : 0;
-          gestureStart.current = { x: layer.x, y: layer.y, scale: layer.scale, distance };
+          const focalX =
+            touches.length >= 2
+              ? (touches[0].locationX + touches[1].locationX) / 2
+              : touches[0]?.locationX ?? CANVAS_WIDTH / 2;
+          const focalY =
+            touches.length >= 2
+              ? (touches[0].locationY + touches[1].locationY) / 2
+              : touches[0]?.locationY ?? CANVAS_HEIGHT / 2;
+          gestureStart.current = { x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY };
           Haptics.selectionAsync();
         },
         onPanResponderMove: (event, gestureState) => {
           const touches = event.nativeEvent.touches;
-          const activeLayer = projectRef.current.activeLayer;
+          const activeLayer = gestureLayerId;
           if (touches.length >= 2) {
             const distance = Math.hypot(
               touches[0].pageX - touches[1].pageX,
               touches[0].pageY - touches[1].pageY,
             );
+            const focalX = (touches[0].locationX + touches[1].locationX) / 2;
+            const focalY = (touches[0].locationY + touches[1].locationY) / 2;
             if (!gestureStart.current.distance) {
-              gestureStart.current = { ...gestureStart.current, distance };
+              gestureStart.current = { ...gestureStart.current, distance, focalX, focalY };
               return;
             }
             const nextScale = clamp(
@@ -694,17 +708,44 @@ export default function HomeScreen() {
               0.12,
               1.25,
             );
-            updateLayer(activeLayer, { scale: nextScale });
-          } else {
+            const scaleRatio = nextScale / gestureStart.current.scale;
+            const bounds = getTranslationBounds(nextScale);
+            const nextX =
+              gestureStart.current.x +
+              (focalX - gestureStart.current.focalX) +
+              (gestureStart.current.focalX - CANVAS_WIDTH / 2 - gestureStart.current.x) * (1 - scaleRatio);
+            const nextY =
+              gestureStart.current.y +
+              (focalY - gestureStart.current.focalY) +
+              (gestureStart.current.focalY - CANVAS_HEIGHT / 2 - gestureStart.current.y) * (1 - scaleRatio);
             updateLayer(activeLayer, {
-              x: clamp(gestureStart.current.x + gestureState.dx, -80, 80),
-              y: clamp(gestureStart.current.y + gestureState.dy, -100, 100),
+              scale: nextScale,
+              x: clamp(nextX, -bounds.x, bounds.x),
+              y: clamp(nextY, -bounds.y, bounds.y),
+            });
+          } else {
+            if (gestureStart.current.distance) {
+              const layer = projectRef.current.layers[activeLayer];
+              gestureStart.current = {
+                x: layer.x,
+                y: layer.y,
+                scale: layer.scale,
+                distance: 0,
+                focalX: touches[0]?.locationX ?? CANVAS_WIDTH / 2,
+                focalY: touches[0]?.locationY ?? CANVAS_HEIGHT / 2,
+              };
+              return;
+            }
+            const bounds = getTranslationBounds(projectRef.current.layers[activeLayer].scale);
+            updateLayer(activeLayer, {
+              x: clamp(gestureStart.current.x + (touches[0]?.locationX ?? gestureStart.current.focalX) - gestureStart.current.focalX, -bounds.x, bounds.x),
+              y: clamp(gestureStart.current.y + (touches[0]?.locationY ?? gestureStart.current.focalY) - gestureStart.current.focalY, -bounds.y, bounds.y),
             });
           }
         },
         onPanResponderTerminationRequest: () => false,
       }),
-    [shouldHandleCanvasGesture, updateLayer],
+    [getTranslationBounds, gestureLayerId, shouldHandleCanvasGesture, updateLayer],
   );
 
   if (isLoading) {
@@ -761,7 +802,7 @@ export default function HomeScreen() {
           <Progress mode={mode} colors={colors} />
           <Text style={[styles.sectionKicker, { color: colors.primary }]}>PRÉVIA DA CENA</Text>
           <Text style={[styles.screenTitle, { color: colors.foreground }]}>Dê espaço à sua visão.</Text>
-          <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Toque em uma camada e arraste para reposicionar. Use os controles abaixo para refinar a escala.</Text>
+          <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Toque em uma camada e use os gestos diretamente na imagem para ajustar o enquadramento.</Text>
           <View
             {...canvasResponder.panHandlers}
             style={[styles.composeCanvas, { backgroundColor: colors.muted, borderColor: colors.border }]}
@@ -801,26 +842,6 @@ export default function HomeScreen() {
           <View style={[styles.controlCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.controlHeader}>
               <View>
-                <Text style={[styles.controlLabel, { color: colors.foreground }]}>Camada ativa</Text>
-                <Text style={[styles.controlValue, { color: colors.primary }]}>{layerMeta[project.activeLayer].label}</Text>
-              </View>
-              <View style={[styles.controlIcon, { backgroundColor: colors.secondary }]}>
-                <Ionicons name="move-outline" size={19} color={colors.primary} />
-              </View>
-            </View>
-            <Text style={[styles.sliderLabel, { color: colors.mutedForeground }]}>Escala <Text style={{ color: colors.foreground }}>{Math.round(project.layers[project.activeLayer].scale * 100)}%</Text></Text>
-            <Slider
-              value={project.layers[project.activeLayer].scale}
-              min={0.12}
-              max={1.25}
-              onChange={(value) => updateLayer(project.activeLayer, { scale: value })}
-              colors={colors}
-              testID="escala"
-            />
-          </View>
-          <View style={[styles.controlCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.controlHeader}>
-              <View>
                 <Text style={[styles.controlLabel, { color: colors.foreground }]}>Intensidade do efeito</Text>
                 <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>Quanto cada plano reage ao movimento</Text>
               </View>
@@ -845,12 +866,8 @@ export default function HomeScreen() {
         <Header title={edit.label} subtitle={`${edit.eyebrow}  ·  Ajustes locais`} colors={colors} onBack={() => setMode('home')} onReset={resetProject} />
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Progress mode={mode} colors={colors} />
-          <Pressable
-            testID="add-image-preview"
-            accessibilityRole={!edit.uri ? 'button' : undefined}
-            accessibilityLabel={!edit.uri ? 'Adicionar uma imagem' : undefined}
-            disabled={Boolean(edit.uri)}
-            onPress={!edit.uri ? () => pickLayer(editingLayer) : undefined}
+          <View
+            {...canvasResponder.panHandlers}
             style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}
           >
             {edit.backgroundRemoved ? <TransparencyGrid colors={colors} /> : null}
@@ -858,17 +875,41 @@ export default function HomeScreen() {
               <ColorAdjustedImage
                 uri={edit.uri}
                 layer={edit}
-                preserveAspectRatio="xMidYMid meet"
-                style={[styles.editImage, { transform: [{ scale: 1 + edit.crop / 180 }] }]}
+                preserveAspectRatio={edit.id === 'background' ? 'xMidYMid slice' : 'xMidYMid meet'}
+                style={[
+                  styles.editImage,
+                  {
+                    transform: [
+                      { translateX: edit.x },
+                      { translateY: edit.y },
+                      { scale: edit.scale * (1 + edit.crop / 180) },
+                    ],
+                  },
+                ]}
               />
             ) : null}
-            <View pointerEvents="none" style={[styles.editOverlay, { backgroundColor: colors.background }]}>
-              <Ionicons name={edit.uri ? (edit.backgroundRemoved ? 'cut' : 'checkmark-circle') : 'image-outline'} size={15} color={edit.uri ? colors.success : colors.mutedForeground} />
-              <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
-                {edit.uri ? (edit.backgroundRemoved ? 'Transparência visível · ML local' : 'Imagem otimizada localmente') : 'Adicione uma imagem'}
-              </Text>
-            </View>
-          </Pressable>
+            {!edit.uri ? (
+              <Pressable
+                testID="add-image-preview"
+                accessibilityRole="button"
+                accessibilityLabel="Adicionar uma imagem"
+                onPress={() => pickLayer(editingLayer)}
+                style={StyleSheet.absoluteFill}
+              >
+                <View pointerEvents="none" style={[styles.editOverlay, { backgroundColor: colors.background }]}>
+                  <Ionicons name="image-outline" size={15} color={colors.mutedForeground} />
+                  <Text style={[styles.editOverlayText, { color: colors.foreground }]}>Adicione uma imagem</Text>
+                </View>
+              </Pressable>
+            ) : (
+              <View pointerEvents="none" style={[styles.editOverlay, { backgroundColor: colors.background }]}>
+                <Ionicons name={edit.backgroundRemoved ? 'cut' : 'checkmark-circle'} size={15} color={edit.backgroundRemoved ? colors.success : colors.mutedForeground} />
+                <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
+                  {edit.backgroundRemoved ? 'Transparência visível · ML local' : 'Imagem original · enquadre antes de remover'}
+                </Text>
+              </View>
+            )}
+          </View>
           <View style={styles.editTitleRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sectionKicker, { color: colors.primary }]}>{edit.eyebrow}</Text>
