@@ -61,6 +61,7 @@ type CanvasGestureMode = 'idle' | 'pan' | 'pinch';
 const LAYER_IDS: LayerId[] = ['background', 'middle', 'foreground'];
 const MIN_GESTURE_SCALE = 0.12;
 const MAX_GESTURE_SCALE = 6;
+const PROJECT_PERSIST_DEBOUNCE_MS = 300;
 
 const layerMeta: Record<LayerId, Pick<Layer, 'label' | 'eyebrow' | 'helper'>> = {
   background: {
@@ -452,6 +453,7 @@ export default function HomeScreen() {
   const motionX = useRef(new Animated.Value(0)).current;
   const motionY = useRef(new Animated.Value(0)).current;
   const projectRef = useRef(project);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureStart = useRef<{
     mode: CanvasGestureMode;
     x: number;
@@ -460,7 +462,9 @@ export default function HomeScreen() {
     distance: number;
     focalX: number;
     focalY: number;
-  }>({ mode: 'idle', x: 0, y: 0, scale: 1, distance: 0, focalX: 0, focalY: 0 });
+    pageX: number;
+    pageY: number;
+  }>({ mode: 'idle', x: 0, y: 0, scale: 1, distance: 0, focalX: 0, focalY: 0, pageX: 0, pageY: 0 });
   projectRef.current = project;
 
   useEffect(() => {
@@ -489,10 +493,25 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (isLoading) return;
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      persistTimer.current = null;
       persistProject(project);
-    }
+    }, PROJECT_PERSIST_DEBOUNCE_MS);
+    return () => {
+      if (persistTimer.current) {
+        clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+      }
+    };
   }, [isLoading, project]);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+    };
+  }, []);
 
   const updateLayer = useCallback((id: LayerId, patch: Partial<Layer>) => {
     setProject((current) => ({ ...current, layers: { ...current.layers, [id]: { ...current.layers[id], ...patch } } }));
@@ -678,10 +697,15 @@ export default function HomeScreen() {
           const layer = projectRef.current.layers[gestureLayerId];
           const touches = event.nativeEvent.touches;
           const isPinch = touches.length >= 2;
-          const focalX = isPinch ? (touches[0].locationX + touches[1].locationX) / 2 : touches[0]?.locationX ?? CANVAS_WIDTH / 2;
-          const focalY = isPinch ? (touches[0].locationY + touches[1].locationY) / 2 : touches[0]?.locationY ?? CANVAS_HEIGHT / 2;
+          const firstTouch = touches[0];
+          const pageX = isPinch ? (touches[0].pageX + touches[1].pageX) / 2 : firstTouch?.pageX ?? event.nativeEvent.pageX;
+          const pageY = isPinch ? (touches[0].pageY + touches[1].pageY) / 2 : firstTouch?.pageY ?? event.nativeEvent.pageY;
+          const primaryLocalX = event.nativeEvent.locationX ?? firstTouch?.locationX ?? CANVAS_WIDTH / 2;
+          const primaryLocalY = event.nativeEvent.locationY ?? firstTouch?.locationY ?? CANVAS_HEIGHT / 2;
+          const focalX = isPinch ? primaryLocalX + (touches[1].pageX - touches[0].pageX) / 2 : primaryLocalX;
+          const focalY = isPinch ? primaryLocalY + (touches[1].pageY - touches[0].pageY) / 2 : primaryLocalY;
           const distance = isPinch ? Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY) : 0;
-          gestureStart.current = { mode: isPinch ? 'pinch' : 'pan', x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY };
+          gestureStart.current = { mode: isPinch ? 'pinch' : 'pan', x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY, pageX, pageY };
           Haptics.selectionAsync();
         },
         onPanResponderMove: (event) => {
@@ -692,14 +716,20 @@ export default function HomeScreen() {
               touches[0].pageX - touches[1].pageX,
               touches[0].pageY - touches[1].pageY,
             );
-            const focalX = (touches[0].locationX + touches[1].locationX) / 2;
-            const focalY = (touches[0].locationY + touches[1].locationY) / 2;
             if (gestureStart.current.mode !== 'pinch') {
               const layer = projectRef.current.layers[activeLayer];
-              gestureStart.current = { mode: 'pinch', x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY };
+              const pageX = (touches[0].pageX + touches[1].pageX) / 2;
+              const pageY = (touches[0].pageY + touches[1].pageY) / 2;
+              const focalX = gestureStart.current.focalX + pageX - gestureStart.current.pageX;
+              const focalY = gestureStart.current.focalY + pageY - gestureStart.current.pageY;
+              gestureStart.current = { mode: 'pinch', x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY, pageX, pageY };
               return;
             }
             if (!gestureStart.current.distance) return;
+            const pageX = (touches[0].pageX + touches[1].pageX) / 2;
+            const pageY = (touches[0].pageY + touches[1].pageY) / 2;
+            const focalX = gestureStart.current.focalX + pageX - gestureStart.current.pageX;
+            const focalY = gestureStart.current.focalY + pageY - gestureStart.current.pageY;
             const nextScale = clamp(
               gestureStart.current.scale * (distance / gestureStart.current.distance),
               MIN_GESTURE_SCALE,
@@ -729,16 +759,18 @@ export default function HomeScreen() {
                 y: layer.y,
                 scale: layer.scale,
                 distance: 0,
-                focalX: touches[0].locationX,
-                focalY: touches[0].locationY,
+                focalX: 0,
+                focalY: 0,
+                pageX: touches[0].pageX,
+                pageY: touches[0].pageY,
               };
               return;
             }
             if (gestureStart.current.mode !== 'pan') return;
             const bounds = getTranslationBounds(projectRef.current.layers[activeLayer].scale);
             updateLayer(activeLayer, {
-              x: clamp(gestureStart.current.x + touches[0].locationX - gestureStart.current.focalX, -bounds.x, bounds.x),
-              y: clamp(gestureStart.current.y + touches[0].locationY - gestureStart.current.focalY, -bounds.y, bounds.y),
+              x: clamp(gestureStart.current.x + touches[0].pageX - gestureStart.current.pageX, -bounds.x, bounds.x),
+              y: clamp(gestureStart.current.y + touches[0].pageY - gestureStart.current.pageY, -bounds.y, bounds.y),
             });
           }
         },
