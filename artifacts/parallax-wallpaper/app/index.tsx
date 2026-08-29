@@ -240,16 +240,58 @@ function Slider({
   testID: string;
 }) {
   const trackWidth = useRef(0);
+  const [displayValue, setDisplayValue] = useState(value);
   const onChangeRef = useRef(onChange);
   const gestureStartValue = useRef(value);
+  const pendingValue = useRef(value);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureActive = useRef(false);
   onChangeRef.current = onChange;
+  useEffect(() => {
+    if (!gestureActive.current) {
+      pendingValue.current = value;
+      setDisplayValue(value);
+    }
+  }, [value]);
+  const publishValue = useCallback(
+    (nextValue: number, immediate = false) => {
+      pendingValue.current = nextValue;
+      setDisplayValue(nextValue);
+      if (immediate) {
+        if (commitTimer.current) {
+          clearTimeout(commitTimer.current);
+          commitTimer.current = null;
+        }
+        onChangeRef.current(nextValue);
+        return;
+      }
+      if (commitTimer.current) return;
+      commitTimer.current = setTimeout(() => {
+        commitTimer.current = null;
+        onChangeRef.current(pendingValue.current);
+      }, 32);
+    },
+    [],
+  );
+  const flushValue = useCallback(() => {
+    if (commitTimer.current) {
+      clearTimeout(commitTimer.current);
+      commitTimer.current = null;
+    }
+    onChangeRef.current(pendingValue.current);
+  }, []);
   const updateFromDelta = useCallback(
     (deltaX: number) => {
       if (!trackWidth.current) return;
-      onChangeRef.current(clamp(gestureStartValue.current + (deltaX / trackWidth.current) * (max - min), min, max));
+      publishValue(clamp(gestureStartValue.current + (deltaX / trackWidth.current) * (max - min), min, max));
     },
-    [max, min],
+    [max, min, publishValue],
   );
+  useEffect(() => {
+    return () => {
+      if (commitTimer.current) clearTimeout(commitTimer.current);
+    };
+  }, []);
   const responder = useMemo(
     () =>
       PanResponder.create({
@@ -260,14 +302,23 @@ function Slider({
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (event) => {
           if (!trackWidth.current) return;
+          gestureActive.current = true;
           gestureStartValue.current = clamp(min + (event.nativeEvent.locationX / trackWidth.current) * (max - min), min, max);
-          onChangeRef.current(gestureStartValue.current);
+          publishValue(gestureStartValue.current, true);
         },
         onPanResponderMove: (_event, gestureState) => updateFromDelta(gestureState.dx),
+        onPanResponderRelease: () => {
+          gestureActive.current = false;
+          flushValue();
+        },
+        onPanResponderTerminate: () => {
+          gestureActive.current = false;
+          flushValue();
+        },
       }),
-    [max, min, updateFromDelta],
+    [flushValue, max, min, publishValue, updateFromDelta],
   );
-  const percentage = ((value - min) / (max - min)) * 100;
+  const percentage = ((displayValue - min) / (max - min)) * 100;
   return (
     <View
       testID={testID}
