@@ -328,7 +328,7 @@ function Slider({
       {...responder.panHandlers}
       style={styles.sliderTouchArea}
     >
-      <View style={[styles.sliderTrack, { backgroundColor: colors.border }]}>
+      <View pointerEvents="none" style={[styles.sliderTrack, { backgroundColor: colors.border }]}>
         <View style={[styles.sliderFill, { width: `${percentage}%`, backgroundColor: colors.primary }]} />
         <View
           style={[
