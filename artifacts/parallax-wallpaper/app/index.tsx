@@ -838,7 +838,6 @@ export default function HomeScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Progress mode={mode} colors={colors} />
           <Text style={[styles.sectionKicker, { color: colors.primary }]}>PRÉVIA DA CENA</Text>
-          <Text style={[styles.screenTitle, { color: colors.foreground }]}>Dê espaço à sua visão.</Text>
           <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Toque em uma camada e use os gestos diretamente na imagem para ajustar o enquadramento.</Text>
           <View
             {...canvasResponder.panHandlers}
@@ -853,7 +852,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <View style={styles.layerPicker}>
-            {(Object.keys(project.layers) as LayerId[]).map((id) => (
+            {LAYER_IDS.filter((id) => id !== 'background').map((id) => (
               <Pressable
                 key={id}
                 testID={`select-${id}`}
