@@ -114,6 +114,18 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function shortestAngleDelta(current: number, baseline: number) {
+  let delta = current - baseline;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
+
+function applyMotionDeadZone(value: number, deadZone: number) {
+  if (Math.abs(value) <= deadZone) return 0;
+  return Math.sign(value) * (Math.abs(value) - deadZone);
+}
+
 async function persistProject(project: Project) {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(project));
@@ -510,6 +522,8 @@ export default function HomeScreen() {
   const [applied, setApplied] = useState(false);
   const motionX = useRef(new Animated.Value(0)).current;
   const motionY = useRef(new Animated.Value(0)).current;
+  const motionBaseline = useRef<{ beta: number; gamma: number } | null>(null);
+  const filteredMotion = useRef({ x: 0, y: 0 });
   const projectRef = useRef(project);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureStart = useRef<{
@@ -715,17 +729,44 @@ export default function HomeScreen() {
   useEffect(() => {
     if (mode !== 'preview') return;
     if (Platform.OS === 'web') return;
+    motionBaseline.current = null;
+    filteredMotion.current = { x: 0, y: 0 };
+    motionX.stopAnimation();
+    motionY.stopAnimation();
+    motionX.setValue(0);
+    motionY.setValue(0);
     DeviceMotion.setUpdateInterval(16);
     const subscription = DeviceMotion.addListener((data) => {
-      const beta = data.rotationRate?.beta ?? 0;
-      const gamma = data.rotationRate?.gamma ?? 0;
+      const rotation = data.rotation;
+      if (!rotation) return;
+      if (!motionBaseline.current) {
+        motionBaseline.current = {
+          beta: rotation.beta,
+          gamma: rotation.gamma,
+        };
+        return;
+      }
+      const horizontalRotation = shortestAngleDelta(rotation.gamma, motionBaseline.current.gamma);
+      const verticalRotation = shortestAngleDelta(rotation.beta, motionBaseline.current.beta);
+      const horizontalDegrees = applyMotionDeadZone((horizontalRotation * 180) / Math.PI, 0.7);
+      const verticalDegrees = applyMotionDeadZone((verticalRotation * 180) / Math.PI, 0.7);
       const intensity = projectRef.current.intensity;
-      Animated.parallel([
-        Animated.spring(motionX, { toValue: clamp(gamma * 1.9 * (intensity / 60), -18, 18), useNativeDriver: true, speed: 14, bounciness: 3 }),
-        Animated.spring(motionY, { toValue: clamp(beta * 1.2 * (intensity / 60), -12, 12), useNativeDriver: true, speed: 14, bounciness: 3 }),
-      ]).start();
+      const intensityFactor = intensity / 60;
+      const targetX = clamp(horizontalDegrees * 0.45 * intensityFactor, -18, 18);
+      const targetY = clamp(verticalDegrees * 0.35 * intensityFactor, -12, 12);
+      filteredMotion.current = {
+        x: filteredMotion.current.x + (targetX - filteredMotion.current.x) * 0.28,
+        y: filteredMotion.current.y + (targetY - filteredMotion.current.y) * 0.28,
+      };
+      motionX.setValue(filteredMotion.current.x);
+      motionY.setValue(filteredMotion.current.y);
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      motionBaseline.current = null;
+      motionX.stopAnimation();
+      motionY.stopAnimation();
+    };
   }, [mode, motionX, motionY]);
 
   const edit = project.layers[editingLayer];
