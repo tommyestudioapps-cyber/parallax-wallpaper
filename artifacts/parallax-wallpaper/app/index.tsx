@@ -3,10 +3,8 @@ import {
   Alert,
   Animated,
   Dimensions,
-  GestureResponderEvent,
   Linking,
   PanResponder,
-  PanResponderGestureState,
   Platform,
   Pressable,
   ScrollView,
@@ -58,7 +56,11 @@ type Project = {
   activeLayer: LayerId;
 };
 
+type CanvasGestureMode = 'idle' | 'pan' | 'pinch';
+
 const LAYER_IDS: LayerId[] = ['background', 'middle', 'foreground'];
+const MIN_GESTURE_SCALE = 0.12;
+const MAX_GESTURE_SCALE = 6;
 
 const layerMeta: Record<LayerId, Pick<Layer, 'label' | 'eyebrow' | 'helper'>> = {
   background: {
@@ -450,7 +452,15 @@ export default function HomeScreen() {
   const motionX = useRef(new Animated.Value(0)).current;
   const motionY = useRef(new Animated.Value(0)).current;
   const projectRef = useRef(project);
-  const gestureStart = useRef({ x: 0, y: 0, scale: 1, distance: 0, focalX: 0, focalY: 0 });
+  const gestureStart = useRef<{
+    mode: CanvasGestureMode;
+    x: number;
+    y: number;
+    scale: number;
+    distance: number;
+    focalX: number;
+    focalY: number;
+  }>({ mode: 'idle', x: 0, y: 0, scale: 1, distance: 0, focalX: 0, focalY: 0 });
   projectRef.current = project;
 
   useEffect(() => {
@@ -628,17 +638,18 @@ export default function HomeScreen() {
   useEffect(() => {
     if (mode !== 'preview') return;
     if (Platform.OS === 'web') return;
-    DeviceMotion.setUpdateInterval(32);
+    DeviceMotion.setUpdateInterval(16);
     const subscription = DeviceMotion.addListener((data) => {
       const beta = data.rotationRate?.beta ?? 0;
       const gamma = data.rotationRate?.gamma ?? 0;
+      const intensity = projectRef.current.intensity;
       Animated.parallel([
-        Animated.spring(motionX, { toValue: clamp(gamma * 1.9 * (project.intensity / 60), -18, 18), useNativeDriver: true, speed: 8, bounciness: 5 }),
-        Animated.spring(motionY, { toValue: clamp(beta * 1.2 * (project.intensity / 60), -12, 12), useNativeDriver: true, speed: 8, bounciness: 5 }),
+        Animated.spring(motionX, { toValue: clamp(gamma * 1.9 * (intensity / 60), -18, 18), useNativeDriver: true, speed: 14, bounciness: 3 }),
+        Animated.spring(motionY, { toValue: clamp(beta * 1.2 * (intensity / 60), -12, 12), useNativeDriver: true, speed: 14, bounciness: 3 }),
       ]).start();
     });
     return () => subscription.remove();
-  }, [mode, motionX, motionY, project.intensity]);
+  }, [mode, motionX, motionY]);
 
   const edit = project.layers[editingLayer];
   const importedCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
@@ -651,45 +662,29 @@ export default function HomeScreen() {
       y: Math.max(100, CANVAS_HEIGHT * 0.55 * scale),
     };
   }, []);
-  const shouldHandleCanvasGesture = useCallback(
-    (event: GestureResponderEvent, gestureState: PanResponderGestureState) => {
+  const canHandleCanvasGesture = useCallback(() => {
       const activeLayer = projectRef.current.layers[gestureLayerId];
-      const touches = event.nativeEvent.touches;
       if (!activeLayer.uri || (mode === 'compose' && gestureLayerId === 'background')) return false;
-      if (touches.length >= 2) return true;
-      const moved = Math.max(Math.abs(gestureState.dx), Math.abs(gestureState.dy)) > 4;
-      if (!moved) return false;
-      if (activeLayer.scale > 0.95) return true;
-      return Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
-    },
-    [gestureLayerId, mode],
-  );
+      return true;
+    }, [gestureLayerId, mode]);
   const canvasResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: (event) => event.nativeEvent.touches.length >= 2,
-        onStartShouldSetPanResponderCapture: (event) => event.nativeEvent.touches.length >= 2,
-        onMoveShouldSetPanResponder: shouldHandleCanvasGesture,
-        onMoveShouldSetPanResponderCapture: shouldHandleCanvasGesture,
+        onStartShouldSetPanResponder: canHandleCanvasGesture,
+        onStartShouldSetPanResponderCapture: canHandleCanvasGesture,
+        onMoveShouldSetPanResponder: canHandleCanvasGesture,
+        onMoveShouldSetPanResponderCapture: canHandleCanvasGesture,
         onPanResponderGrant: (event) => {
           const layer = projectRef.current.layers[gestureLayerId];
           const touches = event.nativeEvent.touches;
-          const distance =
-            touches.length >= 2
-              ? Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY)
-              : 0;
-          const focalX =
-            touches.length >= 2
-              ? (touches[0].locationX + touches[1].locationX) / 2
-              : touches[0]?.locationX ?? CANVAS_WIDTH / 2;
-          const focalY =
-            touches.length >= 2
-              ? (touches[0].locationY + touches[1].locationY) / 2
-              : touches[0]?.locationY ?? CANVAS_HEIGHT / 2;
-          gestureStart.current = { x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY };
+          const isPinch = touches.length >= 2;
+          const focalX = isPinch ? (touches[0].locationX + touches[1].locationX) / 2 : touches[0]?.locationX ?? CANVAS_WIDTH / 2;
+          const focalY = isPinch ? (touches[0].locationY + touches[1].locationY) / 2 : touches[0]?.locationY ?? CANVAS_HEIGHT / 2;
+          const distance = isPinch ? Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY) : 0;
+          gestureStart.current = { mode: isPinch ? 'pinch' : 'pan', x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY };
           Haptics.selectionAsync();
         },
-        onPanResponderMove: (event, gestureState) => {
+        onPanResponderMove: (event) => {
           const touches = event.nativeEvent.touches;
           const activeLayer = gestureLayerId;
           if (touches.length >= 2) {
@@ -699,14 +694,16 @@ export default function HomeScreen() {
             );
             const focalX = (touches[0].locationX + touches[1].locationX) / 2;
             const focalY = (touches[0].locationY + touches[1].locationY) / 2;
-            if (!gestureStart.current.distance) {
-              gestureStart.current = { ...gestureStart.current, distance, focalX, focalY };
+            if (gestureStart.current.mode !== 'pinch') {
+              const layer = projectRef.current.layers[activeLayer];
+              gestureStart.current = { mode: 'pinch', x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY };
               return;
             }
+            if (!gestureStart.current.distance) return;
             const nextScale = clamp(
               gestureStart.current.scale * (distance / gestureStart.current.distance),
-              0.12,
-              1.25,
+              MIN_GESTURE_SCALE,
+              MAX_GESTURE_SCALE,
             );
             const scaleRatio = nextScale / gestureStart.current.scale;
             const bounds = getTranslationBounds(nextScale);
@@ -723,29 +720,37 @@ export default function HomeScreen() {
               x: clamp(nextX, -bounds.x, bounds.x),
               y: clamp(nextY, -bounds.y, bounds.y),
             });
-          } else {
-            if (gestureStart.current.distance) {
+          } else if (touches.length === 1) {
+            if (gestureStart.current.mode === 'pinch') {
               const layer = projectRef.current.layers[activeLayer];
               gestureStart.current = {
+                mode: 'pan',
                 x: layer.x,
                 y: layer.y,
                 scale: layer.scale,
                 distance: 0,
-                focalX: touches[0]?.locationX ?? CANVAS_WIDTH / 2,
-                focalY: touches[0]?.locationY ?? CANVAS_HEIGHT / 2,
+                focalX: touches[0].locationX,
+                focalY: touches[0].locationY,
               };
               return;
             }
+            if (gestureStart.current.mode !== 'pan') return;
             const bounds = getTranslationBounds(projectRef.current.layers[activeLayer].scale);
             updateLayer(activeLayer, {
-              x: clamp(gestureStart.current.x + (touches[0]?.locationX ?? gestureStart.current.focalX) - gestureStart.current.focalX, -bounds.x, bounds.x),
-              y: clamp(gestureStart.current.y + (touches[0]?.locationY ?? gestureStart.current.focalY) - gestureStart.current.focalY, -bounds.y, bounds.y),
+              x: clamp(gestureStart.current.x + touches[0].locationX - gestureStart.current.focalX, -bounds.x, bounds.x),
+              y: clamp(gestureStart.current.y + touches[0].locationY - gestureStart.current.focalY, -bounds.y, bounds.y),
             });
           }
         },
+        onPanResponderRelease: () => {
+          gestureStart.current = { ...gestureStart.current, mode: 'idle', distance: 0 };
+        },
+        onPanResponderTerminate: () => {
+          gestureStart.current = { ...gestureStart.current, mode: 'idle', distance: 0 };
+        },
         onPanResponderTerminationRequest: () => false,
       }),
-    [getTranslationBounds, gestureLayerId, shouldHandleCanvasGesture, updateLayer],
+    [canHandleCanvasGesture, getTranslationBounds, gestureLayerId, updateLayer],
   );
 
   if (isLoading) {
