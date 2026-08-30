@@ -1671,10 +1671,6 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Progress mode={mode} colors={colors} />
         <View style={styles.hero}>
-          <View style={[styles.heroKicker, { backgroundColor: colors.secondary }]}>
-            <View style={[styles.liveDot, { backgroundColor: colors.accent }]} />
-            <Text style={[styles.heroKickerText, { color: colors.primary }]}>OFFLINE · NO SEU APARELHO</Text>
-          </View>
           <Text style={[styles.heroTitle, { color: colors.foreground }]}>Transforme fotos{'\n'}em <Text style={{ color: colors.primary }}>profundidade.</Text></Text>
           <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Crie um wallpaper vivo com três imagens e um movimento que parece real.</Text>
         </View>
