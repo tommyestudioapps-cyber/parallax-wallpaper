@@ -34,6 +34,8 @@ const MAX_CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
 const MAX_CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_WIDTH = Math.min(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT * CANVAS_ASPECT_RATIO);
 const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
+const PREVIEW_BACKGROUND_OVERSCAN_X = 20;
+const PREVIEW_BACKGROUND_OVERSCAN_Y = 14;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
@@ -468,6 +470,8 @@ function LayerImage({
   preserveAspectRatio = 'xMidYMid slice',
   frameWidth = CANVAS_WIDTH,
   frameHeight = CANVAS_HEIGHT,
+  fitWidth = frameWidth,
+  fitHeight = frameHeight,
   imageWidth,
   imageHeight,
   contentCrop,
@@ -480,6 +484,8 @@ function LayerImage({
   preserveAspectRatio?: string;
   frameWidth?: number;
   frameHeight?: number;
+  fitWidth?: number;
+  fitHeight?: number;
   imageWidth?: number | null;
   imageHeight?: number | null;
   contentCrop?: ImageCrop | null;
@@ -490,13 +496,15 @@ function LayerImage({
   const fitScale =
     imageWidth && imageHeight
       ? preserveAspectRatio.includes('meet')
-        ? Math.min(frameWidth / imageWidth, frameHeight / imageHeight)
-        : Math.max(frameWidth / imageWidth, frameHeight / imageHeight)
+        ? Math.min(fitWidth / imageWidth, fitHeight / imageHeight)
+        : Math.max(fitWidth / imageWidth, fitHeight / imageHeight)
       : 1;
   const renderedWidth = (imageWidth ? imageWidth * fitScale : frameWidth) * scale;
   const renderedHeight = (imageHeight ? imageHeight * fitScale : frameHeight) * scale;
-  const imageX = (frameWidth - renderedWidth) / 2 + translateX;
-  const imageY = (frameHeight - renderedHeight) / 2 + translateY;
+  const fitOffsetX = (frameWidth - fitWidth) / 2;
+  const fitOffsetY = (frameHeight - fitHeight) / 2;
+  const imageX = fitOffsetX + (fitWidth - renderedWidth) / 2 + translateX;
+  const imageY = fitOffsetY + (fitHeight - renderedHeight) / 2 + translateY;
   const contentX = contentCrop ? imageX + contentCrop.originX * fitScale * scale : imageX;
   const contentY = contentCrop ? imageY + contentCrop.originY * fitScale * scale : imageY;
   const contentWidth = contentCrop ? contentCrop.width * fitScale * scale : renderedWidth;
@@ -538,10 +546,17 @@ function LayerPreview({
   layer,
   colors,
   selected,
+  previewSurface,
 }: {
   layer: Layer;
   colors: ReturnType<typeof useColors>;
   selected?: boolean;
+  previewSurface?: {
+    width: number;
+    height: number;
+    fitWidth: number;
+    fitHeight: number;
+  };
 }) {
   if (!layer.enabled) return null;
   return (
@@ -549,6 +564,12 @@ function LayerPreview({
       pointerEvents="none"
       style={[
         styles.layerPreview,
+        previewSurface
+          ? {
+              width: previewSurface.width,
+              height: previewSurface.height,
+            }
+          : null,
         {
           borderColor: selected ? colors.primary : colors.border,
           backgroundColor: layer.id === 'background' ? colors.muted : 'transparent',
@@ -560,6 +581,10 @@ function LayerPreview({
           uri={layer.uri}
           style={styles.layerImage}
           preserveAspectRatio="xMidYMid slice"
+          frameWidth={previewSurface?.width}
+          frameHeight={previewSurface?.height}
+          fitWidth={previewSurface?.fitWidth}
+          fitHeight={previewSurface?.fitHeight}
           imageWidth={layer.imageWidth}
           imageHeight={layer.imageHeight}
           contentCrop={layer.cutoutOutputCropped ? layer.sourceCrop : null}
@@ -1046,8 +1071,28 @@ export default function HomeScreen() {
         <Header title="Preview fluido" subtitle="Mova o aparelho para sentir a profundidade" colors={colors} onBack={() => setMode('compose')} />
         <View style={styles.previewScreenBody}>
           <View style={[styles.previewFrame, { borderColor: colors.border }]}>
-            <Animated.View style={[styles.previewLayer, { transform: [{ translateX: motionX }, { translateY: motionY }] }]}>
-              <LayerPreview layer={project.layers.background} colors={colors} />
+            <Animated.View
+              style={[
+                styles.previewLayer,
+                {
+                  left: -PREVIEW_BACKGROUND_OVERSCAN_X,
+                  top: -PREVIEW_BACKGROUND_OVERSCAN_Y,
+                  width: CANVAS_WIDTH + PREVIEW_BACKGROUND_OVERSCAN_X * 2,
+                  height: CANVAS_HEIGHT + PREVIEW_BACKGROUND_OVERSCAN_Y * 2,
+                },
+                { transform: [{ translateX: motionX }, { translateY: motionY }] },
+              ]}
+            >
+              <LayerPreview
+                layer={project.layers.background}
+                colors={colors}
+                previewSurface={{
+                  width: CANVAS_WIDTH + PREVIEW_BACKGROUND_OVERSCAN_X * 2,
+                  height: CANVAS_HEIGHT + PREVIEW_BACKGROUND_OVERSCAN_Y * 2,
+                  fitWidth: CANVAS_WIDTH,
+                  fitHeight: CANVAS_HEIGHT,
+                }}
+              />
             </Animated.View>
             <Animated.View style={[styles.previewLayer, { transform: [{ translateX: Animated.multiply(motionX, 1.7) }, { translateY: Animated.multiply(motionY, 1.7) }] }]}>
               <LayerPreview layer={project.layers.middle} colors={colors} />
