@@ -459,7 +459,7 @@ function LayerPreview({
         <LayerImage
           uri={layer.uri}
           style={styles.layerImage}
-          preserveAspectRatio="xMidYMid meet"
+          preserveAspectRatio="xMidYMid alice"
         />
       ) : (
         <View style={styles.previewPlaceholder}>
@@ -1004,7 +1004,7 @@ export default function HomeScreen() {
             {edit.uri ? (
               <LayerImage
                 uri={edit.uri}
-                preserveAspectRatio="xMidYMid meet"
+                preserveAspectRatio="xMidYMid slice"
                 style={[
                   styles.editImage,
                   {
