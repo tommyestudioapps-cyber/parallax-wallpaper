@@ -40,6 +40,7 @@ const MAX_CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
 const MAX_CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_WIDTH = Math.min(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT * CANVAS_ASPECT_RATIO);
 const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
+const CONTENT_MAX_WIDTH = 560;
 const HERO_TITLE_FONT_SIZE = Math.max(34, Math.min(42, SCREEN_WIDTH * 0.1056));
 const HERO_TITLE_LINE_HEIGHT = Math.round(HERO_TITLE_FONT_SIZE * 1.1);
 const COMPOSITION_LAYER_SAFETY_MARGIN = 2;
@@ -1779,16 +1780,16 @@ const styles = StyleSheet.create({
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   loadingText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   logoMark: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  header: { minHeight: 68, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  header: { width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', minHeight: 68, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerSpacer: { width: 38 },
   headerTitleWrap: { alignItems: 'center', flex: 1 },
   headerTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', letterSpacing: -0.2 },
   headerSubtitle: { fontSize: 10, fontFamily: 'Inter_500Medium', marginTop: 3, letterSpacing: 0.3 },
   iconButton: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   pressed: { transform: [{ scale: 0.96 }], opacity: 0.8 },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 14 },
+  scrollContent: { width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 14 },
   progressWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
-  progressHeader: { marginHorizontal: 20, marginBottom: 14 },
+  progressHeader: { width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 20, marginBottom: 14 },
   progressSteps: { flex: 1, flexDirection: 'row', alignItems: 'center', marginHorizontal: 4 },
   progressStep: { alignItems: 'center', gap: 6 },
   progressDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
@@ -1869,7 +1870,7 @@ const styles = StyleSheet.create({
   previewPlaceholder: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
   canvasBadge: { position: 'absolute', left: 14, top: 14, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.9 },
   canvasBadgeText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 0.6 },
-  previewScreenBody: { flex: 1, paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
+  previewScreenBody: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
   previewFrame: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, borderRadius: 26, borderWidth: 1, overflow: 'hidden', backgroundColor: '#11151D' },
   previewLayer: { ...StyleSheet.absoluteFillObject },
   previewOverlayLabel: { position: 'absolute', top: 16, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#090B10CC', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 99 },
