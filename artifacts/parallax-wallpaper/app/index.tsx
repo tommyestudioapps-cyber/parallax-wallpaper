@@ -1757,7 +1757,7 @@ export default function HomeScreen() {
         </View>
         <View style={[styles.tipCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
           <Ionicons name="flash-outline" size={18} color={colors.accent} />
-          <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground, textAlign: 'left', flex: 1 }]}>Dica: use fotos com elementos em distâncias diferentes para um efeito mais cinematográfico.</Text>
+          <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground, textAlign: 'left', flex: 1, flexShrink: 1, minWidth: 0 }]}>Dica: use fotos com elementos em distâncias diferentes para um efeito mais cinematográfico.</Text>
         </View>
         <PrimaryButton title={canCompose ? 'Continuar para composição' : 'Adicionar primeira camada'} onPress={canCompose ? goToCompose : () => pickLayer('background')} colors={colors} icon="arrow-forward" />
         {processing ? (
