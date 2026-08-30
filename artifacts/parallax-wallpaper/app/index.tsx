@@ -37,6 +37,12 @@ const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
+type ImageCrop = {
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+};
 
 type Layer = {
   id: LayerId;
@@ -44,6 +50,10 @@ type Layer = {
   eyebrow: string;
   helper: string;
   uri: string | null;
+  sourceUri: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  sourceCrop: ImageCrop | null;
   enabled: boolean;
   crop: number;
   backgroundRemoved: boolean;
@@ -88,6 +98,10 @@ function createLayer(id: LayerId): Layer {
     id,
     ...layerMeta[id],
     uri: null,
+    sourceUri: null,
+    imageWidth: null,
+    imageHeight: null,
+    sourceCrop: null,
     enabled: true,
     crop: 0,
     backgroundRemoved: false,
@@ -111,6 +125,55 @@ function createProject(): Project {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function getVisibleImageCrop(layer: Layer) {
+  if (!layer.imageWidth || !layer.imageHeight) return null;
+
+  const imageFitScale = Math.max(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight);
+  const fittedWidth = layer.imageWidth * imageFitScale;
+  const fittedHeight = layer.imageHeight * imageFitScale;
+  const fittedOffsetX = (CANVAS_WIDTH - fittedWidth) / 2;
+  const fittedOffsetY = (CANVAS_HEIGHT - fittedHeight) / 2;
+  const renderScale = layer.scale * (1 + layer.crop / 180);
+  const safeScale = Math.max(renderScale, 0.001);
+  const canvasCenterX = CANVAS_WIDTH / 2;
+  const canvasCenterY = CANVAS_HEIGHT / 2;
+  const sourceX = (localX: number) =>
+    (canvasCenterX + (localX - canvasCenterX - layer.x) / safeScale - fittedOffsetX) / imageFitScale;
+  const sourceY = (localY: number) =>
+    (canvasCenterY + (localY - canvasCenterY - layer.y) / safeScale - fittedOffsetY) / imageFitScale;
+
+  const originX = clamp(Math.floor(sourceX(0)), 0, layer.imageWidth - 1);
+  const originY = clamp(Math.floor(sourceY(0)), 0, layer.imageHeight - 1);
+  const right = clamp(Math.ceil(sourceX(CANVAS_WIDTH)), originX + 1, layer.imageWidth);
+  const bottom = clamp(Math.ceil(sourceY(CANVAS_HEIGHT)), originY + 1, layer.imageHeight);
+
+  return {
+    originX,
+    originY,
+    width: right - originX,
+    height: bottom - originY,
+  };
+}
+
+function getSourceCrop(layer: Layer) {
+  const visibleCrop = getVisibleImageCrop(layer);
+  if (!visibleCrop || !layer.sourceCrop || !layer.imageWidth || !layer.imageHeight) return visibleCrop;
+
+  const sourceScaleX = layer.sourceCrop.width / layer.imageWidth;
+  const sourceScaleY = layer.sourceCrop.height / layer.imageHeight;
+  const originX = Math.floor(layer.sourceCrop.originX + visibleCrop.originX * sourceScaleX);
+  const originY = Math.floor(layer.sourceCrop.originY + visibleCrop.originY * sourceScaleY);
+  const right = Math.ceil(layer.sourceCrop.originX + (visibleCrop.originX + visibleCrop.width) * sourceScaleX);
+  const bottom = Math.ceil(layer.sourceCrop.originY + (visibleCrop.originY + visibleCrop.height) * sourceScaleY);
+
+  return {
+    originX,
+    originY,
+    width: Math.max(1, right - originX),
+    height: Math.max(1, bottom - originY),
+  };
 }
 
 function shortestAngleDelta(current: number, baseline: number) {
@@ -618,7 +681,8 @@ export default function HomeScreen() {
 
   const activateSmartCutout = useCallback(async () => {
     const id = editingLayer;
-    const uri = projectRef.current.layers[id].uri;
+    const layer = projectRef.current.layers[id];
+    const uri = layer.uri;
     if (id === 'background' || !uri || processing) return;
     setProcessing(true);
     try {
@@ -631,8 +695,31 @@ export default function HomeScreen() {
         Alert.alert('Recorte indisponível', 'Este aparelho não oferece o modelo nativo necessário para isolar a pessoa.');
         return;
       }
-      const transparentUri = await removeBackground(uri, { trim: false });
-      updateLayer(id, { uri: transparentUri, enabled: true, backgroundRemoved: true });
+      const sourceUri = layer.sourceUri ?? uri;
+      const visibleCrop = getSourceCrop(layer);
+      const croppedImage = visibleCrop
+        ? await ImageManipulator.manipulateAsync(sourceUri, [{ crop: visibleCrop }], {
+            compress: 0.92,
+            format: ImageManipulator.SaveFormat.PNG,
+          })
+        : null;
+      const transparentUri = await removeBackground(croppedImage?.uri ?? sourceUri, { trim: false });
+      updateLayer(id, {
+        uri: transparentUri,
+        enabled: true,
+        backgroundRemoved: true,
+        ...(visibleCrop
+          ? {
+              x: 0,
+              y: 0,
+              scale: 1,
+              crop: 0,
+              imageWidth: croppedImage?.width ?? layer.imageWidth,
+              imageHeight: croppedImage?.height ?? layer.imageHeight,
+              sourceCrop: visibleCrop,
+            }
+          : {}),
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       Alert.alert('Não foi possível isolar a pessoa', 'Tente novamente com uma foto em que o sujeito esteja mais nítido e separado do fundo.');
@@ -667,7 +754,15 @@ export default function HomeScreen() {
           // never acquire a black rectangle during composition.
           format: isCutoutLayer ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
         });
-        updateLayer(id, { uri: optimized.uri, enabled: true, backgroundRemoved: false });
+        updateLayer(id, {
+          uri: optimized.uri,
+          sourceUri: optimized.uri,
+          imageWidth: optimized.width ?? asset.width ?? null,
+          imageHeight: optimized.height ?? asset.height ?? null,
+          sourceCrop: null,
+          enabled: true,
+          backgroundRemoved: false,
+        });
         setEditingLayer(id);
         setMode('edit');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1071,15 +1166,15 @@ export default function HomeScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.controlLabel, { color: colors.foreground }]}>Recorte inteligente</Text>
                       <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>
-                        {edit.backgroundRemoved ? 'Fundo removido no aparelho. Ajuste o enquadramento para refinar a composição.' : 'O app preserva a transparência e tenta separar o sujeito com ML local.'}
+                        {edit.backgroundRemoved ? 'Fundo removido no aparelho. Ajuste o enquadramento e refaça o recorte se necessário.' : 'O app preserva a transparência e tenta separar o sujeito com ML local.'}
                       </Text>
                     </View>
                   </View>
                   <Pressable
                     testID="remover-fundo"
                     accessibilityRole="button"
-                    accessibilityLabel={edit.backgroundRemoved ? 'Fundo transparente ativo' : 'Remover fundo'}
-                    disabled={processing || edit.backgroundRemoved}
+                    accessibilityLabel={edit.backgroundRemoved ? 'Refazer recorte inteligente' : 'Remover fundo'}
+                    disabled={processing || (edit.backgroundRemoved && !edit.sourceUri)}
                     onPress={activateSmartCutout}
                     style={({ pressed }) => [
                       styles.removeBackgroundButton,
@@ -1090,12 +1185,12 @@ export default function HomeScreen() {
                     ]}
                   >
                     <Ionicons
-                      name={edit.backgroundRemoved ? 'checkmark-circle-outline' : processing ? 'sync-outline' : 'cut-outline'}
+                      name={edit.backgroundRemoved ? 'refresh-outline' : processing ? 'sync-outline' : 'cut-outline'}
                       size={18}
                       color={edit.backgroundRemoved ? colors.primaryForeground : colors.primaryForeground}
                     />
                     <Text style={[styles.removeBackgroundText, { color: colors.primaryForeground }]}>
-                      {edit.backgroundRemoved ? 'Fundo transparente ativo' : processing ? 'Separando pessoa…' : 'Remover fundo'}
+                      {edit.backgroundRemoved ? 'Refazer recorte' : processing ? 'Separando pessoa…' : 'Remover fundo'}
                     </Text>
                   </Pressable>
                 </View>
