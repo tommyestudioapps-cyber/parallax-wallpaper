@@ -899,17 +899,31 @@ export default function HomeScreen() {
   const getTranslationBounds = useCallback((layer: Layer, scale: number) => {
     if (layer.imageWidth && layer.imageHeight) {
       const imageFitScale = Math.max(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight);
-      const effectiveScale = scale * (1 + layer.crop / 180);
+      const effectiveScale = mode === 'compose' ? scale : scale * (1 + layer.crop / 180);
+      const contentWidth =
+        mode === 'compose' && layer.cutoutOutputCropped && layer.sourceCrop
+          ? layer.sourceCrop.width * imageFitScale * effectiveScale
+          : layer.imageWidth * imageFitScale * effectiveScale;
+      const contentHeight =
+        mode === 'compose' && layer.cutoutOutputCropped && layer.sourceCrop
+          ? layer.sourceCrop.height * imageFitScale * effectiveScale
+          : layer.imageHeight * imageFitScale * effectiveScale;
+      if (mode === 'compose') {
+        return {
+          x: Math.abs(contentWidth - CANVAS_WIDTH) / 2,
+          y: Math.abs(contentHeight - CANVAS_HEIGHT) / 2,
+        };
+      }
       return {
-        x: Math.max(0, (layer.imageWidth * imageFitScale * effectiveScale - CANVAS_WIDTH) / 2),
-        y: Math.max(0, (layer.imageHeight * imageFitScale * effectiveScale - CANVAS_HEIGHT) / 2),
+        x: Math.max(0, (contentWidth - CANVAS_WIDTH) / 2),
+        y: Math.max(0, (contentHeight - CANVAS_HEIGHT) / 2),
       };
     }
     return {
       x: Math.max(80, CANVAS_WIDTH * 0.55 * scale),
       y: Math.max(100, CANVAS_HEIGHT * 0.55 * scale),
     };
-  }, []);
+  }, [mode]);
   const canHandleCanvasGesture = useCallback(() => {
       const activeLayer = projectRef.current.layers[gestureLayerId];
       if (!activeLayer.uri || (mode === 'compose' && gestureLayerId === 'background')) return false;
