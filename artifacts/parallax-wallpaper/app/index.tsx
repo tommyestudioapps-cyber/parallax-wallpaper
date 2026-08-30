@@ -40,6 +40,8 @@ const MAX_CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
 const MAX_CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_WIDTH = Math.min(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT * CANVAS_ASPECT_RATIO);
 const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
+const HERO_TITLE_FONT_SIZE = Math.max(34, Math.min(42, SCREEN_WIDTH * 0.1056));
+const HERO_TITLE_LINE_HEIGHT = Math.round(HERO_TITLE_FONT_SIZE * 1.1);
 const COMPOSITION_LAYER_SAFETY_MARGIN = 2;
 const PREVIEW_BACKGROUND_OVERSCAN_X = 20;
 const PREVIEW_BACKGROUND_OVERSCAN_Y = 14;
@@ -1798,7 +1800,7 @@ const styles = StyleSheet.create({
   heroKicker: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 99, gap: 7, marginBottom: 16 },
   heroKickerText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
-  heroTitle: { fontSize: 38, lineHeight: 42, letterSpacing: -1.6, fontFamily: 'Inter_700Bold', marginBottom: 14 },
+  heroTitle: { fontSize: HERO_TITLE_FONT_SIZE, lineHeight: HERO_TITLE_LINE_HEIGHT, letterSpacing: -1.6, fontFamily: 'Inter_700Bold', marginBottom: 14 },
   bodyText: { fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular' },
   bodyTextSmall: { fontSize: 11, lineHeight: 16, fontFamily: 'Inter_400Regular' },
   sectionKicker: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1.4, marginBottom: 5 },
