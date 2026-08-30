@@ -86,7 +86,7 @@ function createLayer(id: LayerId): Layer {
     enabled: true,
     crop: 0,
     backgroundRemoved: false,
-    scale: id === 'background' ? 1 : 0.78,
+    scale: 1,
     x: 0,
     y: 0,
   };
@@ -459,7 +459,7 @@ function LayerPreview({
         <LayerImage
           uri={layer.uri}
           style={styles.layerImage}
-          preserveAspectRatio={layer.id === 'background' ? 'xMidYMid slice' : 'xMidYMid meet'}
+          preserveAspectRatio="xMidYMid meet"
         />
       ) : (
         <View style={styles.previewPlaceholder}>
@@ -1004,7 +1004,7 @@ export default function HomeScreen() {
             {edit.uri ? (
               <LayerImage
                 uri={edit.uri}
-                preserveAspectRatio={edit.id === 'background' ? 'xMidYMid slice' : 'xMidYMid meet'}
+                preserveAspectRatio="xMidYMid meet"
                 style={[
                   styles.editImage,
                   {
