@@ -350,11 +350,12 @@ function Progress({
           onPress={() => onPreviousLayer?.()}
           style={({ pressed }) => [
             styles.progressArrow,
+            { backgroundColor: colors.secondary, borderColor: colors.primary },
             editingLayer === 'background' && styles.progressArrowDisabled,
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="chevron-back" size={20} color={editingLayer === 'background' ? colors.mutedForeground : colors.primary} />
+          <Ionicons name="chevron-back" size={22} color={editingLayer === 'background' ? colors.mutedForeground : colors.primary} />
         </Pressable>
       ) : null}
       <View style={styles.progressSteps}>
@@ -384,9 +385,13 @@ function Progress({
           accessibilityRole="button"
           accessibilityLabel={editingLayer === 'foreground' ? 'Ir para composição' : 'Próxima camada'}
           onPress={() => onNextLayer?.()}
-          style={({ pressed }) => [styles.progressArrow, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.progressArrow,
+            { backgroundColor: colors.secondary, borderColor: colors.primary },
+            pressed && styles.pressed,
+          ]}
         >
-          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
         </Pressable>
       ) : null}
     </View>
@@ -1795,7 +1800,7 @@ const styles = StyleSheet.create({
   progressDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   progressLabel: { fontSize: 10, fontFamily: 'Inter_500Medium' },
   progressLine: { flex: 1, height: 1, marginHorizontal: 8, marginBottom: 16 },
-  progressArrow: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  progressArrow: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   progressArrowDisabled: { opacity: 0.35 },
   hero: { paddingBottom: 28 },
   heroKicker: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 99, gap: 7, marginBottom: 16 },
