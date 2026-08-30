@@ -797,7 +797,6 @@ function NativeParallaxLayers({
   foregroundSurface,
   middleMultiplier,
   foregroundMultiplier,
-  recalibrateSignal,
   onSensorStatus,
 }: {
   project: Project;
@@ -807,7 +806,6 @@ function NativeParallaxLayers({
   foregroundSurface: ReturnType<typeof getLayerSurface>;
   middleMultiplier: number;
   foregroundMultiplier: number;
-  recalibrateSignal: number;
   onSensorStatus: (status: 'checking' | 'ready' | 'unavailable') => void;
 }) {
   const sensor = useAnimatedSensor(SensorType.ROTATION, {
@@ -819,8 +817,6 @@ function NativeParallaxLayers({
   const motionY = useSharedValue(0);
   const intensity = useSharedValue(project.intensity);
   const sensorEnabled = useSharedValue(0);
-  const calibrationSignal = useSharedValue(-1);
-  const lastCalibrationSignal = useSharedValue(-1);
   const lastFrameTimestamp = useSharedValue(0);
   const sampleCount = useSharedValue(0);
   const pitchSum = useSharedValue(0);
@@ -855,24 +851,8 @@ function NativeParallaxLayers({
     };
   }, [onSensorStatus, sensorEnabled]);
 
-  useEffect(() => {
-    calibrationSignal.value = recalibrateSignal;
-  }, [calibrationSignal, recalibrateSignal]);
-
   useFrameCallback((frame) => {
     if (!sensorEnabled.value) return;
-
-    if (calibrationSignal.value !== lastCalibrationSignal.value) {
-      lastCalibrationSignal.value = calibrationSignal.value;
-      sampleCount.value = 0;
-      pitchSum.value = 0;
-      rollSum.value = 0;
-      baselinePitch.value = 0;
-      baselineRoll.value = 0;
-      motionX.value = 0;
-      motionY.value = 0;
-      lastFrameTimestamp.value = 0;
-    }
 
     const rotation = sensorValue.value;
     if (!Number.isFinite(rotation.pitch) || !Number.isFinite(rotation.roll)) return;
@@ -966,7 +946,6 @@ function ParallaxPreview({
   const [sensorStatus, setSensorStatus] = useState<'checking' | 'ready' | 'unavailable'>(
     Platform.OS === 'web' ? 'unavailable' : 'checking',
   );
-  const [recalibrateSignal, setRecalibrateSignal] = useState(0);
   const backgroundSurface = getPreviewSurface(
     project.layers.background,
     getParallaxMultiplier('background', project.intensity),
@@ -1001,7 +980,6 @@ function ParallaxPreview({
               foregroundSurface={foregroundSurface}
               middleMultiplier={middleMultiplier}
               foregroundMultiplier={foregroundMultiplier}
-              recalibrateSignal={recalibrateSignal}
               onSensorStatus={handleSensorStatus}
             />
           )}
@@ -1020,21 +998,6 @@ function ParallaxPreview({
                 : 'A suavização está ativa. Incline o celular devagar para explorar as três camadas.'}
           </Text>
         </View>
-        {Platform.OS !== 'web' ? (
-          <Pressable
-            testID="recalibrar-parallax"
-            accessibilityRole="button"
-            accessibilityLabel="Recalibrar posição neutra"
-            onPress={() => {
-              setRecalibrateSignal((current) => current + 1);
-              Haptics.selectionAsync();
-            }}
-            style={[styles.recalibrateButton, { borderColor: colors.border, backgroundColor: colors.secondary }]}
-          >
-            <Ionicons name="locate-outline" size={16} color={colors.primary} />
-            <Text style={[styles.recalibrateButtonText, { color: colors.foreground }]}>Centralizar movimento</Text>
-          </Pressable>
-        ) : null}
         <PrimaryButton title={applied ? 'Aplicado ao sistema' : 'Aplicar wallpaper'} onPress={onApplyWallpaper} colors={colors} icon={applied ? 'checkmark' : 'arrow-up-circle-outline'} />
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
           {Platform.OS === 'android' ? 'O Android usará o serviço nativo de wallpaper quando instalado.' : 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.'}
@@ -1915,8 +1878,6 @@ const styles = StyleSheet.create({
   previewOverlayText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   previewCopy: { width: '100%', paddingVertical: 17 },
   previewTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginBottom: 6, letterSpacing: -0.4 },
-  recalibrateButton: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
-  recalibrateButtonText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', paddingTop: 12 },
   editSliderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 13 },
   sliderNumber: { width: 28, textAlign: 'right', fontSize: 10, fontFamily: 'Inter_600SemiBold' },
