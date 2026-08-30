@@ -538,18 +538,15 @@ function LayerPreview({
   layer,
   colors,
   selected,
-  onPress,
 }: {
   layer: Layer;
   colors: ReturnType<typeof useColors>;
   selected?: boolean;
-  onPress?: () => void;
 }) {
   if (!layer.enabled) return null;
   return (
-    <Pressable
-      testID={`layer-${layer.id}`}
-      onPress={onPress}
+    <View
+      pointerEvents="none"
       style={[
         styles.layerPreview,
         {
@@ -575,7 +572,7 @@ function LayerPreview({
           <Ionicons name={layer.id === 'background' ? 'image-outline' : 'person-outline'} size={24} color={colors.mutedForeground} />
         </View>
       )}
-    </Pressable>
+    </View>
   );
 }
 
@@ -1071,14 +1068,14 @@ export default function HomeScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Progress mode={mode} colors={colors} />
           <Text style={[styles.sectionKicker, { color: colors.primary }]}>PRÉVIA DA CENA</Text>
-          <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Toque em uma camada e use os gestos diretamente na imagem para ajustar o enquadramento.</Text>
+          <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Selecione uma camada abaixo e use os gestos no quadro para ajustar o enquadramento.</Text>
           <View
             {...canvasResponder.panHandlers}
             style={[styles.composeCanvas, { backgroundColor: colors.muted, borderColor: colors.border }]}
           >
-            <LayerPreview layer={project.layers.background} colors={colors} selected={project.activeLayer === 'background'} onPress={() => setProject((current) => ({ ...current, activeLayer: 'background' }))} />
-            <LayerPreview layer={project.layers.middle} colors={colors} selected={project.activeLayer === 'middle'} onPress={() => setProject((current) => ({ ...current, activeLayer: 'middle' }))} />
-            <LayerPreview layer={project.layers.foreground} colors={colors} selected={project.activeLayer === 'foreground'} onPress={() => setProject((current) => ({ ...current, activeLayer: 'foreground' }))} />
+            <LayerPreview layer={project.layers.background} colors={colors} selected={project.activeLayer === 'background'} />
+            <LayerPreview layer={project.layers.middle} colors={colors} selected={project.activeLayer === 'middle'} />
+            <LayerPreview layer={project.layers.foreground} colors={colors} selected={project.activeLayer === 'foreground'} />
             <View style={[styles.canvasBadge, { backgroundColor: colors.background }]}>
               <View style={[styles.liveDot, { backgroundColor: colors.accent }]} />
               <Text style={[styles.canvasBadgeText, { color: colors.foreground }]}>TOQUE PARA EDITAR</Text>
