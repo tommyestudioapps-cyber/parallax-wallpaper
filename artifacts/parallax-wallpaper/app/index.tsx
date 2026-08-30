@@ -1025,9 +1025,11 @@ export default function HomeScreen() {
                 onPress={() => pickLayer(editingLayer)}
                 style={StyleSheet.absoluteFill}
               >
-                <View pointerEvents="none" style={[styles.editOverlay, { backgroundColor: colors.background }]}>
-                  <Ionicons name="image-outline" size={15} color={colors.mutedForeground} />
-                  <Text style={[styles.editOverlayText, { color: colors.foreground }]}>Adicione uma imagem</Text>
+                <View pointerEvents="none" style={styles.emptyImageOverlay}>
+                  <View style={[styles.editOverlay, styles.emptyImageBadge, { backgroundColor: colors.background }]}>
+                    <Ionicons name="image-outline" size={15} color={colors.mutedForeground} />
+                    <Text style={[styles.editOverlayText, { color: colors.foreground }]}>Adicione uma imagem</Text>
+                  </View>
                 </View>
               </Pressable>
             ) : (
@@ -1067,7 +1069,7 @@ export default function HomeScreen() {
                   <Pressable
                     testID="remover-fundo"
                     accessibilityRole="button"
-                    accessibilityLabel={edit.backgroundRemoved ? 'Fundo transparente ativo' : 'Remover fundo e isolar pessoa'}
+                    accessibilityLabel={edit.backgroundRemoved ? 'Fundo transparente ativo' : 'Remover fundo'}
                     disabled={processing || edit.backgroundRemoved}
                     onPress={activateSmartCutout}
                     style={({ pressed }) => [
@@ -1084,7 +1086,7 @@ export default function HomeScreen() {
                       color={edit.backgroundRemoved ? colors.primaryForeground : colors.primaryForeground}
                     />
                     <Text style={[styles.removeBackgroundText, { color: colors.primaryForeground }]}>
-                      {edit.backgroundRemoved ? 'Fundo transparente ativo' : processing ? 'Separando pessoa…' : 'Remover fundo e isolar pessoa'}
+                      {edit.backgroundRemoved ? 'Fundo transparente ativo' : processing ? 'Separando pessoa…' : 'Remover fundo'}
                     </Text>
                   </Pressable>
                 </View>
@@ -1098,7 +1100,9 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.emptyEdit}>
               <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Suas imagens ficam apenas neste aparelho e são comprimidas automaticamente para manter o movimento leve.</Text>
-              <PrimaryButton title="Escolher da galeria" onPress={() => pickLayer(editingLayer)} colors={colors} icon="images-outline" />
+              {editingLayer === 'background' ? (
+                <PrimaryButton title="Escolher da galeria" onPress={() => pickLayer(editingLayer)} colors={colors} icon="images-outline" />
+              ) : null}
             </View>
           )}
           <View style={{ height: insets.bottom + 24 }} />
@@ -1275,6 +1279,8 @@ const styles = StyleSheet.create({
   transparencyCell: { width: '12.5%', height: '12.5%' },
   editImage: { width: '100%', height: '100%' },
   editOverlay: { position: 'absolute', left: 12, bottom: 12, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.92 },
+  emptyImageOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  emptyImageBadge: { position: 'relative', left: 0, bottom: 0 },
   editOverlayText: { fontSize: 10, fontFamily: 'Inter_500Medium' },
   editTitleRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 15 },
   changeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 11 },
