@@ -197,35 +197,77 @@ function PrimaryButton({
   );
 }
 
-function Progress({ mode, colors }: { mode: ScreenMode; colors: ReturnType<typeof useColors> }) {
+function Progress({
+  mode,
+  colors,
+  editingLayer,
+  onPreviousLayer,
+  onNextLayer,
+  inHeader = false,
+}: {
+  mode: ScreenMode;
+  colors: ReturnType<typeof useColors>;
+  editingLayer?: LayerId;
+  onPreviousLayer?: () => void;
+  onNextLayer?: () => void;
+  inHeader?: boolean;
+}) {
   const steps = [
     { key: 'home', label: 'Importar' },
     { key: 'compose', label: 'Compor' },
     { key: 'preview', label: 'Visualizar' },
   ];
   const current = mode === 'edit' ? 0 : mode === 'home' ? 0 : mode === 'compose' ? 1 : 2;
+  const hasLayerNavigation = mode === 'edit' && editingLayer && onPreviousLayer && onNextLayer;
   return (
-    <View style={styles.progressWrap}>
-      {steps.map((step, index) => (
-        <React.Fragment key={step.key}>
-          <View style={styles.progressStep}>
-            <View
-              style={[
-                styles.progressDot,
-                { backgroundColor: index <= current ? colors.primary : colors.secondary, borderColor: colors.border },
-              ]}
-            >
-              {index < current ? <Ionicons name="checkmark" size={11} color={colors.primaryForeground} /> : null}
+    <View style={[styles.progressWrap, inHeader && styles.progressHeader]}>
+      {hasLayerNavigation ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Camada anterior"
+          disabled={editingLayer === 'background'}
+          onPress={() => onPreviousLayer?.()}
+          style={({ pressed }) => [
+            styles.progressArrow,
+            editingLayer === 'background' && styles.progressArrowDisabled,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons name="chevron-back" size={20} color={editingLayer === 'background' ? colors.mutedForeground : colors.primary} />
+        </Pressable>
+      ) : null}
+      <View style={hasLayerNavigation ? styles.progressSteps : undefined}>
+        {steps.map((step, index) => (
+          <React.Fragment key={step.key}>
+            <View style={styles.progressStep}>
+              <View
+                style={[
+                  styles.progressDot,
+                  { backgroundColor: index <= current ? colors.primary : colors.secondary, borderColor: colors.border },
+                ]}
+              >
+                {index < current ? <Ionicons name="checkmark" size={11} color={colors.primaryForeground} /> : null}
+              </View>
+              <Text style={[styles.progressLabel, { color: index <= current ? colors.foreground : colors.mutedForeground }]}>
+                {step.label}
+              </Text>
             </View>
-            <Text style={[styles.progressLabel, { color: index <= current ? colors.foreground : colors.mutedForeground }]}>
-              {step.label}
-            </Text>
-          </View>
-          {index < steps.length - 1 ? (
-            <View style={[styles.progressLine, { backgroundColor: index < current ? colors.primary : colors.border }]} />
-          ) : null}
-        </React.Fragment>
-      ))}
+            {index < steps.length - 1 ? (
+              <View style={[styles.progressLine, { backgroundColor: index < current ? colors.primary : colors.border }]} />
+            ) : null}
+          </React.Fragment>
+        ))}
+      </View>
+      {hasLayerNavigation ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={editingLayer === 'foreground' ? 'Ir para composição' : 'Próxima camada'}
+          onPress={() => onNextLayer?.()}
+          style={({ pressed }) => [styles.progressArrow, pressed && styles.pressed]}
+        >
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -941,8 +983,19 @@ export default function HomeScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <Header title={edit.label} subtitle={`${edit.eyebrow}  ·  Ajustes locais`} colors={colors} onBack={() => setMode('home')} onReset={resetProject} />
+        <Progress
+          mode={mode}
+          colors={colors}
+          editingLayer={editingLayer}
+          onPreviousLayer={() => setEditingLayer(editingLayer === 'foreground' ? 'middle' : 'background')}
+          onNextLayer={() => {
+            if (editingLayer === 'background') setEditingLayer('middle');
+            else if (editingLayer === 'middle') setEditingLayer('foreground');
+            else goToCompose();
+          }}
+          inHeader
+        />
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <Progress mode={mode} colors={colors} />
           <View
             {...canvasResponder.panHandlers}
             style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}
@@ -1048,28 +1101,6 @@ export default function HomeScreen() {
               <PrimaryButton title="Escolher da galeria" onPress={() => pickLayer(editingLayer)} colors={colors} icon="images-outline" />
             </View>
           )}
-          <View style={styles.editNav}>
-            {editingLayer !== 'background' ? (
-              <Pressable
-                onPress={() => setEditingLayer(editingLayer === 'foreground' ? 'middle' : 'background')}
-                style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
-              >
-                <Ionicons name="chevron-back" size={16} color={colors.primary} />
-                <Text style={[styles.textButtonText, { color: colors.primary }]}>Anterior</Text>
-              </Pressable>
-            ) : <View />}
-            <Pressable
-              onPress={() => {
-                if (editingLayer === 'background') setEditingLayer('middle');
-                else if (editingLayer === 'middle') setEditingLayer('foreground');
-                else goToCompose();
-              }}
-              style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
-            >
-              <Text style={[styles.textButtonText, { color: colors.primary }]}>{editingLayer === 'foreground' ? 'Ir para composição' : 'Próxima camada'}</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-            </Pressable>
-          </View>
           <View style={{ height: insets.bottom + 24 }} />
         </ScrollView>
       </View>
@@ -1201,10 +1232,14 @@ const styles = StyleSheet.create({
   pressed: { transform: [{ scale: 0.96 }], opacity: 0.8 },
   scrollContent: { paddingHorizontal: 20, paddingTop: 14 },
   progressWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
+  progressHeader: { marginHorizontal: 20, marginBottom: 14 },
+  progressSteps: { flex: 1, flexDirection: 'row', alignItems: 'center', marginHorizontal: 4 },
   progressStep: { alignItems: 'center', gap: 6 },
   progressDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   progressLabel: { fontSize: 10, fontFamily: 'Inter_500Medium' },
   progressLine: { flex: 1, height: 1, marginHorizontal: 8, marginBottom: 16 },
+  progressArrow: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  progressArrowDisabled: { opacity: 0.35 },
   hero: { paddingBottom: 28 },
   heroKicker: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 99, gap: 7, marginBottom: 16 },
   heroKickerText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
@@ -1264,9 +1299,6 @@ const styles = StyleSheet.create({
   removeBackgroundButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   removeBackgroundText: { fontSize: 11, fontFamily: 'Inter_700Bold' },
   emptyEdit: { gap: 18, paddingVertical: 8 },
-  editNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
-  textButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 4 },
-  textButtonText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
   composeCanvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: 'center', borderRadius: 24, borderWidth: 1, overflow: 'hidden', marginTop: 20, marginBottom: 15, justifyContent: 'center', alignItems: 'center' },
   layerPicker: { flexDirection: 'row', width: '100%', gap: 7, marginBottom: 8 },
   layerPickerItem: { flex: 1, minHeight: 36, borderRadius: 11, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
