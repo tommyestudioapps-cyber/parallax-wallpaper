@@ -21,7 +21,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Image as SvgImage } from 'react-native-svg';
+import Svg, { ClipPath, Defs, Image as SvgImage, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 
@@ -54,6 +54,7 @@ type Layer = {
   imageWidth: number | null;
   imageHeight: number | null;
   sourceCrop: ImageCrop | null;
+  nonDestructiveCutout: boolean;
   enabled: boolean;
   crop: number;
   backgroundRemoved: boolean;
@@ -102,6 +103,7 @@ function createLayer(id: LayerId): Layer {
     imageWidth: null,
     imageHeight: null,
     sourceCrop: null,
+    nonDestructiveCutout: false,
     enabled: true,
     crop: 0,
     backgroundRemoved: false,
@@ -130,9 +132,7 @@ function clamp(value: number, min: number, max: number) {
 function getVisibleImageCrop(layer: Layer) {
   if (!layer.imageWidth || !layer.imageHeight) return null;
 
-  const imageFitScale = layer.backgroundRemoved
-    ? Math.max(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight)
-    : Math.min(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight);
+  const imageFitScale = Math.max(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight);
   const fittedWidth = layer.imageWidth * imageFitScale;
   const fittedHeight = layer.imageHeight * imageFitScale;
   const fittedOffsetX = (CANVAS_WIDTH - fittedWidth) / 2;
@@ -162,6 +162,7 @@ function getVisibleImageCrop(layer: Layer) {
 function getSourceCrop(layer: Layer) {
   const visibleCrop = getVisibleImageCrop(layer);
   if (!visibleCrop || !layer.sourceCrop || !layer.imageWidth || !layer.imageHeight) return visibleCrop;
+  if (layer.nonDestructiveCutout) return visibleCrop;
 
   const sourceScaleX = layer.sourceCrop.width / layer.imageWidth;
   const sourceScaleY = layer.sourceCrop.height / layer.imageHeight;
@@ -459,21 +460,56 @@ function Slider({
   );
 }
 
+let nextClipPathId = 0;
+
 function LayerImage({
   uri,
   style,
   preserveAspectRatio = 'xMidYMid slice',
   frameWidth = CANVAS_VIEWBOX_WIDTH,
   frameHeight = CANVAS_VIEWBOX_HEIGHT,
+  imageWidth,
+  imageHeight,
+  clipCrop,
 }: {
   uri: string;
   style?: StyleProp<ViewStyle>;
   preserveAspectRatio?: string;
   frameWidth?: number;
   frameHeight?: number;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  clipCrop?: ImageCrop | null;
 }) {
+  const clipPathId = useRef(`layer-clip-${nextClipPathId++}`).current;
+  const fitScale =
+    imageWidth && imageHeight
+      ? preserveAspectRatio.includes('meet')
+        ? Math.min(frameWidth / imageWidth, frameHeight / imageHeight)
+        : Math.max(frameWidth / imageWidth, frameHeight / imageHeight)
+      : 1;
+  const fittedWidth = imageWidth ? imageWidth * fitScale : frameWidth;
+  const fittedHeight = imageHeight ? imageHeight * fitScale : frameHeight;
+  const fittedOffsetX = (frameWidth - fittedWidth) / 2;
+  const fittedOffsetY = (frameHeight - fittedHeight) / 2;
+  const clipRect = clipCrop && imageWidth && imageHeight
+    ? {
+        x: fittedOffsetX + clipCrop.originX * fitScale,
+        y: fittedOffsetY + clipCrop.originY * fitScale,
+        width: clipCrop.width * fitScale,
+        height: clipCrop.height * fitScale,
+      }
+    : null;
+
   return (
     <Svg style={style} viewBox={`0 0 ${frameWidth} ${frameHeight}`}>
+      {clipRect ? (
+        <Defs>
+          <ClipPath id={clipPathId}>
+            <Rect x={clipRect.x} y={clipRect.y} width={clipRect.width} height={clipRect.height} />
+          </ClipPath>
+        </Defs>
+      ) : null}
       <SvgImage
         x="0"
         y="0"
@@ -481,6 +517,7 @@ function LayerImage({
         height={frameHeight}
         href={{ uri }}
         preserveAspectRatio={preserveAspectRatio}
+        clipPath={clipRect ? `url(#${clipPathId})` : undefined}
       />
     </Svg>
   );
@@ -534,6 +571,9 @@ function LayerPreview({
           uri={layer.uri}
           style={styles.layerImage}
           preserveAspectRatio="xMidYMid slice"
+          imageWidth={layer.imageWidth}
+          imageHeight={layer.imageHeight}
+          clipCrop={layer.nonDestructiveCutout ? layer.sourceCrop : null}
         />
       ) : (
         <View style={styles.previewPlaceholder}>
@@ -699,13 +739,7 @@ export default function HomeScreen() {
       }
       const sourceUri = layer.sourceUri ?? uri;
       const visibleCrop = getSourceCrop(layer);
-      const croppedImage = visibleCrop
-        ? await ImageManipulator.manipulateAsync(sourceUri, [{ crop: visibleCrop }], {
-            compress: 0.92,
-            format: ImageManipulator.SaveFormat.PNG,
-          })
-        : null;
-      const transparentUri = await removeBackground(croppedImage?.uri ?? sourceUri, { trim: false });
+      const transparentUri = await removeBackground(sourceUri, { trim: false });
       updateLayer(id, {
         uri: transparentUri,
         enabled: true,
@@ -716,11 +750,12 @@ export default function HomeScreen() {
               y: 0,
               scale: 1,
               crop: 0,
-              imageWidth: croppedImage?.width ?? layer.imageWidth,
-              imageHeight: croppedImage?.height ?? layer.imageHeight,
+              imageWidth: layer.imageWidth,
+              imageHeight: layer.imageHeight,
               sourceCrop: visibleCrop,
             }
           : {}),
+        nonDestructiveCutout: true,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
@@ -762,6 +797,7 @@ export default function HomeScreen() {
           imageWidth: optimized.width ?? asset.width ?? null,
           imageHeight: optimized.height ?? asset.height ?? null,
           sourceCrop: null,
+          nonDestructiveCutout: false,
           enabled: true,
           backgroundRemoved: false,
           crop: 0,
@@ -868,7 +904,15 @@ export default function HomeScreen() {
   const readyCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri) && layer.enabled).length;
   const canCompose = readyCount >= 2;
   const gestureLayerId = mode === 'edit' ? editingLayer : project.activeLayer;
-  const getTranslationBounds = useCallback((scale: number) => {
+  const getTranslationBounds = useCallback((layer: Layer, scale: number) => {
+    if (layer.imageWidth && layer.imageHeight) {
+      const imageFitScale = Math.max(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight);
+      const effectiveScale = scale * (1 + layer.crop / 180);
+      return {
+        x: Math.max(0, (layer.imageWidth * imageFitScale * effectiveScale - CANVAS_WIDTH) / 2),
+        y: Math.max(0, (layer.imageHeight * imageFitScale * effectiveScale - CANVAS_HEIGHT) / 2),
+      };
+    }
     return {
       x: Math.max(80, CANVAS_WIDTH * 0.55 * scale),
       y: Math.max(100, CANVAS_HEIGHT * 0.55 * scale),
@@ -929,7 +973,7 @@ export default function HomeScreen() {
               MAX_GESTURE_SCALE,
             );
             const scaleRatio = nextScale / gestureStart.current.scale;
-            const bounds = getTranslationBounds(nextScale);
+             const bounds = getTranslationBounds(projectRef.current.layers[activeLayer], nextScale);
             const nextX =
               gestureStart.current.x +
               (focalX - gestureStart.current.focalX) +
@@ -960,7 +1004,8 @@ export default function HomeScreen() {
               return;
             }
             if (gestureStart.current.mode !== 'pan') return;
-            const bounds = getTranslationBounds(projectRef.current.layers[activeLayer].scale);
+             const layer = projectRef.current.layers[activeLayer];
+             const bounds = getTranslationBounds(layer, layer.scale);
             updateLayer(activeLayer, {
               x: clamp(gestureStart.current.x + touches[0].pageX - gestureStart.current.pageX, -bounds.x, bounds.x),
               y: clamp(gestureStart.current.y + touches[0].pageY - gestureStart.current.pageY, -bounds.y, bounds.y),
@@ -1114,7 +1159,10 @@ export default function HomeScreen() {
             {edit.uri ? (
               <LayerImage
                 uri={edit.uri}
-                preserveAspectRatio={edit.backgroundRemoved ? 'xMidYMid slice' : 'xMidYMid meet'}
+                preserveAspectRatio="xMidYMid slice"
+                imageWidth={edit.imageWidth}
+                imageHeight={edit.imageHeight}
+                clipCrop={edit.nonDestructiveCutout ? edit.sourceCrop : null}
                 style={[
                   styles.editImage,
                   {
@@ -1179,8 +1227,8 @@ export default function HomeScreen() {
                   <Pressable
                     testID="remover-fundo"
                     accessibilityRole="button"
-                    accessibilityLabel={edit.backgroundRemoved ? 'Refazer recorte inteligente' : 'Remover fundo'}
-                    disabled={processing || (edit.backgroundRemoved && !edit.sourceUri)}
+                    accessibilityLabel={edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte inteligente' : 'Remover fundo'}
+                    disabled={processing || (edit.backgroundRemoved && !edit.nonDestructiveCutout)}
                     onPress={activateSmartCutout}
                     style={({ pressed }) => [
                       styles.removeBackgroundButton,
@@ -1196,7 +1244,7 @@ export default function HomeScreen() {
                       color={edit.backgroundRemoved ? colors.primaryForeground : colors.primaryForeground}
                     />
                     <Text style={[styles.removeBackgroundText, { color: colors.primaryForeground }]}>
-                      {edit.backgroundRemoved ? 'Refazer recorte' : processing ? 'Separando pessoa…' : 'Remover fundo'}
+                      {edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte' : processing ? 'Separando pessoa…' : 'Remover fundo'}
                     </Text>
                   </Pressable>
                 </View>
