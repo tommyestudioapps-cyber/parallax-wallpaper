@@ -14,10 +14,14 @@
       "backgroundColor": "#090B10"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.parallaxwallpaper.app"
     },
     "android": {
-      "package": "com.parallaxwallpaper.app"
+      "package": "com.parallaxwallpaper.app",
+      "permissions": [
+        "android.permission.HIGH_SAMPLING_RATE_SENSORS"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -32,7 +36,8 @@
       "expo-font",
       "expo-dev-client",
       "expo-web-browser",
-      "./plugins/withMlKitSubjectSegmentDependency"
+      "./plugins/withMlKitSubjectSegmentDependency",
+      "./plugins/withParallaxLiveWallpaper"
     ],
     "experiments": {
       "typedRoutes": true,

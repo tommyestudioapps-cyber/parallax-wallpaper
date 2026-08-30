@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Animated,
   Dimensions,
-  Linking,
+  NativeModules,
   PanResponder,
   Platform,
   Pressable,
@@ -22,6 +21,13 @@ import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Image as SvgImage } from 'react-native-svg';
+import Animated, {
+  SensorType,
+  useAnimatedSensor,
+  useAnimatedStyle,
+  useFrameCallback,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 
@@ -41,6 +47,29 @@ const PREVIEW_MIDDLE_OVERSCAN_X = 33;
 const PREVIEW_MIDDLE_OVERSCAN_Y = 23;
 const PREVIEW_FOREGROUND_OVERSCAN_X = 47;
 const PREVIEW_FOREGROUND_OVERSCAN_Y = 32;
+const PARALLAX_LAYER_MULTIPLIERS = {
+  background: 1,
+  middle: 1.7,
+  foreground: 2.5,
+} as const;
+const PARALLAX_BASE_LIMIT_X = Math.max(
+  18,
+  Math.min(
+    PREVIEW_BACKGROUND_OVERSCAN_X / PARALLAX_LAYER_MULTIPLIERS.background,
+    PREVIEW_MIDDLE_OVERSCAN_X / PARALLAX_LAYER_MULTIPLIERS.middle,
+    PREVIEW_FOREGROUND_OVERSCAN_X / PARALLAX_LAYER_MULTIPLIERS.foreground,
+  ),
+);
+const PARALLAX_BASE_LIMIT_Y = Math.max(
+  12,
+  Math.min(
+    PREVIEW_BACKGROUND_OVERSCAN_Y / PARALLAX_LAYER_MULTIPLIERS.background,
+    PREVIEW_MIDDLE_OVERSCAN_Y / PARALLAX_LAYER_MULTIPLIERS.middle,
+    PREVIEW_FOREGROUND_OVERSCAN_Y / PARALLAX_LAYER_MULTIPLIERS.foreground,
+  ),
+);
+const PARALLAX_SENSOR_SAMPLE_COUNT = 12;
+const PARALLAX_SMOOTHING_RATE = 10;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
@@ -138,6 +167,12 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function softLimit(value: number, limit: number) {
+  'worklet';
+  const safeLimit = Math.max(limit, 0.001);
+  return safeLimit * Math.tanh(value / safeLimit);
+}
+
 function getVisibleImageCrop(layer: Layer) {
   if (!layer.imageWidth || !layer.imageHeight) return null;
 
@@ -189,6 +224,7 @@ function getSourceCrop(layer: Layer) {
 }
 
 function shortestAngleDelta(current: number, baseline: number) {
+  'worklet';
   let delta = current - baseline;
   while (delta > Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;
@@ -196,6 +232,7 @@ function shortestAngleDelta(current: number, baseline: number) {
 }
 
 function applyMotionDeadZone(value: number, deadZone: number) {
+  'worklet';
   if (Math.abs(value) <= deadZone) return 0;
   return Math.sign(value) * (Math.abs(value) - deadZone);
 }
@@ -631,6 +668,378 @@ function Header({
   );
 }
 
+function getLayerSurface(layer: Layer, extraMarginX: number, extraMarginY: number) {
+  const marginX = Math.abs(layer.x) + extraMarginX;
+  const marginY = Math.abs(layer.y) + extraMarginY;
+
+  return {
+    marginX,
+    marginY,
+    width: CANVAS_WIDTH + marginX * 2,
+    height: CANVAS_HEIGHT + marginY * 2,
+    fitWidth: CANVAS_WIDTH,
+    fitHeight: CANVAS_HEIGHT,
+  };
+}
+
+function getParallaxMultiplier(layerId: LayerId, intensity: number) {
+  if (layerId === 'background') return PARALLAX_LAYER_MULTIPLIERS.background;
+
+  const depth = LAYER_IDS.indexOf(layerId) / (LAYER_IDS.length - 1);
+  const intensityScale = 0.72 + (intensity / 100) * 0.56;
+  const nominalMultiplier = 1 + depth * 1.5 * intensityScale;
+  const xLimit = layerId === 'middle' ? PREVIEW_MIDDLE_OVERSCAN_X : PREVIEW_FOREGROUND_OVERSCAN_X;
+  const yLimit = layerId === 'middle' ? PREVIEW_MIDDLE_OVERSCAN_Y : PREVIEW_FOREGROUND_OVERSCAN_Y;
+
+  return Math.min(
+    nominalMultiplier,
+    xLimit / PARALLAX_BASE_LIMIT_X,
+    yLimit / PARALLAX_BASE_LIMIT_Y,
+  );
+}
+
+function getPreviewSurface(layer: Layer, multiplier: number) {
+  const minimumX =
+    layer.id === 'background'
+      ? PREVIEW_BACKGROUND_OVERSCAN_X
+      : layer.id === 'middle'
+        ? PREVIEW_MIDDLE_OVERSCAN_X
+        : PREVIEW_FOREGROUND_OVERSCAN_X;
+  const minimumY =
+    layer.id === 'background'
+      ? PREVIEW_BACKGROUND_OVERSCAN_Y
+      : layer.id === 'middle'
+        ? PREVIEW_MIDDLE_OVERSCAN_Y
+        : PREVIEW_FOREGROUND_OVERSCAN_Y;
+
+  return getLayerSurface(
+    layer,
+    Math.max(minimumX, PARALLAX_BASE_LIMIT_X * multiplier + 2),
+    Math.max(minimumY, PARALLAX_BASE_LIMIT_Y * multiplier + 2),
+  );
+}
+
+function PreviewLayers({
+  project,
+  colors,
+  backgroundSurface,
+  middleSurface,
+  foregroundSurface,
+  backgroundStyle,
+  middleStyle,
+  foregroundStyle,
+}: {
+  project: Project;
+  colors: ReturnType<typeof useColors>;
+  backgroundSurface: ReturnType<typeof getLayerSurface>;
+  middleSurface: ReturnType<typeof getLayerSurface>;
+  foregroundSurface: ReturnType<typeof getLayerSurface>;
+  backgroundStyle?: StyleProp<ViewStyle>;
+  middleStyle?: StyleProp<ViewStyle>;
+  foregroundStyle?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <>
+      <Animated.View
+        style={[
+          styles.previewLayer,
+          {
+            left: -backgroundSurface.marginX,
+            top: -backgroundSurface.marginY,
+            width: backgroundSurface.width,
+            height: backgroundSurface.height,
+          },
+          backgroundStyle,
+        ]}
+      >
+        <LayerPreview layer={project.layers.background} colors={colors} previewSurface={backgroundSurface} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.previewLayer,
+          {
+            left: -middleSurface.marginX,
+            top: -middleSurface.marginY,
+            width: middleSurface.width,
+            height: middleSurface.height,
+          },
+          middleStyle,
+        ]}
+      >
+        <LayerPreview layer={project.layers.middle} colors={colors} previewSurface={middleSurface} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.previewLayer,
+          {
+            left: -foregroundSurface.marginX,
+            top: -foregroundSurface.marginY,
+            width: foregroundSurface.width,
+            height: foregroundSurface.height,
+          },
+          foregroundStyle,
+        ]}
+      >
+        <LayerPreview layer={project.layers.foreground} colors={colors} previewSurface={foregroundSurface} />
+      </Animated.View>
+    </>
+  );
+}
+
+function NativeParallaxLayers({
+  project,
+  colors,
+  backgroundSurface,
+  middleSurface,
+  foregroundSurface,
+  middleMultiplier,
+  foregroundMultiplier,
+  recalibrateSignal,
+  onSensorStatus,
+}: {
+  project: Project;
+  colors: ReturnType<typeof useColors>;
+  backgroundSurface: ReturnType<typeof getLayerSurface>;
+  middleSurface: ReturnType<typeof getLayerSurface>;
+  foregroundSurface: ReturnType<typeof getLayerSurface>;
+  middleMultiplier: number;
+  foregroundMultiplier: number;
+  recalibrateSignal: number;
+  onSensorStatus: (status: 'checking' | 'ready' | 'unavailable') => void;
+}) {
+  const sensor = useAnimatedSensor(SensorType.ROTATION, {
+    interval: 16,
+    adjustToInterfaceOrientation: true,
+  });
+  const motionX = useSharedValue(0);
+  const motionY = useSharedValue(0);
+  const intensity = useSharedValue(project.intensity);
+  const sensorEnabled = useSharedValue(0);
+  const calibrationSignal = useSharedValue(-1);
+  const lastCalibrationSignal = useSharedValue(-1);
+  const lastFrameTimestamp = useSharedValue(0);
+  const sampleCount = useSharedValue(0);
+  const pitchSum = useSharedValue(0);
+  const rollSum = useSharedValue(0);
+  const baselinePitch = useSharedValue(0);
+  const baselineRoll = useSharedValue(0);
+
+  useEffect(() => {
+    intensity.value = project.intensity;
+  }, [intensity, project.intensity]);
+
+  useEffect(() => {
+    let mounted = true;
+    onSensorStatus('checking');
+
+    Promise.all([DeviceMotion.isAvailableAsync(), DeviceMotion.getPermissionsAsync()])
+      .then(([available, permission]) => {
+        if (!mounted) return;
+        const ready = available && permission.status !== 'denied';
+        sensorEnabled.value = ready ? 1 : 0;
+        onSensorStatus(ready ? 'ready' : 'unavailable');
+      })
+      .catch(() => {
+        if (!mounted) return;
+        sensorEnabled.value = 0;
+        onSensorStatus('unavailable');
+      });
+
+    return () => {
+      mounted = false;
+      sensorEnabled.value = 0;
+    };
+  }, [onSensorStatus, sensorEnabled]);
+
+  useEffect(() => {
+    calibrationSignal.value = recalibrateSignal;
+  }, [calibrationSignal, recalibrateSignal]);
+
+  useFrameCallback((frame) => {
+    if (!sensorEnabled.value) return;
+
+    if (calibrationSignal.value !== lastCalibrationSignal.value) {
+      lastCalibrationSignal.value = calibrationSignal.value;
+      sampleCount.value = 0;
+      pitchSum.value = 0;
+      rollSum.value = 0;
+      baselinePitch.value = 0;
+      baselineRoll.value = 0;
+      motionX.value = 0;
+      motionY.value = 0;
+      lastFrameTimestamp.value = 0;
+    }
+
+    const rotation = sensor.sensor.value;
+    if (!Number.isFinite(rotation.pitch) || !Number.isFinite(rotation.roll)) return;
+
+    if (sampleCount.value < PARALLAX_SENSOR_SAMPLE_COUNT) {
+      pitchSum.value += rotation.pitch;
+      rollSum.value += rotation.roll;
+      sampleCount.value += 1;
+      motionX.value = 0;
+      motionY.value = 0;
+
+      if (sampleCount.value === PARALLAX_SENSOR_SAMPLE_COUNT) {
+        baselinePitch.value = pitchSum.value / PARALLAX_SENSOR_SAMPLE_COUNT;
+        baselineRoll.value = rollSum.value / PARALLAX_SENSOR_SAMPLE_COUNT;
+      }
+      return;
+    }
+
+    const dt = lastFrameTimestamp.value
+      ? clamp((frame.timestamp - lastFrameTimestamp.value) / 1000, 0.004, 0.25)
+      : 1 / 60;
+    lastFrameTimestamp.value = frame.timestamp;
+
+    const horizontalDegrees = applyMotionDeadZone(
+      (shortestAngleDelta(rotation.roll, baselineRoll.value) * 180) / Math.PI,
+      0.7,
+    );
+    const verticalDegrees = applyMotionDeadZone(
+      (shortestAngleDelta(rotation.pitch, baselinePitch.value) * 180) / Math.PI,
+      0.7,
+    );
+    const intensityFactor = intensity.value / 60;
+    const targetX = softLimit(
+      horizontalDegrees * 0.45 * intensityFactor,
+      PARALLAX_BASE_LIMIT_X,
+    );
+    const targetY = softLimit(
+      verticalDegrees * 0.35 * intensityFactor,
+      PARALLAX_BASE_LIMIT_Y,
+    );
+    const filterFactor = 1 - Math.exp(-PARALLAX_SMOOTHING_RATE * dt);
+
+    motionX.value += (targetX - motionX.value) * filterFactor;
+    motionY.value += (targetY - motionY.value) * filterFactor;
+  });
+
+  const backgroundStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: motionX.value }, { translateY: motionY.value }],
+  }));
+  const middleStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: motionX.value * middleMultiplier },
+      { translateY: motionY.value * middleMultiplier },
+    ],
+  }));
+  const foregroundStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: motionX.value * foregroundMultiplier },
+      { translateY: motionY.value * foregroundMultiplier },
+    ],
+  }));
+
+  return (
+    <PreviewLayers
+      project={project}
+      colors={colors}
+      backgroundSurface={backgroundSurface}
+      middleSurface={middleSurface}
+      foregroundSurface={foregroundSurface}
+      backgroundStyle={backgroundStyle}
+      middleStyle={middleStyle}
+      foregroundStyle={foregroundStyle}
+    />
+  );
+}
+
+function ParallaxPreview({
+  project,
+  colors,
+  applied,
+  onBack,
+  onApplyWallpaper,
+}: {
+  project: Project;
+  colors: ReturnType<typeof useColors>;
+  applied: boolean;
+  onBack: () => void;
+  onApplyWallpaper: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [sensorStatus, setSensorStatus] = useState<'checking' | 'ready' | 'unavailable'>(
+    Platform.OS === 'web' ? 'unavailable' : 'checking',
+  );
+  const [recalibrateSignal, setRecalibrateSignal] = useState(0);
+  const backgroundSurface = getPreviewSurface(
+    project.layers.background,
+    getParallaxMultiplier('background', project.intensity),
+  );
+  const middleMultiplier = getParallaxMultiplier('middle', project.intensity);
+  const foregroundMultiplier = getParallaxMultiplier('foreground', project.intensity);
+  const middleSurface = getPreviewSurface(project.layers.middle, middleMultiplier);
+  const foregroundSurface = getPreviewSurface(project.layers.foreground, foregroundMultiplier);
+  const handleSensorStatus = useCallback((status: 'checking' | 'ready' | 'unavailable') => {
+    setSensorStatus(status);
+  }, []);
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+      <Header title="Preview fluido" subtitle="Mova o aparelho para sentir a profundidade" colors={colors} onBack={onBack} />
+      <View style={styles.previewScreenBody}>
+        <View style={[styles.previewFrame, { borderColor: colors.border }]}>
+          {Platform.OS === 'web' ? (
+            <PreviewLayers
+              project={project}
+              colors={colors}
+              backgroundSurface={backgroundSurface}
+              middleSurface={middleSurface}
+              foregroundSurface={foregroundSurface}
+            />
+          ) : (
+            <NativeParallaxLayers
+              project={project}
+              colors={colors}
+              backgroundSurface={backgroundSurface}
+              middleSurface={middleSurface}
+              foregroundSurface={foregroundSurface}
+              middleMultiplier={middleMultiplier}
+              foregroundMultiplier={foregroundMultiplier}
+              recalibrateSignal={recalibrateSignal}
+              onSensorStatus={handleSensorStatus}
+            />
+          )}
+          <View style={styles.previewOverlayLabel}>
+            <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
+            <Text style={[styles.previewOverlayText, { color: colors.primary }]}>PARALLAX {project.intensity}%</Text>
+          </View>
+        </View>
+        <View style={styles.previewCopy}>
+          <Text style={[styles.previewTitle, { color: colors.foreground }]}>Seu wallpaper ganhou vida.</Text>
+          <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>
+            {sensorStatus === 'unavailable'
+              ? 'O sensor de movimento não está disponível neste aparelho. A composição continua salva normalmente.'
+              : sensorStatus === 'checking'
+                ? 'Verificando o sensor de movimento…'
+                : 'A suavização está ativa. Incline o celular devagar para explorar as três camadas.'}
+          </Text>
+        </View>
+        {Platform.OS !== 'web' ? (
+          <Pressable
+            testID="recalibrar-parallax"
+            accessibilityRole="button"
+            accessibilityLabel="Recalibrar posição neutra"
+            onPress={() => {
+              setRecalibrateSignal((current) => current + 1);
+              Haptics.selectionAsync();
+            }}
+            style={[styles.recalibrateButton, { borderColor: colors.border, backgroundColor: colors.secondary }]}
+          >
+            <Ionicons name="locate-outline" size={16} color={colors.primary} />
+            <Text style={[styles.recalibrateButtonText, { color: colors.foreground }]}>Centralizar movimento</Text>
+          </Pressable>
+        ) : null}
+        <PrimaryButton title={applied ? 'Aplicado ao sistema' : 'Aplicar wallpaper'} onPress={onApplyWallpaper} colors={colors} icon={applied ? 'checkmark' : 'arrow-up-circle-outline'} />
+        <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+          {Platform.OS === 'android' ? 'O Android usará o serviço nativo de wallpaper quando instalado.' : 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.'}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -640,10 +1049,6 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [applied, setApplied] = useState(false);
-  const motionX = useRef(new Animated.Value(0)).current;
-  const motionY = useRef(new Animated.Value(0)).current;
-  const motionBaseline = useRef<{ beta: number; gamma: number } | null>(null);
-  const filteredMotion = useRef({ x: 0, y: 0 });
   const projectRef = useRef(project);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureStart = useRef<{
@@ -865,61 +1270,37 @@ export default function HomeScreen() {
   };
 
   const applyWallpaper = async () => {
-    setApplied(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (Platform.OS === 'android') {
-      try {
-        await Linking.openURL('intent:#Intent;action=android.service.wallpaper.LIVE_WALLPAPER_CHOOSER;end');
-      } catch {
-        Alert.alert('Aplicar wallpaper', 'O seletor nativo não está disponível neste preview. No Android, abra a opção de papel de parede do sistema para concluir.');
+      const nativeWallpaper = NativeModules.ParallaxWallpaper;
+      if (nativeWallpaper?.configureLiveWallpaper && nativeWallpaper?.openLiveWallpaperChooser) {
+        try {
+          await nativeWallpaper.configureLiveWallpaper(
+            JSON.stringify({
+              intensity: project.intensity,
+              canvasWidth: CANVAS_WIDTH,
+              canvasHeight: CANVAS_HEIGHT,
+              layers: LAYER_IDS.reduce((layers, id) => {
+                layers[id] = {
+                  ...project.layers[id],
+                  parallaxMultiplier: getParallaxMultiplier(id, project.intensity),
+                };
+                return layers;
+              }, {} as Record<LayerId, Layer & { parallaxMultiplier: number }>),
+            }),
+          );
+          await nativeWallpaper.openLiveWallpaperChooser();
+          setApplied(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch {
+          Alert.alert('Aplicar wallpaper', 'Não foi possível preparar o wallpaper nativo neste aparelho.');
+        }
+      } else {
+        Alert.alert('Wallpaper nativo indisponível', 'Instale um build Android que inclua o serviço nativo de wallpaper para aplicar esta composição na tela inicial.');
       }
     } else {
-      Alert.alert('Wallpaper criado', 'A prévia está pronta. A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.');
+      Alert.alert('Wallpaper criado', 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.');
     }
   };
-
-  useEffect(() => {
-    if (mode !== 'preview') return;
-    if (Platform.OS === 'web') return;
-    motionBaseline.current = null;
-    filteredMotion.current = { x: 0, y: 0 };
-    motionX.stopAnimation();
-    motionY.stopAnimation();
-    motionX.setValue(0);
-    motionY.setValue(0);
-    DeviceMotion.setUpdateInterval(16);
-    const subscription = DeviceMotion.addListener((data) => {
-      const rotation = data.rotation;
-      if (!rotation) return;
-      if (!motionBaseline.current) {
-        motionBaseline.current = {
-          beta: rotation.beta,
-          gamma: rotation.gamma,
-        };
-        return;
-      }
-      const horizontalRotation = shortestAngleDelta(rotation.gamma, motionBaseline.current.gamma);
-      const verticalRotation = shortestAngleDelta(rotation.beta, motionBaseline.current.beta);
-      const horizontalDegrees = applyMotionDeadZone((horizontalRotation * 180) / Math.PI, 0.7);
-      const verticalDegrees = applyMotionDeadZone((verticalRotation * 180) / Math.PI, 0.7);
-      const intensity = projectRef.current.intensity;
-      const intensityFactor = intensity / 60;
-      const targetX = clamp(horizontalDegrees * 0.45 * intensityFactor, -18, 18);
-      const targetY = clamp(verticalDegrees * 0.35 * intensityFactor, -12, 12);
-      filteredMotion.current = {
-        x: filteredMotion.current.x + (targetX - filteredMotion.current.x) * 0.28,
-        y: filteredMotion.current.y + (targetY - filteredMotion.current.y) * 0.28,
-      };
-      motionX.setValue(filteredMotion.current.x);
-      motionY.setValue(filteredMotion.current.y);
-    });
-    return () => {
-      subscription.remove();
-      motionBaseline.current = null;
-      motionX.stopAnimation();
-      motionY.stopAnimation();
-    };
-  }, [mode, motionX, motionY]);
 
   const edit = project.layers[editingLayer];
   const importedCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
@@ -954,18 +1335,6 @@ export default function HomeScreen() {
       y: Math.max(100, CANVAS_HEIGHT * 0.55 * scale),
     };
   }, [mode]);
-  const getLayerSurface = (layer: Layer, extraMarginX: number, extraMarginY: number) => {
-    const marginX = Math.abs(layer.x) + extraMarginX;
-    const marginY = Math.abs(layer.y) + extraMarginY;
-    return {
-      marginX,
-      marginY,
-      width: CANVAS_WIDTH + marginX * 2,
-      height: CANVAS_HEIGHT + marginY * 2,
-      fitWidth: CANVAS_WIDTH,
-      fitHeight: CANVAS_HEIGHT,
-    };
-  };
   const canHandleCanvasGesture = useCallback(() => {
       const activeLayer = projectRef.current.layers[gestureLayerId];
       if (!activeLayer.uri || (mode === 'compose' && gestureLayerId === 'background')) return false;
@@ -1083,77 +1452,14 @@ export default function HomeScreen() {
   }
 
   if (mode === 'preview') {
-    const backgroundSurface = getLayerSurface(project.layers.background, PREVIEW_BACKGROUND_OVERSCAN_X, PREVIEW_BACKGROUND_OVERSCAN_Y);
-    const middleSurface = getLayerSurface(project.layers.middle, PREVIEW_MIDDLE_OVERSCAN_X, PREVIEW_MIDDLE_OVERSCAN_Y);
-    const foregroundSurface = getLayerSurface(project.layers.foreground, PREVIEW_FOREGROUND_OVERSCAN_X, PREVIEW_FOREGROUND_OVERSCAN_Y);
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <Header title="Preview fluido" subtitle="Mova o aparelho para sentir a profundidade" colors={colors} onBack={() => setMode('compose')} />
-        <View style={styles.previewScreenBody}>
-          <View style={[styles.previewFrame, { borderColor: colors.border }]}>
-            <Animated.View
-              style={[
-                styles.previewLayer,
-                {
-                  left: -backgroundSurface.marginX,
-                  top: -backgroundSurface.marginY,
-                  width: backgroundSurface.width,
-                  height: backgroundSurface.height,
-                },
-                { transform: [{ translateX: motionX }, { translateY: motionY }] },
-              ]}
-            >
-              <LayerPreview
-                layer={project.layers.background}
-                colors={colors}
-                previewSurface={backgroundSurface}
-              />
-            </Animated.View>
-            <Animated.View
-              style={[
-                styles.previewLayer,
-                {
-                  left: -middleSurface.marginX,
-                  top: -middleSurface.marginY,
-                  width: middleSurface.width,
-                  height: middleSurface.height,
-                },
-                { transform: [{ translateX: Animated.multiply(motionX, 1.7) }, { translateY: Animated.multiply(motionY, 1.7) }] },
-              ]}
-            >
-              <LayerPreview layer={project.layers.middle} colors={colors} previewSurface={middleSurface} />
-            </Animated.View>
-            <Animated.View
-              style={[
-                styles.previewLayer,
-                {
-                  left: -foregroundSurface.marginX,
-                  top: -foregroundSurface.marginY,
-                  width: foregroundSurface.width,
-                  height: foregroundSurface.height,
-                },
-                { transform: [{ translateX: Animated.multiply(motionX, 2.5) }, { translateY: Animated.multiply(motionY, 2.5) }] },
-              ]}
-            >
-              <LayerPreview layer={project.layers.foreground} colors={colors} previewSurface={foregroundSurface} />
-            </Animated.View>
-            <View style={styles.previewOverlayLabel}>
-              <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
-              <Text style={[styles.previewOverlayText, { color: colors.primary }]}>PARALLAX {project.intensity}%</Text>
-            </View>
-          </View>
-          <View style={styles.previewCopy}>
-            <Text style={[styles.previewTitle, { color: colors.foreground }]}>Seu wallpaper ganhou vida.</Text>
-            <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>
-              A suavização está ativa. Incline o celular devagar para explorar as três camadas.
-            </Text>
-          </View>
-          <PrimaryButton title={applied ? 'Aplicado ao sistema' : 'Aplicar wallpaper'} onPress={applyWallpaper} colors={colors} icon={applied ? 'checkmark' : 'arrow-up-circle-outline'} />
-          <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-            {Platform.OS === 'android' ? 'O Android abrirá o seletor nativo de wallpaper.' : 'A aplicação nativa estará disponível no build instalado.'}
-          </Text>
-        </View>
-      </View>
+      <ParallaxPreview
+        project={project}
+        colors={colors}
+        applied={applied}
+        onBack={() => setMode('compose')}
+        onApplyWallpaper={applyWallpaper}
+      />
     );
   }
 
@@ -1605,6 +1911,8 @@ const styles = StyleSheet.create({
   previewOverlayText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   previewCopy: { width: '100%', paddingVertical: 17 },
   previewTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginBottom: 6, letterSpacing: -0.4 },
+  recalibrateButton: { minHeight: 42, borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
+  recalibrateButtonText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', paddingTop: 12 },
   editSliderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 13 },
   sliderNumber: { width: 28, textAlign: 'right', fontSize: 10, fontFamily: 'Inter_600SemiBold' },
