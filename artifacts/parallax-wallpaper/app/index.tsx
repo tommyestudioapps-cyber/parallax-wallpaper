@@ -957,10 +957,10 @@ export default function HomeScreen() {
   const canvasResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: canHandleCanvasGesture,
-        onStartShouldSetPanResponderCapture: canHandleCanvasGesture,
-        onMoveShouldSetPanResponder: canHandleCanvasGesture,
-        onMoveShouldSetPanResponderCapture: canHandleCanvasGesture,
+        onStartShouldSetPanResponder: (event) => event.nativeEvent.touches.length >= 2 && canHandleCanvasGesture(),
+        onStartShouldSetPanResponderCapture: (event) => event.nativeEvent.touches.length >= 2 && canHandleCanvasGesture(),
+        onMoveShouldSetPanResponder: (event) => event.nativeEvent.touches.length >= 2 && canHandleCanvasGesture(),
+        onMoveShouldSetPanResponderCapture: (event) => event.nativeEvent.touches.length >= 2 && canHandleCanvasGesture(),
         onPanResponderGrant: (event) => {
           const layer = projectRef.current.layers[gestureLayerId];
           const touches = event.nativeEvent.touches;
