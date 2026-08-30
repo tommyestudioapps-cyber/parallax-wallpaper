@@ -577,18 +577,18 @@ function LayerImage({
   );
 }
 
-const transparencyCells = Array.from({ length: 64 }, (_, index) => ({
+const transparencyCells = Array.from({ length: 112 }, (_, index) => ({
   index,
   dark: (Math.floor(index / 8) + (index % 8)) % 2 === 0,
 }));
 
 function TransparencyGrid({ colors }: { colors: ReturnType<typeof useColors> }) {
   return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.transparencyGrid, { backgroundColor: colors.secondary }]}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.transparencyGrid, { backgroundColor: colors.grid }]}>
       {transparencyCells.map((cell) => (
         <View
           key={cell.index}
-          style={[styles.transparencyCell, { backgroundColor: cell.dark ? colors.card : colors.border }]}
+          style={[styles.transparencyCell, { backgroundColor: cell.dark ? colors.grid : colors.muted }]}
         />
       ))}
     </View>
@@ -1834,7 +1834,7 @@ const styles = StyleSheet.create({
   savedText: { textAlign: 'center', fontSize: 11, fontFamily: 'Inter_500Medium', paddingTop: 12 },
   editPreview: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: 'center', borderRadius: 22, borderWidth: 1, overflow: 'hidden', marginBottom: 20 },
   transparencyGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  transparencyCell: { width: '12.5%', height: '12.5%' },
+  transparencyCell: { width: '12.5%', height: '7.142857%' },
   editImage: { width: '100%', height: '100%' },
   editOverlay: { position: 'absolute', left: 12, bottom: 12, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.92 },
   editStatusOverlay: { right: 12 },
