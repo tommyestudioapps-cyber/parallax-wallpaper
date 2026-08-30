@@ -130,7 +130,9 @@ function clamp(value: number, min: number, max: number) {
 function getVisibleImageCrop(layer: Layer) {
   if (!layer.imageWidth || !layer.imageHeight) return null;
 
-  const imageFitScale = Math.max(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight);
+  const imageFitScale = layer.backgroundRemoved
+    ? Math.max(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight)
+    : Math.min(CANVAS_WIDTH / layer.imageWidth, CANVAS_HEIGHT / layer.imageHeight);
   const fittedWidth = layer.imageWidth * imageFitScale;
   const fittedHeight = layer.imageHeight * imageFitScale;
   const fittedOffsetX = (CANVAS_WIDTH - fittedWidth) / 2;
@@ -762,6 +764,10 @@ export default function HomeScreen() {
           sourceCrop: null,
           enabled: true,
           backgroundRemoved: false,
+          crop: 0,
+          scale: 1,
+          x: 0,
+          y: 0,
         });
         setEditingLayer(id);
         setMode('edit');
@@ -1108,7 +1114,7 @@ export default function HomeScreen() {
             {edit.uri ? (
               <LayerImage
                 uri={edit.uri}
-                preserveAspectRatio="xMidYMid slice"
+                preserveAspectRatio={edit.backgroundRemoved ? 'xMidYMid slice' : 'xMidYMid meet'}
                 style={[
                   styles.editImage,
                   {
