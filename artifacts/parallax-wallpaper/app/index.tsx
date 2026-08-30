@@ -29,6 +29,8 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STORAGE_KEY = '@parallax-wallpaper/project';
 const CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
 const CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
+const CANVAS_VIEWBOX_WIDTH = 100;
+const CANVAS_VIEWBOX_HEIGHT = (CANVAS_HEIGHT / CANVAS_WIDTH) * CANVAS_VIEWBOX_WIDTH;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
@@ -393,18 +395,22 @@ function LayerImage({
   uri,
   style,
   preserveAspectRatio = 'xMidYMid slice',
+  frameWidth = CANVAS_VIEWBOX_WIDTH,
+  frameHeight = CANVAS_VIEWBOX_HEIGHT,
 }: {
   uri: string;
   style?: StyleProp<ViewStyle>;
   preserveAspectRatio?: string;
+  frameWidth?: number;
+  frameHeight?: number;
 }) {
   return (
-    <Svg style={style} viewBox="0 0 100 100">
+    <Svg style={style} viewBox={`0 0 ${frameWidth} ${frameHeight}`}>
       <SvgImage
         x="0"
         y="0"
-        width="100"
-        height="100"
+        width={frameWidth}
+        height={frameHeight}
         href={{ uri }}
         preserveAspectRatio={preserveAspectRatio}
       />
@@ -459,7 +465,7 @@ function LayerPreview({
         <LayerImage
           uri={layer.uri}
           style={styles.layerImage}
-          preserveAspectRatio="xMidYMid alice"
+          preserveAspectRatio="xMidYMid slice"
         />
       ) : (
         <View style={styles.previewPlaceholder}>
@@ -1156,7 +1162,7 @@ export default function HomeScreen() {
                   style={({ pressed }) => [styles.layerRowMain, pressed && styles.pressed]}
                 >
                   <View style={[styles.layerThumbnail, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                    {layer.uri ? <LayerImage uri={layer.uri} style={styles.thumbnailImage} preserveAspectRatio="xMidYMid slice" /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
+                    {layer.uri ? <LayerImage uri={layer.uri} style={styles.thumbnailImage} preserveAspectRatio="xMidYMid slice" frameWidth={1} frameHeight={1} /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
                   </View>
                   <View style={styles.layerRowCopy}>
                     <Text style={[styles.layerEyebrow, { color: colors.primary }]}>{layer.eyebrow}</Text>
