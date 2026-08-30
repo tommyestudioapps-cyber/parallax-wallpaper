@@ -20,7 +20,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Image as SvgImage } from 'react-native-svg';
+import Svg, { Defs, Image as SvgImage, Pattern, Rect } from 'react-native-svg';
 import Animated, {
   SensorType,
   useAnimatedSensor,
@@ -577,20 +577,21 @@ function LayerImage({
   );
 }
 
-const transparencyCells = Array.from({ length: 112 }, (_, index) => ({
-  index,
-  dark: (Math.floor(index / 8) + (index % 8)) % 2 === 0,
-}));
-
 function TransparencyGrid({ colors }: { colors: ReturnType<typeof useColors> }) {
   return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.transparencyGrid, { backgroundColor: colors.grid }]}>
-      {transparencyCells.map((cell) => (
-        <View
-          key={cell.index}
-          style={[styles.transparencyCell, { backgroundColor: cell.dark ? colors.grid : colors.muted }]}
-        />
-      ))}
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <Pattern id="transparency-checkerboard" patternUnits="userSpaceOnUse" width="24" height="24">
+            <Rect x="0" y="0" width="12" height="12" fill={colors.grid} />
+            <Rect x="12" y="12" width="12" height="12" fill={colors.grid} />
+            <Rect x="12" y="0" width="12" height="12" fill={colors.muted} />
+            <Rect x="0" y="12" width="12" height="12" fill={colors.muted} />
+          </Pattern>
+        </Defs>
+        <Rect width="100%" height="100%" fill={colors.muted} />
+        <Rect width="100%" height="100%" fill="url(#transparency-checkerboard)" />
+      </Svg>
     </View>
   );
 }
@@ -1833,8 +1834,6 @@ const styles = StyleSheet.create({
   processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 14 },
   savedText: { textAlign: 'center', fontSize: 11, fontFamily: 'Inter_500Medium', paddingTop: 12 },
   editPreview: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: 'center', borderRadius: 22, borderWidth: 1, overflow: 'hidden', marginBottom: 20 },
-  transparencyGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  transparencyCell: { width: '12.5%', height: '7.142857%' },
   editImage: { width: '100%', height: '100%' },
   editOverlay: { position: 'absolute', left: 12, bottom: 12, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.92 },
   editStatusOverlay: { right: 12 },
