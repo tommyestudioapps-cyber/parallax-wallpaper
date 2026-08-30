@@ -236,7 +236,7 @@ function Progress({
           <Ionicons name="chevron-back" size={20} color={editingLayer === 'background' ? colors.mutedForeground : colors.primary} />
         </Pressable>
       ) : null}
-      <View style={hasLayerNavigation ? styles.progressSteps : undefined}>
+      <View style={styles.progressSteps}>
         {steps.map((step, index) => (
           <React.Fragment key={step.key}>
             <View style={styles.progressStep}>
