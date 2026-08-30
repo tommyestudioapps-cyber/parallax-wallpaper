@@ -164,6 +164,7 @@ function createProject(): Project {
 }
 
 function clamp(value: number, min: number, max: number) {
+  'worklet';
   return Math.max(min, Math.min(max, value));
 }
 
@@ -813,6 +814,7 @@ function NativeParallaxLayers({
     interval: 16,
     adjustToInterfaceOrientation: true,
   });
+  const sensorValue = sensor.sensor;
   const motionX = useSharedValue(0);
   const motionY = useSharedValue(0);
   const intensity = useSharedValue(project.intensity);
@@ -872,7 +874,7 @@ function NativeParallaxLayers({
       lastFrameTimestamp.value = 0;
     }
 
-    const rotation = sensor.sensor.value;
+    const rotation = sensorValue.value;
     if (!Number.isFinite(rotation.pitch) || !Number.isFinite(rotation.roll)) return;
 
     if (sampleCount.value < PARALLAX_SENSOR_SAMPLE_COUNT) {
