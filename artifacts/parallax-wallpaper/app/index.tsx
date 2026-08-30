@@ -27,10 +27,13 @@ import { useColors } from '@/hooks/useColors';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STORAGE_KEY = '@parallax-wallpaper/project';
-const CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
-const CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_VIEWBOX_WIDTH = 100;
 const CANVAS_VIEWBOX_HEIGHT = 177.78;
+const CANVAS_ASPECT_RATIO = CANVAS_VIEWBOX_WIDTH / CANVAS_VIEWBOX_HEIGHT;
+const MAX_CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
+const MAX_CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
+const CANVAS_WIDTH = Math.min(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT * CANVAS_ASPECT_RATIO);
+const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
