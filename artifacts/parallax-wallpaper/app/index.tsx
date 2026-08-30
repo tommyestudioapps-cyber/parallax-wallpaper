@@ -21,7 +21,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Defs, FeColorMatrix, Filter, Image as SvgImage } from 'react-native-svg';
+import Svg, { Image as SvgImage } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 
@@ -40,9 +40,6 @@ type Layer = {
   helper: string;
   uri: string | null;
   enabled: boolean;
-  brightness: number;
-  contrast: number;
-  saturation: number;
   crop: number;
   backgroundRemoved: boolean;
   scale: number;
@@ -87,9 +84,6 @@ function createLayer(id: LayerId): Layer {
     ...layerMeta[id],
     uri: null,
     enabled: true,
-    brightness: 0,
-    contrast: 0,
-    saturation: 0,
     crop: 0,
     backgroundRemoved: false,
     scale: id === 'background' ? 1 : 0.78,
@@ -353,67 +347,17 @@ function Slider({
   );
 }
 
-function createColorMatrix(layer: Pick<Layer, 'brightness' | 'contrast' | 'saturation'>) {
-  const saturation = 1 + layer.saturation / 50;
-  const contrast = 1 + layer.contrast / 50;
-  const brightness = layer.brightness / 100;
-  const luminance = [0.213, 0.715, 0.072];
-  const saturationMatrix = [
-    (1 - saturation) * luminance[0] + saturation,
-    (1 - saturation) * luminance[1],
-    (1 - saturation) * luminance[2],
-    (1 - saturation) * luminance[0],
-    (1 - saturation) * luminance[1] + saturation,
-    (1 - saturation) * luminance[2],
-    (1 - saturation) * luminance[0],
-    (1 - saturation) * luminance[1],
-    (1 - saturation) * luminance[2] + saturation,
-  ];
-  const offset = (1 - contrast) / 2 + brightness;
-
-  return [
-    contrast * saturationMatrix[0],
-    contrast * saturationMatrix[1],
-    contrast * saturationMatrix[2],
-    0,
-    offset,
-    contrast * saturationMatrix[3],
-    contrast * saturationMatrix[4],
-    contrast * saturationMatrix[5],
-    0,
-    offset,
-    contrast * saturationMatrix[6],
-    contrast * saturationMatrix[7],
-    contrast * saturationMatrix[8],
-    0,
-    offset,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ];
-}
-
-function ColorAdjustedImage({
+function LayerImage({
   uri,
-  layer,
   style,
   preserveAspectRatio = 'xMidYMid slice',
 }: {
   uri: string;
-  layer: Pick<Layer, 'id' | 'brightness' | 'contrast' | 'saturation'>;
   style?: StyleProp<ViewStyle>;
   preserveAspectRatio?: string;
 }) {
-  const filterId = `color-adjustment-${layer.id}`;
   return (
     <Svg style={style} viewBox="0 0 100 100">
-      <Defs>
-        <Filter id={filterId} x="-10%" y="-10%" width="120%" height="120%">
-          <FeColorMatrix type="matrix" values={createColorMatrix(layer)} />
-        </Filter>
-      </Defs>
       <SvgImage
         x="0"
         y="0"
@@ -421,7 +365,6 @@ function ColorAdjustedImage({
         height="100"
         href={{ uri }}
         preserveAspectRatio={preserveAspectRatio}
-        filter={`url(#${filterId})`}
       />
     </Svg>
   );
@@ -471,9 +414,8 @@ function LayerPreview({
       ]}
     >
       {layer.uri ? (
-        <ColorAdjustedImage
+        <LayerImage
           uri={layer.uri}
-          layer={layer}
           style={styles.layerImage}
           preserveAspectRatio={layer.id === 'background' ? 'xMidYMid slice' : 'xMidYMid meet'}
         />
@@ -1007,9 +949,8 @@ export default function HomeScreen() {
           >
             {edit.backgroundRemoved ? <TransparencyGrid colors={colors} /> : null}
             {edit.uri ? (
-              <ColorAdjustedImage
+              <LayerImage
                 uri={edit.uri}
-                layer={edit}
                 preserveAspectRatio={edit.id === 'background' ? 'xMidYMid slice' : 'xMidYMid meet'}
                 style={[
                   styles.editImage,
@@ -1057,21 +998,6 @@ export default function HomeScreen() {
           </View>
           {edit.uri ? (
             <>
-              <View style={[styles.controlCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.controlLabel, { color: colors.foreground }]}>Ajustes de cor</Text>
-                {[
-                  { key: 'brightness' as const, label: 'Brilho', icon: 'sunny-outline' as const },
-                  { key: 'contrast' as const, label: 'Contraste', icon: 'contrast-outline' as const },
-                  { key: 'saturation' as const, label: 'Saturação', icon: 'color-palette-outline' as const },
-                ].map((control) => (
-                  <View key={control.key} style={styles.editSliderRow}>
-                    <Ionicons name={control.icon} size={17} color={colors.mutedForeground} />
-                    <Text style={[styles.sliderLabel, { color: colors.mutedForeground }]}>{control.label}</Text>
-                    <Slider value={edit[control.key]} min={-50} max={50} onChange={(value) => updateLayer(editingLayer, { [control.key]: value })} colors={colors} testID={control.label} />
-                    <Text style={[styles.sliderNumber, { color: colors.foreground }]}>{Math.round(edit[control.key])}</Text>
-                  </View>
-                ))}
-              </View>
               {editingLayer !== 'background' ? (
                 <View style={[styles.cropCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
                   <View style={styles.cropCopy}>
@@ -1195,7 +1121,7 @@ export default function HomeScreen() {
                   style={({ pressed }) => [styles.layerRowMain, pressed && styles.pressed]}
                 >
                   <View style={[styles.layerThumbnail, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                    {layer.uri ? <ColorAdjustedImage uri={layer.uri} layer={layer} style={styles.thumbnailImage} preserveAspectRatio="xMidYMid slice" /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
+                    {layer.uri ? <LayerImage uri={layer.uri} style={styles.thumbnailImage} preserveAspectRatio="xMidYMid slice" /> : <Ionicons name="add" size={20} color={colors.mutedForeground} />}
                   </View>
                   <View style={styles.layerRowCopy}>
                     <Text style={[styles.layerEyebrow, { color: colors.primary }]}>{layer.eyebrow}</Text>
