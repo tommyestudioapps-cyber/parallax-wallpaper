@@ -466,11 +466,14 @@ function LayerImage({
   uri,
   style,
   preserveAspectRatio = 'xMidYMid slice',
-  frameWidth = CANVAS_VIEWBOX_WIDTH,
-  frameHeight = CANVAS_VIEWBOX_HEIGHT,
+  frameWidth = CANVAS_WIDTH,
+  frameHeight = CANVAS_HEIGHT,
   imageWidth,
   imageHeight,
   clipCrop,
+  translateX = 0,
+  translateY = 0,
+  scale = 1,
 }: {
   uri: string;
   style?: StyleProp<ViewStyle>;
@@ -480,6 +483,9 @@ function LayerImage({
   imageWidth?: number | null;
   imageHeight?: number | null;
   clipCrop?: ImageCrop | null;
+  translateX?: number;
+  translateY?: number;
+  scale?: number;
 }) {
   const clipPathId = useRef(`layer-clip-${nextClipPathId++}`).current;
   const fitScale =
@@ -488,16 +494,16 @@ function LayerImage({
         ? Math.min(frameWidth / imageWidth, frameHeight / imageHeight)
         : Math.max(frameWidth / imageWidth, frameHeight / imageHeight)
       : 1;
-  const fittedWidth = imageWidth ? imageWidth * fitScale : frameWidth;
-  const fittedHeight = imageHeight ? imageHeight * fitScale : frameHeight;
-  const fittedOffsetX = (frameWidth - fittedWidth) / 2;
-  const fittedOffsetY = (frameHeight - fittedHeight) / 2;
+  const renderedWidth = (imageWidth ? imageWidth * fitScale : frameWidth) * scale;
+  const renderedHeight = (imageHeight ? imageHeight * fitScale : frameHeight) * scale;
+  const imageX = (frameWidth - renderedWidth) / 2 + translateX;
+  const imageY = (frameHeight - renderedHeight) / 2 + translateY;
   const clipRect = clipCrop && imageWidth && imageHeight
     ? {
-        x: fittedOffsetX + clipCrop.originX * fitScale,
-        y: fittedOffsetY + clipCrop.originY * fitScale,
-        width: clipCrop.width * fitScale,
-        height: clipCrop.height * fitScale,
+        x: imageX + clipCrop.originX * fitScale * scale,
+        y: imageY + clipCrop.originY * fitScale * scale,
+        width: clipCrop.width * fitScale * scale,
+        height: clipCrop.height * fitScale * scale,
       }
     : null;
 
@@ -511,12 +517,12 @@ function LayerImage({
         </Defs>
       ) : null}
       <SvgImage
-        x="0"
-        y="0"
-        width={frameWidth}
-        height={frameHeight}
+        x={imageX}
+        y={imageY}
+        width={renderedWidth}
+        height={renderedHeight}
         href={{ uri }}
-        preserveAspectRatio={preserveAspectRatio}
+        preserveAspectRatio={imageWidth && imageHeight ? 'none' : preserveAspectRatio}
         clipPath={clipRect ? `url(#${clipPathId})` : undefined}
       />
     </Svg>
@@ -562,7 +568,6 @@ function LayerPreview({
         {
           borderColor: selected ? colors.primary : colors.border,
           backgroundColor: layer.id === 'background' ? colors.muted : 'transparent',
-          transform: [{ translateX: layer.x }, { translateY: layer.y }, { scale: layer.scale }],
         },
       ]}
     >
@@ -574,6 +579,9 @@ function LayerPreview({
           imageWidth={layer.imageWidth}
           imageHeight={layer.imageHeight}
           clipCrop={layer.nonDestructiveCutout ? layer.sourceCrop : null}
+          translateX={layer.x}
+          translateY={layer.y}
+          scale={layer.scale}
         />
       ) : (
         <View style={styles.previewPlaceholder}>
@@ -1163,15 +1171,11 @@ export default function HomeScreen() {
                 imageWidth={edit.imageWidth}
                 imageHeight={edit.imageHeight}
                 clipCrop={edit.nonDestructiveCutout ? edit.sourceCrop : null}
+                translateX={edit.x}
+                translateY={edit.y}
+                scale={edit.scale * (1 + edit.crop / 180)}
                 style={[
                   styles.editImage,
-                  {
-                    transform: [
-                      { translateX: edit.x },
-                      { translateY: edit.y },
-                      { scale: edit.scale * (1 + edit.crop / 180) },
-                    ],
-                  },
                 ]}
               />
             ) : null}
