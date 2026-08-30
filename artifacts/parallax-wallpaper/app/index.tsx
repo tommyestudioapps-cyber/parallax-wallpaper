@@ -34,8 +34,13 @@ const MAX_CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
 const MAX_CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_WIDTH = Math.min(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT * CANVAS_ASPECT_RATIO);
 const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
+const COMPOSITION_LAYER_SAFETY_MARGIN = 2;
 const PREVIEW_BACKGROUND_OVERSCAN_X = 20;
 const PREVIEW_BACKGROUND_OVERSCAN_Y = 14;
+const PREVIEW_MIDDLE_OVERSCAN_X = 33;
+const PREVIEW_MIDDLE_OVERSCAN_Y = 23;
+const PREVIEW_FOREGROUND_OVERSCAN_X = 47;
+const PREVIEW_FOREGROUND_OVERSCAN_Y = 32;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
@@ -949,6 +954,18 @@ export default function HomeScreen() {
       y: Math.max(100, CANVAS_HEIGHT * 0.55 * scale),
     };
   }, [mode]);
+  const getLayerSurface = (layer: Layer, extraMarginX: number, extraMarginY: number) => {
+    const marginX = Math.abs(layer.x) + extraMarginX;
+    const marginY = Math.abs(layer.y) + extraMarginY;
+    return {
+      marginX,
+      marginY,
+      width: CANVAS_WIDTH + marginX * 2,
+      height: CANVAS_HEIGHT + marginY * 2,
+      fitWidth: CANVAS_WIDTH,
+      fitHeight: CANVAS_HEIGHT,
+    };
+  };
   const canHandleCanvasGesture = useCallback(() => {
       const activeLayer = projectRef.current.layers[gestureLayerId];
       if (!activeLayer.uri || (mode === 'compose' && gestureLayerId === 'background')) return false;
@@ -1066,6 +1083,9 @@ export default function HomeScreen() {
   }
 
   if (mode === 'preview') {
+    const backgroundSurface = getLayerSurface(project.layers.background, PREVIEW_BACKGROUND_OVERSCAN_X, PREVIEW_BACKGROUND_OVERSCAN_Y);
+    const middleSurface = getLayerSurface(project.layers.middle, PREVIEW_MIDDLE_OVERSCAN_X, PREVIEW_MIDDLE_OVERSCAN_Y);
+    const foregroundSurface = getLayerSurface(project.layers.foreground, PREVIEW_FOREGROUND_OVERSCAN_X, PREVIEW_FOREGROUND_OVERSCAN_Y);
     return (
       <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <Header title="Preview fluido" subtitle="Mova o aparelho para sentir a profundidade" colors={colors} onBack={() => setMode('compose')} />
@@ -1075,10 +1095,10 @@ export default function HomeScreen() {
               style={[
                 styles.previewLayer,
                 {
-                  left: -PREVIEW_BACKGROUND_OVERSCAN_X,
-                  top: -PREVIEW_BACKGROUND_OVERSCAN_Y,
-                  width: CANVAS_WIDTH + PREVIEW_BACKGROUND_OVERSCAN_X * 2,
-                  height: CANVAS_HEIGHT + PREVIEW_BACKGROUND_OVERSCAN_Y * 2,
+                  left: -backgroundSurface.marginX,
+                  top: -backgroundSurface.marginY,
+                  width: backgroundSurface.width,
+                  height: backgroundSurface.height,
                 },
                 { transform: [{ translateX: motionX }, { translateY: motionY }] },
               ]}
@@ -1086,19 +1106,36 @@ export default function HomeScreen() {
               <LayerPreview
                 layer={project.layers.background}
                 colors={colors}
-                previewSurface={{
-                  width: CANVAS_WIDTH + PREVIEW_BACKGROUND_OVERSCAN_X * 2,
-                  height: CANVAS_HEIGHT + PREVIEW_BACKGROUND_OVERSCAN_Y * 2,
-                  fitWidth: CANVAS_WIDTH,
-                  fitHeight: CANVAS_HEIGHT,
-                }}
+                previewSurface={backgroundSurface}
               />
             </Animated.View>
-            <Animated.View style={[styles.previewLayer, { transform: [{ translateX: Animated.multiply(motionX, 1.7) }, { translateY: Animated.multiply(motionY, 1.7) }] }]}>
-              <LayerPreview layer={project.layers.middle} colors={colors} />
+            <Animated.View
+              style={[
+                styles.previewLayer,
+                {
+                  left: -middleSurface.marginX,
+                  top: -middleSurface.marginY,
+                  width: middleSurface.width,
+                  height: middleSurface.height,
+                },
+                { transform: [{ translateX: Animated.multiply(motionX, 1.7) }, { translateY: Animated.multiply(motionY, 1.7) }] },
+              ]}
+            >
+              <LayerPreview layer={project.layers.middle} colors={colors} previewSurface={middleSurface} />
             </Animated.View>
-            <Animated.View style={[styles.previewLayer, { transform: [{ translateX: Animated.multiply(motionX, 2.5) }, { translateY: Animated.multiply(motionY, 2.5) }] }]}>
-              <LayerPreview layer={project.layers.foreground} colors={colors} />
+            <Animated.View
+              style={[
+                styles.previewLayer,
+                {
+                  left: -foregroundSurface.marginX,
+                  top: -foregroundSurface.marginY,
+                  width: foregroundSurface.width,
+                  height: foregroundSurface.height,
+                },
+                { transform: [{ translateX: Animated.multiply(motionX, 2.5) }, { translateY: Animated.multiply(motionY, 2.5) }] },
+              ]}
+            >
+              <LayerPreview layer={project.layers.foreground} colors={colors} previewSurface={foregroundSurface} />
             </Animated.View>
             <View style={styles.previewOverlayLabel}>
               <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
@@ -1121,6 +1158,8 @@ export default function HomeScreen() {
   }
 
   if (mode === 'compose') {
+    const middleSurface = getLayerSurface(project.layers.middle, COMPOSITION_LAYER_SAFETY_MARGIN, COMPOSITION_LAYER_SAFETY_MARGIN);
+    const foregroundSurface = getLayerSurface(project.layers.foreground, COMPOSITION_LAYER_SAFETY_MARGIN, COMPOSITION_LAYER_SAFETY_MARGIN);
     return (
       <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <Header title="Composição" subtitle="Ajuste a distância entre os planos" colors={colors} onBack={() => setMode('edit')} onReset={resetProject} />
@@ -1133,8 +1172,44 @@ export default function HomeScreen() {
             style={[styles.composeCanvas, { backgroundColor: colors.muted, borderColor: colors.border }]}
           >
             <LayerPreview layer={project.layers.background} colors={colors} selected={project.activeLayer === 'background'} />
-            <LayerPreview layer={project.layers.middle} colors={colors} selected={project.activeLayer === 'middle'} />
-            <LayerPreview layer={project.layers.foreground} colors={colors} selected={project.activeLayer === 'foreground'} />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.previewLayer,
+                {
+                  left: -middleSurface.marginX,
+                  top: -middleSurface.marginY,
+                  width: middleSurface.width,
+                  height: middleSurface.height,
+                },
+              ]}
+            >
+              <LayerPreview
+                layer={project.layers.middle}
+                colors={colors}
+                selected={project.activeLayer === 'middle'}
+                previewSurface={middleSurface}
+              />
+            </View>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.previewLayer,
+                {
+                  left: -foregroundSurface.marginX,
+                  top: -foregroundSurface.marginY,
+                  width: foregroundSurface.width,
+                  height: foregroundSurface.height,
+                },
+              ]}
+            >
+              <LayerPreview
+                layer={project.layers.foreground}
+                colors={colors}
+                selected={project.activeLayer === 'foreground'}
+                previewSurface={foregroundSurface}
+              />
+            </View>
             <View style={[styles.canvasBadge, { backgroundColor: colors.background }]}>
               <View style={[styles.liveDot, { backgroundColor: colors.accent }]} />
               <Text style={[styles.canvasBadgeText, { color: colors.foreground }]}>TOQUE PARA EDITAR</Text>
