@@ -61,7 +61,7 @@ const PARALLAX_BASE_LIMIT_X = Math.max(
   ),
 );
 const PARALLAX_BASE_LIMIT_Y = Math.max(
-  12,
+  15,
   Math.min(
     PREVIEW_BACKGROUND_OVERSCAN_Y / PARALLAX_LAYER_MULTIPLIERS.background,
     PREVIEW_MIDDLE_OVERSCAN_Y / PARALLAX_LAYER_MULTIPLIERS.middle,
@@ -910,7 +910,7 @@ function NativeParallaxLayers({
       PARALLAX_BASE_LIMIT_X,
     );
     const targetY = softLimit(
-      verticalDegrees * 0.35 * intensityFactor,
+      verticalDegrees * 0.4 * intensityFactor,
       PARALLAX_BASE_LIMIT_Y,
     );
     const filterFactor = 1 - Math.exp(-PARALLAX_SMOOTHING_RATE * dt);

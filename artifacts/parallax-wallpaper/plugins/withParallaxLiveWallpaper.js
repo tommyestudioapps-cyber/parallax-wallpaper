@@ -348,7 +348,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       lastTimestamp = event.timestamp;
       float intensity = composition == null ? 1f : (float) composition.optDouble("intensity", 60) / 60f;
       float targetX = softLimit((float) Math.toDegrees(shortestAngleDelta(roll, baselineRoll)) * 0.45f * intensity, 18f);
-      float targetY = softLimit((float) Math.toDegrees(shortestAngleDelta(pitch, baselinePitch)) * 0.35f * intensity, 12f);
+      float targetY = softLimit((float) Math.toDegrees(shortestAngleDelta(pitch, baselinePitch)) * 0.4f * intensity, 15f);
       float filter = 1f - (float) Math.exp(-10f * dt);
       motionX += (targetX - motionX) * filter;
       motionY += (targetY - motionY) * filter;
