@@ -21,7 +21,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { ClipPath, Defs, Image as SvgImage, Rect } from 'react-native-svg';
+import Svg, { Image as SvgImage } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 
@@ -55,6 +55,7 @@ type Layer = {
   imageHeight: number | null;
   sourceCrop: ImageCrop | null;
   nonDestructiveCutout: boolean;
+  cutoutOutputCropped: boolean;
   enabled: boolean;
   crop: number;
   backgroundRemoved: boolean;
@@ -104,6 +105,7 @@ function createLayer(id: LayerId): Layer {
     imageHeight: null,
     sourceCrop: null,
     nonDestructiveCutout: false,
+    cutoutOutputCropped: false,
     enabled: true,
     crop: 0,
     backgroundRemoved: false,
@@ -460,8 +462,6 @@ function Slider({
   );
 }
 
-let nextClipPathId = 0;
-
 function LayerImage({
   uri,
   style,
@@ -470,7 +470,7 @@ function LayerImage({
   frameHeight = CANVAS_HEIGHT,
   imageWidth,
   imageHeight,
-  clipCrop,
+  contentCrop,
   translateX = 0,
   translateY = 0,
   scale = 1,
@@ -482,12 +482,11 @@ function LayerImage({
   frameHeight?: number;
   imageWidth?: number | null;
   imageHeight?: number | null;
-  clipCrop?: ImageCrop | null;
+  contentCrop?: ImageCrop | null;
   translateX?: number;
   translateY?: number;
   scale?: number;
 }) {
-  const clipPathId = useRef(`layer-clip-${nextClipPathId++}`).current;
   const fitScale =
     imageWidth && imageHeight
       ? preserveAspectRatio.includes('meet')
@@ -498,32 +497,20 @@ function LayerImage({
   const renderedHeight = (imageHeight ? imageHeight * fitScale : frameHeight) * scale;
   const imageX = (frameWidth - renderedWidth) / 2 + translateX;
   const imageY = (frameHeight - renderedHeight) / 2 + translateY;
-  const clipRect = clipCrop && imageWidth && imageHeight
-    ? {
-        x: imageX + clipCrop.originX * fitScale * scale,
-        y: imageY + clipCrop.originY * fitScale * scale,
-        width: clipCrop.width * fitScale * scale,
-        height: clipCrop.height * fitScale * scale,
-      }
-    : null;
+  const contentX = contentCrop ? imageX + contentCrop.originX * fitScale * scale : imageX;
+  const contentY = contentCrop ? imageY + contentCrop.originY * fitScale * scale : imageY;
+  const contentWidth = contentCrop ? contentCrop.width * fitScale * scale : renderedWidth;
+  const contentHeight = contentCrop ? contentCrop.height * fitScale * scale : renderedHeight;
 
   return (
     <Svg style={style} viewBox={`0 0 ${frameWidth} ${frameHeight}`}>
-      {clipRect ? (
-        <Defs>
-          <ClipPath id={clipPathId}>
-            <Rect x={clipRect.x} y={clipRect.y} width={clipRect.width} height={clipRect.height} />
-          </ClipPath>
-        </Defs>
-      ) : null}
       <SvgImage
-        x={imageX}
-        y={imageY}
-        width={renderedWidth}
-        height={renderedHeight}
+        x={contentX}
+        y={contentY}
+        width={contentWidth}
+        height={contentHeight}
         href={{ uri }}
         preserveAspectRatio={imageWidth && imageHeight ? 'none' : preserveAspectRatio}
-        clipPath={clipRect ? `url(#${clipPathId})` : undefined}
       />
     </Svg>
   );
@@ -578,7 +565,7 @@ function LayerPreview({
           preserveAspectRatio="xMidYMid slice"
           imageWidth={layer.imageWidth}
           imageHeight={layer.imageHeight}
-          clipCrop={layer.nonDestructiveCutout ? layer.sourceCrop : null}
+          contentCrop={layer.cutoutOutputCropped ? layer.sourceCrop : null}
           translateX={layer.x}
           translateY={layer.y}
           scale={layer.scale}
@@ -747,23 +734,22 @@ export default function HomeScreen() {
       }
       const sourceUri = layer.sourceUri ?? uri;
       const visibleCrop = getSourceCrop(layer);
-      const transparentUri = await removeBackground(sourceUri, { trim: false });
+      const croppedImage = visibleCrop
+        ? await ImageManipulator.manipulateAsync(sourceUri, [{ crop: visibleCrop }], {
+            compress: 0.92,
+            format: ImageManipulator.SaveFormat.PNG,
+          })
+        : null;
+      const transparentUri = await removeBackground(croppedImage?.uri ?? sourceUri, { trim: false });
       updateLayer(id, {
         uri: transparentUri,
         enabled: true,
         backgroundRemoved: true,
-        ...(visibleCrop
-          ? {
-              x: 0,
-              y: 0,
-              scale: 1,
-              crop: 0,
-              imageWidth: layer.imageWidth,
-              imageHeight: layer.imageHeight,
-              sourceCrop: visibleCrop,
-            }
-          : {}),
+        imageWidth: layer.imageWidth ?? croppedImage?.width ?? null,
+        imageHeight: layer.imageHeight ?? croppedImage?.height ?? null,
+        sourceCrop: visibleCrop,
         nonDestructiveCutout: true,
+        cutoutOutputCropped: Boolean(visibleCrop),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
@@ -806,6 +792,7 @@ export default function HomeScreen() {
           imageHeight: optimized.height ?? asset.height ?? null,
           sourceCrop: null,
           nonDestructiveCutout: false,
+          cutoutOutputCropped: false,
           enabled: true,
           backgroundRemoved: false,
           crop: 0,
@@ -1170,7 +1157,7 @@ export default function HomeScreen() {
                 preserveAspectRatio="xMidYMid slice"
                 imageWidth={edit.imageWidth}
                 imageHeight={edit.imageHeight}
-                clipCrop={edit.nonDestructiveCutout ? edit.sourceCrop : null}
+          contentCrop={edit.cutoutOutputCropped ? edit.sourceCrop : null}
                 translateX={edit.x}
                 translateY={edit.y}
                 scale={edit.scale * (1 + edit.crop / 180)}
