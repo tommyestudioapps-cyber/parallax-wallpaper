@@ -30,7 +30,7 @@ const STORAGE_KEY = '@parallax-wallpaper/project';
 const CANVAS_WIDTH = Math.min(SCREEN_WIDTH - 40, 390);
 const CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_VIEWBOX_WIDTH = 100;
-const CANVAS_VIEWBOX_HEIGHT = (CANVAS_HEIGHT / CANVAS_WIDTH) * CANVAS_VIEWBOX_WIDTH;
+const CANVAS_VIEWBOX_HEIGHT = 177.78;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
