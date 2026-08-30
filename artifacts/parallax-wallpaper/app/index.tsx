@@ -1232,16 +1232,20 @@ export default function HomeScreen() {
               >
                 <View pointerEvents="none" style={styles.emptyImageOverlay}>
                   <View style={[styles.editOverlay, styles.emptyImageBadge, { backgroundColor: colors.background }]}>
-                    <Ionicons name="image-outline" size={15} color={colors.mutedForeground} />
-                    <Text style={[styles.editOverlayText, { color: colors.foreground }]}>Adicione uma imagem</Text>
+                    <Ionicons name="image-outline" size={15} color={colors.primary} />
+                    <Text style={[styles.editOverlayText, { color: colors.primary }]}>Adicione uma imagem</Text>
                   </View>
                 </View>
               </Pressable>
             ) : (
-              <View pointerEvents="none" style={[styles.editOverlay, { backgroundColor: colors.background }]}>
+              <View pointerEvents="none" style={[styles.editOverlay, styles.editStatusOverlay, { backgroundColor: colors.background }]}>
                 <Ionicons name={edit.backgroundRemoved ? 'cut' : 'checkmark-circle'} size={15} color={edit.backgroundRemoved ? colors.success : colors.mutedForeground} />
                 <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
-                  {edit.backgroundRemoved ? 'Transparência visível · ML local' : 'Imagem original · enquadre antes de remover'}
+                  {edit.backgroundRemoved
+                    ? 'Transparência visível · ML local'
+                    : editingLayer === 'background'
+                      ? 'Imagem original utilizada de fundo.'
+                      : 'Use dois dedos para enquadrar a área de corte.'}
                 </Text>
               </View>
             )}
@@ -1249,7 +1253,7 @@ export default function HomeScreen() {
           <View style={styles.editTitleRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sectionKicker, { color: colors.primary }]}>{edit.eyebrow}</Text>
-              <Text style={[styles.screenTitleSmall, { color: colors.foreground }]}>{edit.uri ? 'Refine esta camada' : 'Comece por aqui'}</Text>
+              {!edit.uri ? <Text style={[styles.screenTitleSmall, { color: colors.foreground }]}>Comece por aqui</Text> : null}
             </View>
             <Pressable style={[styles.changeButton, { borderColor: colors.border, backgroundColor: colors.secondary }]} onPress={() => pickLayer(editingLayer)}>
               <Ionicons name="swap-horizontal-outline" size={16} color={colors.primary} />
@@ -1481,9 +1485,10 @@ const styles = StyleSheet.create({
   transparencyCell: { width: '12.5%', height: '12.5%' },
   editImage: { width: '100%', height: '100%' },
   editOverlay: { position: 'absolute', left: 12, bottom: 12, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.92 },
+  editStatusOverlay: { right: 12 },
   emptyImageOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   emptyImageBadge: { position: 'relative', left: 0, bottom: 0 },
-  editOverlayText: { fontSize: 10, fontFamily: 'Inter_500Medium' },
+  editOverlayText: { flexShrink: 1, fontSize: 10, fontFamily: 'Inter_500Medium' },
   editTitleRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 15 },
   changeButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 11 },
   changeButtonText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
