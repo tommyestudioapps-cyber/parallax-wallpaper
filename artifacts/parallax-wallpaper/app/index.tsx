@@ -1627,7 +1627,7 @@ export default function HomeScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.controlLabel, { color: colors.foreground }]}>Recorte inteligente</Text>
                       <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>
-                        {edit.backgroundRemoved ? 'Fundo removido no aparelho. Ajuste o enquadramento e refaça o recorte se necessário.' : 'O app preserva a transparência e tenta separar o sujeito com ML local.'}
+                        {edit.backgroundRemoved ? 'Fundo removido no aparelho. Ajuste o enquadramento e refaça o recorte se necessário.' : 'O app preserva a transparência e tenta separar os personagens com I.A local.'}
                       </Text>
                     </View>
                   </View>
