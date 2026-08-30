@@ -208,6 +208,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.content.Context;
 import android.view.Display;
+import android.view.Surface;
 import android.view.WindowManager;
 import java.io.InputStream;
 import org.json.JSONObject;
@@ -309,15 +310,15 @@ public class ParallaxWallpaperService extends WallpaperService {
         int axisX = SensorManager.AXIS_X;
         int axisY = SensorManager.AXIS_Y;
         switch (display.getRotation()) {
-          case Display.ROTATION_90:
+          case Surface.ROTATION_90:
             axisX = SensorManager.AXIS_Y;
             axisY = SensorManager.AXIS_MINUS_X;
             break;
-          case Display.ROTATION_180:
+          case Surface.ROTATION_180:
             axisX = SensorManager.AXIS_MINUS_X;
             axisY = SensorManager.AXIS_MINUS_Y;
             break;
-          case Display.ROTATION_270:
+          case Surface.ROTATION_270:
             axisX = SensorManager.AXIS_MINUS_Y;
             axisY = SensorManager.AXIS_X;
             break;
