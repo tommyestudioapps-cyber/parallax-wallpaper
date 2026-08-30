@@ -1667,7 +1667,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      <Header title="Parallax" subtitle="Wallpaper studio" colors={colors} onReset={importedCount > 0 ? resetProject : undefined} />
+       <Header title="Parallax" subtitle="Tommy Studio" colors={colors} onReset={importedCount > 0 ? resetProject : undefined} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Progress mode={mode} colors={colors} />
         <View style={styles.hero}>
