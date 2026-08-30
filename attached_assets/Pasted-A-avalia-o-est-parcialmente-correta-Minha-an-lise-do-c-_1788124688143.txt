@@ -1,0 +1,108 @@
+A avaliação está parcialmente correta. Minha análise do código atual:
+
+### 1. Slider: problema real no desmontar
+
+Este ponto é válido.
+
+Durante a interação, `publishValue` agenda a persistência para até 32 ms depois:
+
+```ts
+commitTimer.current = setTimeout(() => {
+  commitTimer.current = null;
+  onChangeRef.current(pendingValue.current);
+}, 32);
+```
+
+Em `release` e `terminate`, `flushValue()` cancela o timer e persiste o valor. Porém, no desmontar do componente, o cleanup apenas cancela o timer:
+
+```ts
+return () => {
+  if (commitTimer.current) clearTimeout(commitTimer.current);
+};
+```
+
+Portanto, se o Slider for desmontado enquanto há um valor pendente, esse último valor pode não chegar ao `onChange`. É uma perda de estado possível, embora seja uma condição de borda.
+
+A correção recomendada é o cleanup chamar `flushValue()` — ou reproduzir sua lógica — antes de desmontar:
+
+```ts
+useEffect(() => {
+  return () => {
+    if (commitTimer.current) {
+      clearTimeout(commitTimer.current);
+      commitTimer.current = null;
+      onChangeRef.current(pendingValue.current);
+    }
+  };
+}, []);
+```
+
+Idealmente, também vale cobrir o caso com um teste de desmontar o Slider durante um movimento.
+
+### 2. `href={{ uri }}` no `SvgImage`: não é uma inconsistência atual
+
+Este ponto não representa um erro no projeto atual.
+
+A dependência instalada é:
+
+```text
+react-native-svg 15.12.1
+```
+
+E os tipos dessa versão aceitam:
+
+```ts
+href?: RNImageProps['source'] | string;
+```
+
+Logo, este formato é válido:
+
+```tsx
+href={{ uri }}
+```
+
+Além disso, o formato de objeto é o padrão do React Native para fontes locais e remotas. O uso de `href={uri}` simples também pode funcionar, mas não é necessário alterar o código sem um erro concreto em uma plataforma específica.
+
+Classificação: **recomendação preventiva, não correção necessária**.
+
+### 3. Dependências do `PanResponder`: a implementação atual já está correta
+
+Este ponto também não parece ser um bug no código atual.
+
+O valor usado pelos callbacks é:
+
+```ts
+const gestureLayerId = mode === 'edit' ? editingLayer : project.activeLayer;
+```
+
+E `gestureLayerId` já está nas dependências do `useMemo` que cria o `canvasResponder`:
+
+```ts
+[
+  canHandleCanvasGesture,
+  getTranslationBounds,
+  gestureLayerId,
+  updateLayer,
+]
+```
+
+Assim:
+
+- em `compose`, uma alteração em `project.activeLayer` altera `gestureLayerId`;
+- isso recria o `PanResponder`;
+- os callbacks passam a apontar para a nova camada;
+- em `edit`, a camada usada é `editingLayer`, como esperado.
+
+Adicionar `project.activeLayer` explicitamente seria redundante. Também poderia causar recriações desnecessárias quando a tela está no modo `edit`, em que a camada ativa de composição não é a referência usada pelo gesto.
+
+Além disso, os callbacks consultam `projectRef.current`, que é atualizado a cada render, reduzindo ainda mais o risco de trabalhar com dados antigos.
+
+### Conclusão
+
+| Ponto | Avaliação |
+|---|---|
+| Slider desmontado com timer pendente | **Problema real; deve ser corrigido** |
+| `href={{ uri }}` no `SvgImage` | **Válido com a versão instalada; sem correção necessária** |
+| `project.activeLayer` ausente nas dependências | **Falso positivo no estado atual; `gestureLayerId` já cobre o caso** |
+
+A única correção prioritária dessa avaliação é o flush do valor pendente no desmontar do Slider.

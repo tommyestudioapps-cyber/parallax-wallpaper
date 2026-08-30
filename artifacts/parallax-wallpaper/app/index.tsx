@@ -454,9 +454,11 @@ function Slider({
   );
   useEffect(() => {
     return () => {
-      if (commitTimer.current) clearTimeout(commitTimer.current);
+      if (commitTimer.current || gestureActive.current) {
+        flushValue();
+      }
     };
-  }, []);
+  }, [flushValue]);
   const responder = useMemo(
     () =>
       PanResponder.create({
