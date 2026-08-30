@@ -1598,7 +1598,7 @@ export default function HomeScreen() {
                 <Ionicons name={edit.backgroundRemoved ? 'cut' : 'checkmark-circle'} size={15} color={edit.backgroundRemoved ? colors.success : colors.mutedForeground} />
                 <Text style={[styles.editOverlayText, { color: colors.foreground }]}>
                   {edit.backgroundRemoved
-                    ? 'Transparência visível · ML local'
+                    ? 'Transparência visível · I.A local'
                     : editingLayer === 'background'
                       ? 'Imagem original utilizada de fundo.'
                       : 'Use dois dedos para enquadrar a área de corte.'}
