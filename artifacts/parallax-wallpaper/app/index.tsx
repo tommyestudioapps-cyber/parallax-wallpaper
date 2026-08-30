@@ -1249,9 +1249,6 @@ export default function HomeScreen() {
           ) : (
             <View style={styles.emptyEdit}>
               <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Suas imagens ficam apenas neste aparelho e são comprimidas automaticamente para manter o movimento leve.</Text>
-              {editingLayer === 'background' ? (
-                <PrimaryButton title="Escolher da galeria" onPress={() => pickLayer(editingLayer)} colors={colors} icon="images-outline" />
-              ) : null}
             </View>
           )}
           <View style={{ height: insets.bottom + 24 }} />
