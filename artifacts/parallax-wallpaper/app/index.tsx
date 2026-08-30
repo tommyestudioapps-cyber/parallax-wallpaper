@@ -940,8 +940,8 @@ export default function HomeScreen() {
           : layer.imageHeight * imageFitScale * effectiveScale;
       if (mode === 'compose') {
         return {
-          x: Math.abs(contentWidth - CANVAS_WIDTH) / 2,
-          y: Math.abs(contentHeight - CANVAS_HEIGHT) / 2,
+          x: Math.max(Math.abs(contentWidth - CANVAS_WIDTH) / 2, CANVAS_WIDTH / 2),
+          y: Math.max(Math.abs(contentHeight - CANVAS_HEIGHT) / 2, CANVAS_HEIGHT / 2),
         };
       }
       return {
