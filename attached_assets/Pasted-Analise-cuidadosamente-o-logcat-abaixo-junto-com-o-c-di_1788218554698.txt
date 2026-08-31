@@ -1,0 +1,177 @@
+Analise cuidadosamente o logcat abaixo junto com o código atual do Parallax Wallpaper. **Não altere nenhum código ainda.** Quero apenas uma investigação de causa-raiz.
+
+O objetivo é explicar as travadas que percebo **quando apago e acendo a tela do celular**, enquanto o Live Wallpaper está ativo. O efeito parallax também não está 100% fluido, embora esteja muito próximo disso.
+
+Este é o log capturado filtrando exclusivamente o PID **30987**, que é o processo `com.parallaxwallpaper.app`.
+
+### Log observado
+
+```text
+08-31 20:19:15.795 30987 30987 I Choreographer: Skipped 36180 frames!  The application may be doing too much work on
+its main thread.
+08-31 20:19:16.199 30987 30987 I ParallaxWallpaper: PARALLAX_VISIBILITY_CHANGED visible=true
+08-31 20:19:16.200 30987 30987 V SystemSensorManagerExtImpl: RegisterListener Rotation Vector  Non-wakeup type:11
+delay:16000us by com.parallaxwallpaper.app.ParallaxWallpaperService$ParallaxEngine@afa0fce from
+com.parallaxwallpaper.app
+08-31 20:19:16.310 30987 30987 I ParallaxWallpaper: PARALLAX_SENSOR_REGISTERED
+08-31 20:19:16.311 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_START force=true
+08-31 20:19:16.311 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS
+08-31 20:19:16.316 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS_SUCCESS
+08-31 20:19:16.539 30987 30987 I ParallaxWallpaper: PARALLAX_SENSOR_CALIBRATED
+08-31 20:19:16.539 30987 30987 D ParallaxWallpaper: PARALLAX_SENSOR_EVENT motionX=0.022922197 motionY=0.0041737626
+08-31 20:19:16.552 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_COMPLETE
+08-31 20:19:18.384 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_START force=false
+08-31 20:19:18.384 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS
+08-31 20:19:18.392 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS_SUCCESS
+08-31 20:19:18.465 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_COMPLETE
+08-31 20:19:18.543 30987 30987 D ParallaxWallpaper: PARALLAX_SENSOR_EVENT motionX=6.4834676 motionY=-1.6582483
+08-31 20:19:20.396 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_START force=false
+08-31 20:19:20.396 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS
+08-31 20:19:20.406 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS_SUCCESS
+08-31 20:19:20.480 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_COMPLETE
+08-31 20:19:20.549 30987 30987 D ParallaxWallpaper: PARALLAX_SENSOR_EVENT motionX=7.0661573 motionY=-0.24753842
+08-31 20:19:22.544 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_START force=false
+08-31 20:19:22.544 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS
+08-31 20:19:22.561 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS_SUCCESS
+08-31 20:19:22.600 30987 30987 D ParallaxWallpaper: PARALLAX_SENSOR_EVENT motionX=1.8198541 motionY=0.14593226
+08-31 20:19:22.803 30987 30987 I ParallaxWallpaper: PARALLAX_VISIBILITY_CHANGED visible=false
+08-31 20:19:22.803 30987 30987 V SystemSensorManagerExtImpl: unRegisterListener by
+com.parallaxwallpaper.app.ParallaxWallpaperService$ParallaxEngine@afa0fce
+08-31 20:19:22.811 30987 30987 I ParallaxWallpaper: PARALLAX_SENSOR_UNREGISTERED
+08-31 20:19:23.023 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_COMPLETE
+08-31 20:19:25.755 30987 30987 I ParallaxWallpaper: PARALLAX_VISIBILITY_CHANGED visible=true
+08-31 20:19:25.757 30987 30987 V SystemSensorManagerExtImpl: RegisterListener Rotation Vector  Non-wakeup type:11
+delay:16000us by com.parallaxwallpaper.app.ParallaxWallpaperService$ParallaxEngine@afa0fce from
+com.parallaxwallpaper.app
+08-31 20:19:25.886 30987 30987 I ParallaxWallpaper: PARALLAX_SENSOR_REGISTERED
+08-31 20:19:25.887 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_START force=true
+08-31 20:19:25.888 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS
+08-31 20:19:25.891 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS_SUCCESS
+08-31 20:19:26.085 30987 30987 I ParallaxWallpaper: PARALLAX_SENSOR_CALIBRATED
+08-31 20:19:26.091 30987 30987 D ParallaxWallpaper: PARALLAX_SENSOR_EVENT motionX=-0.023595296 motionY=0.018172562
+08-31 20:19:26.292 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_COMPLETE
+08-31 20:19:27.904 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_START force=false
+08-31 20:19:27.905 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS
+08-31 20:19:27.912 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS_SUCCESS
+08-31 20:19:27.986 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_COMPLETE
+08-31 20:19:28.088 30987 30987 D ParallaxWallpaper: PARALLAX_SENSOR_EVENT motionX=-6.5198464 motionY=1.5421168
+08-31 20:19:29.977 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_START force=false
+08-31 20:19:29.977 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS
+08-31 20:19:29.987 30987  1413 D ParallaxWallpaper: PARALLAX_LOCK_CANVAS_SUCCESS
+08-31 20:19:30.063 30987  1413 D ParallaxWallpaper: PARALLAX_DRAW_COMPLETE
+08-31 20:19:30.089 30987 30987 D ParallaxWallpaper: PARALLAX_SENSOR_EVENT motionX=-0.692576 motionY=-0.120656535
+08-31 20:19:30.654 30987 30987 D callGcSupression: java.lang.NullPointerException: Attempt to invoke virtual method
+'java.lang.Object java.lang.reflect.Method.invoke(java.lang.Object, java.lang.Object[])' on a null object reference
+08-31 20:19:30.655 30987 30987 D WallpaperServiceExtImpl: Block update resized of
+Surface(name=com.parallaxwallpaper.app.ParallaxWallpaperService)/@0x9682aeb
+08-31 20:19:30.655 30987 30987 I ParallaxWallpaper: PARALLAX_VISIBILITY_CHANGED visible=false
+08-31 20:19:30.655 30987 30987 V SystemSensorManagerExtImpl: unRegisterListener by
+com.parallaxwallpaper.app.ParallaxWallpaperService$ParallaxEngine@afa0fce
+08-31 20:19:30.660 30987 30987 I ParallaxWallpaper: PARALLAX_SENSOR_UNREGISTERED
+```
+
+### Contexto do teste
+
+* O Live Wallpaper está instalado e funcionando.
+* O efeito parallax funciona, mas não está 100% fluido.
+* As travadas mais perceptíveis acontecem quando **apago e acendo a tela do celular**, não quando simplesmente abro o aplicativo.
+* Fiz um teste A/B:
+
+  * com o Live Wallpaper inativo, o comportamento da abertura do celular é normal;
+  * com o Live Wallpaper ativo, as travadas ao acender a tela ficam mais perceptíveis.
+* Portanto, quero investigar especificamente o ciclo de vida do `WallpaperService` e sua interação com Surface/sensor/renderização.
+* Não quero que você altere o código neste momento.
+
+### Pontos que quero que você responda
+
+1. **O que significa exatamente `Skipped 36180 frames` nesse contexto?**
+
+   * Aconteceu às `20:19:15.795`.
+   * Compare esse timestamp com `PARALLAX_VISIBILITY_CHANGED visible=true` às `20:19:16.199`.
+   * Determine se esse evento pode ser diretamente causado pelo nosso `WallpaperService` ou se ele provavelmente representa outro trabalho do processo/main thread antes da reativação do wallpaper.
+
+2. Analise detalhadamente a sequência:
+   `Skipped 36180 frames`
+   → `visible=true`
+   → `sensor register`
+   → `drawFrame(force=true)`
+   → `lockCanvas`
+   → `sensor calibrated`
+   → `draw complete`.
+
+3. **Calcule os intervalos de tempo** entre esses eventos e diga se existe alguma latência anormal.
+
+4. Analise os tempos de `lockCanvas`:
+
+   * `20:19:16.311 → 20:19:16.316`
+   * `20:19:16.311 → 20:19:16.552`
+   * e compare com os demais frames.
+
+   Quero saber especificamente se `lockCanvas()` está demorando.
+
+5. Analise os frames seguintes:
+
+   * `20:19:18.384`
+   * `20:19:20.396`
+   * `20:19:22.544`
+   * `20:19:25.887`
+   * `20:19:27.904`
+   * `20:19:29.977`
+
+   Eles parecem ocorrer aproximadamente a cada 2 segundos. Explique se isso é esperado, se indica que o wallpaper está renderizando em baixa frequência, ou se há algum mecanismo de coalescing/throttling.
+
+6. Analise o `PARALLAX_SENSOR_EVENT`:
+
+   * ele acontece no thread `30987`;
+   * o desenho acontece no thread `1413`.
+
+   Determine se essa separação está correta e se existe algum risco de sincronização, bloqueio ou atraso entre sensor → renderização.
+
+7. Analise especificamente:
+   `callGcSupression: java.lang.NullPointerException`
+
+   e:
+   `WallpaperServiceExtImpl: Block update resized of Surface(...)`
+
+   às `20:19:30.654–30.655`.
+
+   Quero saber se isso parece ser um erro do nosso código, do Android/Oplus, ou uma interação com o framework.
+
+8. Compare esse log com a implementação atual do arquivo:
+   `plugins/withParallaxLiveWallpaper.js`.
+
+   Procure especialmente:
+
+   * `onVisibilityChanged`;
+   * `onSurfaceCreated`;
+   * `onSurfaceChanged`;
+   * `onSurfaceDestroyed`;
+   * `registerSensor`;
+   * `unregisterSensor`;
+   * `onSensorChanged`;
+   * `requestFrame`;
+   * `drawFrame`;
+   * `lockCanvas`;
+   * carregamento de bitmaps;
+   * `Bitmap.recycle`;
+   * qualquer Handler/HandlerThread;
+   * qualquer mecanismo de coalescing de frames.
+
+9. **Não quero uma lista genérica de possíveis problemas.**
+   Quero uma conclusão priorizada:
+
+   * causa mais provável;
+   * segunda hipótese;
+   * hipóteses que o log praticamente elimina.
+
+10. Finalmente, diga qual é o **próximo teste mínimo**, sem alterar o código, que devemos executar no Android físico para distinguir entre:
+
+* problema na retomada do `WallpaperService`;
+* problema no `lockCanvas`/Surface;
+* problema no sensor;
+* problema de inicialização geral do processo.
+
+### Regra importante
+
+**Não altere nenhum código.**
+Primeiro queremos estabelecer a causa com evidência objetiva. Só depois decidiremos qual mudança fazer.
