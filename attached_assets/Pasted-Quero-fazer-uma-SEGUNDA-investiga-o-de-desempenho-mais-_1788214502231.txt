@@ -1,0 +1,137 @@
+Quero fazer uma SEGUNDA investigação de desempenho, mais específica, com base no diagnóstico anterior.
+
+O diagnóstico anterior concluiu que a principal microtravada da abertura ocorre na transição em que a `HomeScreen` deixa o estado de loading e monta a Home completa.
+
+O ponto mais pesado medido foi:
+
+* commit React principal: aproximadamente 18,2 ms;
+* orçamento de um frame a 60 Hz: aproximadamente 16,7 ms.
+
+Isso é compatível com uma pequena perda de frame e pode explicar as microtravadas que percebo nos primeiros ~500 ms.
+
+Porém, a investigação anterior NÃO conseguiu determinar qual parte da Home é responsável por esse custo.
+
+### OBJETIVO DESTA SEGUNDA INVESTIGAÇÃO
+
+Quero agora decompor o custo da montagem da Home e identificar, na medida do possível, quais elementos contribuem mais para esse pico.
+
+NÃO quero otimização ainda.
+
+Quero somente descobrir ONDE está o custo.
+
+### Investigue especificamente
+
+Analise separadamente, quando tecnicamente possível:
+
+1. Header;
+2. indicador de progresso;
+3. hero/textos;
+4. três cartões de camadas;
+5. ícones `Ionicons`;
+6. dica/informação;
+7. botão principal;
+8. `ScrollView`;
+9. estilos e cálculos de layout;
+10. providers do layout raiz;
+11. carregamento/registro das fontes;
+12. qualquer outra operação relevante executada durante essa transição.
+
+Também quero que você tente diferenciar:
+
+* custo do React;
+* custo de montagem dos componentes;
+* custo de layout nativo;
+* custo de pintura/renderização nativa;
+* custo de fontes;
+* custo de ícones.
+
+Se alguma dessas categorias não puder ser medida diretamente pelo ambiente de desenvolvimento, deixe isso explicitamente indicado.
+
+### METODOLOGIA
+
+Use instrumentação temporária e específica para medir os componentes individualmente.
+
+Se necessário, faça testes controlados em que um elemento ou grupo de elementos seja temporariamente isolado/desabilitado SOMENTE durante a investigação, desde que isso não altere permanentemente o aplicativo.
+
+Por exemplo, se for tecnicamente seguro, você pode comparar:
+
+* Home completa;
+* Home sem cartões;
+* Home sem ícones;
+* Home sem elementos gráficos específicos;
+
+para verificar quanto cada grupo contribui para o tempo de montagem.
+
+Essas alterações devem ser SOMENTE temporárias para diagnóstico e devem ser totalmente revertidas ao final.
+
+Faça medições repetidas para evitar conclusões baseadas em uma única execução.
+
+### CONDIÇÕES IMPORTANTES
+
+* NÃO fazer otimizações.
+* NÃO refatorar a Home.
+* NÃO alterar o visual permanentemente.
+* NÃO alterar o comportamento.
+* NÃO alterar o Live Wallpaper.
+* NÃO alterar o `ParallaxEngine`.
+* NÃO alterar o processamento das imagens.
+* NÃO alterar o editor.
+* NÃO remover dependências.
+* NÃO alterar animações.
+* NÃO alterar fontes.
+* NÃO alterar ícones permanentemente.
+* NÃO gerar APK/AAB.
+* NÃO executar EAS Build.
+* NÃO criar uma nova solução antes de apresentar os dados.
+
+Toda instrumentação deve ser temporária e removida ao final.
+
+### IMPORTANTE SOBRE O APK
+
+A versão atualmente instalada no celular está estável e funcionando.
+
+Não quero que você tente "corrigir" as microtravadas simplesmente porque encontrou um número acima de 16,7 ms.
+
+Primeiro precisamos descobrir se esse comportamento realmente corresponde a um gargalo relevante e qual componente é responsável.
+
+A medição anterior foi feita no preview de desenvolvimento, que estava com otimizações de performance desativadas. Portanto, considere essa limitação na interpretação dos resultados.
+
+### RESULTADO ESPERADO
+
+Ao final, apresente uma tabela semelhante a:
+
+| Elemento/grupo | Tempo medido | Tipo de custo | Confiança |
+| -------------- | -----------: | ------------- | --------- |
+| Header         |          ... | ...           | ...       |
+| Hero/textos    |          ... | ...           | ...       |
+| Cartões        |          ... | ...           | ...       |
+| Ionicons       |          ... | ...           | ...       |
+| Botão          |          ... | ...           | ...       |
+| ScrollView     |          ... | ...           | ...       |
+| Fontes         |          ... | ...           | ...       |
+| Providers      |          ... | ...           | ...       |
+
+Os valores devem ser os valores REALMENTE medidos. Não invente estimativas.
+
+Depois indique:
+
+1. qual é o maior contribuinte medido;
+2. quais são os contribuintes secundários;
+3. quais hipóteses continuam sem confirmação;
+4. se o custo é suficientemente significativo para justificar uma otimização;
+5. qual seria, caso eu aprove posteriormente, a menor alteração possível para melhorar o desempenho sem alterar o visual ou comportamento.
+
+### REGRA FINAL
+
+NÃO implemente nenhuma dessas melhorias agora.
+
+Faça somente a investigação, restaure qualquer alteração temporária e deixe o projeto exatamente como estava antes da investigação.
+
+No final, confirme explicitamente:
+
+* quais arquivos foram temporariamente instrumentados;
+* que a instrumentação foi removida;
+* que não ficou nenhuma alteração permanente;
+* que não foi gerado APK/AAB;
+* que não foi executado EAS Build;
+* quais validações foram realizadas.
