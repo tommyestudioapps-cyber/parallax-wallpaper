@@ -434,8 +434,8 @@ public class ParallaxWallpaperService extends WallpaperService {
         float cropY = (float) crop.optDouble("originY", 0);
         float cropWidth = (float) crop.optDouble("width", bitmap.getWidth());
         float cropHeight = (float) crop.optDouble("height", bitmap.getHeight());
-        float left = (canvasWidth - originalWidth * fitScale) / 2f + cropX * drawScale + layerX + motionLeft;
-        float top = (canvasHeight - originalHeight * fitScale) / 2f + cropY * drawScale + layerY + motionTop;
+        float left = (canvasWidth - originalWidth * drawScale) / 2f + cropX * drawScale + layerX + motionLeft;
+        float top = (canvasHeight - originalHeight * drawScale) / 2f + cropY * drawScale + layerY + motionTop;
         destination = new RectF(left, top, left + cropWidth * drawScale, top + cropHeight * drawScale);
       } else {
         float width = bitmap.getWidth() * drawScale;
