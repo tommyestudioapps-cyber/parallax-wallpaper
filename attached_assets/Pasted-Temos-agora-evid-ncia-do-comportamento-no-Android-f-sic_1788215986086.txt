@@ -1,0 +1,94 @@
+Temos agora evidência do comportamento no Android físico e quero fazer uma investigação de causa-raiz antes de alterar qualquer código.
+
+O APK atual está estável e funcional, mas na abertura da tela principal eu percebo pequenas microtravadas durante aproximadamente o primeiro segundo.
+
+O logcat capturado no aparelho físico registrou:
+
+* `Skipped 80 frames! The application may be doing too much work on its main thread.`
+* posteriormente: `WaitForGcToComplete blocked AddRemoveAppImageSpace on Background for 887.738ms`
+* também houve mensagens de pressão de memória/`lowmemorykiller`;
+* o acelerômetro foi registrado em aproximadamente 200 ms (5 Hz), como `Non-wakeup`;
+* não há evidência de `FATAL EXCEPTION`, `ANR` ou `OutOfMemory` nesse trecho.
+
+IMPORTANTE: não quero que você corrija ou otimize nada ainda.
+
+Quero uma investigação específica do código atual para descobrir se existe uma relação causal entre esses eventos e a implementação do aplicativo.
+
+Investigue, em ordem de prioridade:
+
+1. **Inicialização da tela principal**
+
+   * Quais componentes são montados nos primeiros ~1–2 segundos?
+   * Quais estados mudam durante essa inicialização?
+   * Existem efeitos (`useEffect`, listeners, callbacks ou inicializações assíncronas) que provocam renders adicionais?
+
+2. **Imagens e memória**
+
+   * Localize exatamente onde imagens são carregadas, decodificadas, redimensionadas, copiadas, convertidas ou armazenadas.
+   * Procure especificamente por `Bitmap`, `ImageBitmap`, `Canvas`, manipulação de pixels, conversões e criação de cópias.
+   * Identifique qualquer operação que possa gerar grandes alocações temporárias.
+   * Determine se alguma dessas operações ocorre na main/UI thread.
+
+3. **Live Wallpaper / código nativo**
+
+   * Localize o código Android responsável pelo Live Wallpaper.
+   * Identifique onde o wallpaper é inicializado e onde imagens/recursos gráficos são preparados.
+   * Verifique se existe trabalho pesado durante `onCreate`, `onSurfaceChanged`, `onSurfaceCreated`, `onVisibilityChanged` ou equivalentes.
+
+4. **Acelerômetro**
+
+   * Localize exatamente onde o listener do acelerômetro é registrado.
+   * Determine quantas vezes ele pode ser registrado.
+   * Verifique se existe risco de registro duplicado.
+   * Analise o que acontece dentro do callback de cada leitura.
+   * Verifique se cada leitura provoca atualização React, recomposição, cálculo pesado, alocação de objetos ou processamento de imagem.
+
+5. **GC / alocações**
+
+   * Procure loops ou callbacks executados durante a inicialização que criem muitos objetos temporários.
+   * Procure arrays, objetos, estilos, imagens ou estruturas recriados repetidamente.
+   * Verifique especialmente operações executadas em callbacks de sensores ou durante renderização.
+   * Identifique os pontos do código com maior potencial de provocar pressão de memória.
+
+6. **Providers e inicialização do React/Expo**
+
+   * Verifique se os providers identificados na investigação anterior podem contribuir para o mount inicial.
+   * Não quero uma otimização genérica: quero saber se algum deles realmente participa da sequência que ocorre durante a abertura da Home.
+
+7. **Correlacione com os dados do Android**
+
+   * Compare os pontos encontrados no código com a sequência temporal observada no log.
+   * A sequência relevante foi aproximadamente:
+
+     * `19:29:56.946` → `Skipped 80 frames`
+     * `19:29:57.516` → registro do acelerômetro
+     * `19:29:57.564` → início da espera relacionada ao GC
+     * `19:29:58.452` → `blocked ... 887.738ms`
+   * Não trate essa sequência como prova automática de causalidade. Quero que você diga o que é comprovado, o que é apenas correlação e o que ainda não pode ser determinado.
+
+8. **Não modificar o projeto**
+
+   * Não faça otimizações.
+   * Não altere comportamento.
+   * Não altere visual.
+   * Não altere o Live Wallpaper.
+   * Não altere o processamento de imagens.
+   * Não altere o sensor.
+   * Não crie instrumentação permanente.
+   * Se precisar criar alguma instrumentação temporária para confirmar uma hipótese, primeiro descreva o que pretende medir e mantenha-a estritamente temporária, removendo tudo ao final.
+
+No final, entregue:
+
+A) os 5 pontos de código mais suspeitos, em ordem de prioridade;
+
+B) para cada ponto, explique exatamente por que ele poderia estar relacionado aos `Skipped 80 frames` ou ao GC;
+
+C) diga se existe evidência de trabalho pesado na main/UI thread;
+
+D) diga se existe evidência de alocação excessiva de memória;
+
+E) diga se o acelerômetro parece ser causa, consequência ou provavelmente independente;
+
+F) diga qual seria o MENOR teste controlado capaz de confirmar ou eliminar a hipótese principal.
+
+Não implemente nenhuma correção ainda. Quero primeiro identificar a causa com o maior grau de certeza possível.
