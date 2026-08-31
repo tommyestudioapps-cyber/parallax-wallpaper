@@ -1,0 +1,124 @@
+Sim. A proposta que eu passaria ao Replit é **instrumentar o `drawFrame()` por etapas**, sem alterar o comportamento do wallpaper.
+
+O objetivo é descobrir exatamente onde estão os ~400 ms:
+
+```text
+DRAW_START
+   ↓
+prepareComposition / bitmap já prontos
+   ↓
+drawColor
+   ↓
+background drawBitmap
+   ↓
+middle drawBitmap
+   ↓
+foreground drawBitmap
+   ↓
+unlockCanvasAndPost
+   ↓
+DRAW_COMPLETE
+```
+
+### Proposta de alteração
+
+Peça ao Replit para fazer **somente estas mudanças**:
+
+1. Manter:
+
+   * sensor exatamente igual;
+   * `HandlerThread` exatamente igual;
+   * `requestFrame()` e coalescing exatamente iguais;
+   * cálculo do parallax exatamente igual;
+   * carregamento/reciclagem de bitmap exatamente iguais;
+   * ciclo de vida da `Surface` exatamente igual.
+
+2. Dentro de `drawFrame()`, adicionar timestamps com `SystemClock.elapsedRealtimeNanos()`.
+
+3. Medir individualmente:
+
+   * início do `drawFrame`;
+   * `lockCanvas()`;
+   * `canvas.drawColor()`;
+   * `drawLayer(background)`;
+   * `drawLayer(middle)`;
+   * `drawLayer(foreground)`;
+   * `unlockCanvasAndPost()`;
+   * duração total.
+
+4. Para cada frame diagnóstico, emitir **um único log consolidado**, por exemplo:
+
+```text
+PARALLAX_FRAME_TIMING
+total=405ms
+lock=3ms
+clear=1ms
+background=120ms
+middle=130ms
+foreground=145ms
+unlockPost=6ms
+```
+
+Assim conseguimos saber imediatamente se o problema é:
+
+```text
+background
+    ↓
+middle
+    ↓
+foreground
+    ↓
+unlockCanvasAndPost()
+```
+
+ou se o tempo está aparecendo em outra região.
+
+### Importante
+
+Eu **não colocaria logs dentro de cada operação matemática de `drawLayer()`**, nem em cada `optDouble()`, `RectF`, cálculo de escala etc. Isso poderia alterar o comportamento que estamos tentando medir.
+
+Também não faria nenhuma otimização ainda.
+
+### Um segundo ponto que eu pediria ao Replit
+
+Como `prepareComposition()` atualmente acontece **antes de `DRAW_START`**, eu acrescentaria uma medição separada somente para ela:
+
+```text
+PARALLAX_COMPOSITION_TIMING
+prepare=XXXms
+```
+
+E, se a composição for recarregada, os logs existentes:
+
+```text
+PARALLAX_BITMAP_LOAD
+PARALLAX_BITMAP_READY
+```
+
+já permitem relacionar o tempo de carregamento.
+
+Então teremos:
+
+```text
+PREPARE_COMPOSITION
+        ↓
+DRAW_START
+        ↓
+LOCK_CANVAS
+        ↓
+DRAW_COLOR
+        ↓
+BACKGROUND
+        ↓
+MIDDLE
+        ↓
+FOREGROUND
+        ↓
+UNLOCK_CANVAS_AND_POST
+        ↓
+DRAW_COMPLETE
+```
+
+**Essa é a instrumentação que eu faria agora.** Não é uma correção de desempenho; é um teste para localizar precisamente o gargalo antes de mexermos na arquitetura.
+
+Se quiser confrontar diretamente com o Replit, eu recomendaria enviar exatamente essa especificação e pedir que ele mostre o **diff completo antes de aplicar**.

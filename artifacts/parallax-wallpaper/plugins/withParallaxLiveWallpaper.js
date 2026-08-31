@@ -539,8 +539,13 @@ public class ParallaxWallpaperService extends WallpaperService {
     }
 
     private void drawFrame(boolean force) {
+      long prepareStartNanos = SystemClock.elapsedRealtimeNanos();
       prepareComposition();
+      long prepareEndNanos = SystemClock.elapsedRealtimeNanos();
       boolean logFrame = shouldLogFrame(force);
+      if (logFrame) {
+        Log.d(TAG, "PARALLAX_COMPOSITION_TIMING prepare=" + durationMs(prepareStartNanos, prepareEndNanos) + "ms");
+      }
       if (!force && !visible) {
         if (logFrame) Log.d(TAG, "PARALLAX_DRAW_SKIP_NOT_VISIBLE");
         return;
@@ -560,42 +565,92 @@ public class ParallaxWallpaperService extends WallpaperService {
       }
       Canvas canvas = null;
       boolean posted = false;
+      long drawStartNanos = 0L;
+      long lockStartNanos = 0L;
+      long lockEndNanos = 0L;
+      long clearStartNanos = 0L;
+      long clearEndNanos = 0L;
+      long backgroundStartNanos = 0L;
+      long backgroundEndNanos = 0L;
+      long middleStartNanos = 0L;
+      long middleEndNanos = 0L;
+      long foregroundStartNanos = 0L;
+      long foregroundEndNanos = 0L;
+      long unlockStartNanos = 0L;
+      long unlockEndNanos = 0L;
       try {
-        if (logFrame) Log.d(TAG, "PARALLAX_DRAW_START force=" + force);
+        if (logFrame) {
+          drawStartNanos = SystemClock.elapsedRealtimeNanos();
+          Log.d(TAG, "PARALLAX_DRAW_START force=" + force);
+        }
         if (logFrame) Log.d(TAG, "PARALLAX_LOCK_CANVAS");
+        if (logFrame) lockStartNanos = SystemClock.elapsedRealtimeNanos();
         canvas = holder.lockCanvas();
+        if (logFrame) lockEndNanos = SystemClock.elapsedRealtimeNanos();
         if (canvas == null) {
           Log.w(TAG, "PARALLAX_LOCK_CANVAS_FAILED reason=null_canvas");
           return;
         }
         if (logFrame) Log.d(TAG, "PARALLAX_LOCK_CANVAS_SUCCESS");
+        if (logFrame) clearStartNanos = SystemClock.elapsedRealtimeNanos();
         canvas.drawColor(Color.BLACK);
+        if (logFrame) clearEndNanos = SystemClock.elapsedRealtimeNanos();
         float canvasWidth = canvas.getWidth();
         float canvasHeight = canvas.getHeight();
         float sourceCanvasWidth = (float) composition.optDouble("canvasWidth", 280);
         float coordinateScale = canvasWidth / sourceCanvasWidth;
         JSONObject layers = composition.optJSONObject("layers");
         if (layers == null) return;
+        if (logFrame) backgroundStartNanos = SystemClock.elapsedRealtimeNanos();
         drawLayer(canvas, layers.optJSONObject("background"), 0, canvasWidth, canvasHeight, coordinateScale);
+        if (logFrame) backgroundEndNanos = SystemClock.elapsedRealtimeNanos();
+        if (logFrame) middleStartNanos = SystemClock.elapsedRealtimeNanos();
         drawLayer(canvas, layers.optJSONObject("middle"), 1, canvasWidth, canvasHeight, coordinateScale);
+        if (logFrame) middleEndNanos = SystemClock.elapsedRealtimeNanos();
+        if (logFrame) foregroundStartNanos = SystemClock.elapsedRealtimeNanos();
         drawLayer(canvas, layers.optJSONObject("foreground"), 2, canvasWidth, canvasHeight, coordinateScale);
+        if (logFrame) foregroundEndNanos = SystemClock.elapsedRealtimeNanos();
         posted = true;
       } catch (Exception error) {
         Log.e(TAG, "PARALLAX_DRAW_FAILED", error);
       } finally {
         if (canvas != null) {
+          if (logFrame) {
+            unlockStartNanos = SystemClock.elapsedRealtimeNanos();
+            Log.d(TAG, "PARALLAX_BEFORE_UNLOCK");
+          }
           try {
             holder.unlockCanvasAndPost(canvas);
+            if (logFrame) unlockEndNanos = SystemClock.elapsedRealtimeNanos();
           } catch (Exception error) {
             posted = false;
             Log.e(TAG, "PARALLAX_UNLOCK_CANVAS_FAILED", error);
           }
+        }
+        if (logFrame) {
+          long frameEndNanos = SystemClock.elapsedRealtimeNanos();
+          Log.d(TAG,
+              "PARALLAX_FRAME_TIMING"
+                  + " total=" + durationMs(drawStartNanos, frameEndNanos) + "ms"
+                  + " lock=" + durationMs(lockStartNanos, lockEndNanos) + "ms"
+                  + " clear=" + durationMs(clearStartNanos, clearEndNanos) + "ms"
+                  + " background=" + durationMs(backgroundStartNanos, backgroundEndNanos) + "ms"
+                  + " middle=" + durationMs(middleStartNanos, middleEndNanos) + "ms"
+                  + " foreground=" + durationMs(foregroundStartNanos, foregroundEndNanos) + "ms"
+                  + " unlockPost=" + durationMs(unlockStartNanos, unlockEndNanos) + "ms"
+                  + " force=" + force
+                  + " posted=" + posted);
         }
       }
       if (posted) {
         firstFrameDrawn = true;
         if (logFrame) Log.d(TAG, "PARALLAX_DRAW_COMPLETE");
       }
+    }
+
+    private long durationMs(long startNanos, long endNanos) {
+      if (startNanos == 0L || endNanos == 0L) return -1L;
+      return (endNanos - startNanos) / 1000000L;
     }
 
     private void drawLayer(Canvas canvas, JSONObject layer, int index, float canvasWidth, float canvasHeight, float coordinateScale) {
