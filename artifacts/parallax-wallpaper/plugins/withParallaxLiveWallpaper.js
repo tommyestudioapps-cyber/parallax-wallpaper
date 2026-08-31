@@ -200,7 +200,11 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.SystemClock;
 import android.service.wallpaper.WallpaperService;
+import android.util.Log;
 import android.view.SurfaceHolder;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -214,39 +218,86 @@ import java.io.InputStream;
 import org.json.JSONObject;
 
 public class ParallaxWallpaperService extends WallpaperService {
+  private static final String TAG = "ParallaxWallpaper";
+
   @Override
   public Engine onCreateEngine() {
     return new ParallaxEngine();
   }
 
   private class ParallaxEngine extends Engine implements SensorEventListener {
+    private static final long DIAGNOSTIC_LOG_INTERVAL_MS = 2000L;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final SensorManager sensorManager;
     private final Sensor rotationSensor;
-    private JSONObject composition;
-    private Bitmap[] bitmaps = new Bitmap[3];
-    private boolean visible;
+    private final HandlerThread renderThread;
+    private final Handler renderHandler;
+    private final Object frameLock = new Object();
+    private final Bitmap[] bitmaps = new Bitmap[3];
+    private final float[] rotationMatrix = new float[9];
+    private final float[] remappedMatrix = new float[9];
+    private final float[] orientation = new float[3];
+    private volatile JSONObject composition;
+    private volatile float intensity = 1f;
+    private volatile boolean visible;
+    private volatile boolean surfaceReady;
+    private volatile boolean destroyed;
+    private volatile boolean reloadCompositionRequested = true;
+    private boolean frameQueued;
+    private boolean redrawRequested;
+    private boolean forceDrawRequested;
+    private boolean sensorRegistered;
+    private boolean firstFrameDrawn;
+    private String compositionJson;
     private boolean calibrated;
     private float baselinePitch;
     private float baselineRoll;
     private float pitchSum;
     private float rollSum;
     private int calibrationSamples;
-    private float motionX;
-    private float motionY;
+    private volatile float motionX;
+    private volatile float motionY;
     private long lastTimestamp;
+    private long lastFrameLogAt;
+    private long lastSensorLogAt;
+
+    private final Runnable renderRunnable = new Runnable() {
+      @Override
+      public void run() {
+        boolean force;
+        synchronized (frameLock) {
+          redrawRequested = false;
+          force = forceDrawRequested;
+          forceDrawRequested = false;
+        }
+
+        drawFrame(force);
+
+        boolean renderAgain;
+        synchronized (frameLock) {
+          renderAgain = redrawRequested && !destroyed;
+          if (!renderAgain) frameQueued = false;
+        }
+        if (renderAgain) renderHandler.post(this);
+      }
+    };
 
     ParallaxEngine() {
       sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
       rotationSensor = sensorManager == null ? null : sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
-      loadComposition();
+      renderThread = new HandlerThread("ParallaxWallpaperRenderer");
+      renderThread.start();
+      renderHandler = new Handler(renderThread.getLooper());
+      Log.i(TAG, "PARALLAX_ENGINE_CREATED");
+      requestFrame(true);
     }
 
     @Override
     public void onVisibilityChanged(boolean isVisible) {
       visible = isVisible;
+      Log.i(TAG, "PARALLAX_VISIBILITY_CHANGED visible=" + isVisible);
       if (isVisible) {
-        loadComposition();
+        reloadCompositionRequested = true;
         calibrated = false;
         calibrationSamples = 0;
         pitchSum = 0;
@@ -255,58 +306,114 @@ public class ParallaxWallpaperService extends WallpaperService {
         motionY = 0;
         lastTimestamp = 0;
         registerSensor();
-        drawFrame();
+        requestFrame(true);
       } else {
         unregisterSensor();
       }
     }
 
     @Override
+    public void onSurfaceCreated(SurfaceHolder holder) {
+      super.onSurfaceCreated(holder);
+      surfaceReady = true;
+      reloadCompositionRequested = true;
+      Log.i(TAG, "PARALLAX_SURFACE_CREATED valid=" + holder.getSurface().isValid());
+      if (visible) registerSensor();
+      requestFrame(true);
+    }
+
+    @Override
     public void onSurfaceChanged(SurfaceHolder holder, int format, int width, int height) {
       super.onSurfaceChanged(holder, format, width, height);
-      drawFrame();
+      surfaceReady = true;
+      reloadCompositionRequested = true;
+      Log.i(TAG, "PARALLAX_SURFACE_CHANGED width=" + width + " height=" + height + " valid=" + holder.getSurface().isValid());
+      requestFrame(true);
     }
 
     @Override
     public void onSurfaceDestroyed(SurfaceHolder holder) {
-      visible = false;
+      surfaceReady = false;
       unregisterSensor();
+      Log.i(TAG, "PARALLAX_SURFACE_DESTROYED");
       super.onSurfaceDestroyed(holder);
     }
 
+    @Override
+    public void onDestroy() {
+      destroyed = true;
+      surfaceReady = false;
+      unregisterSensor();
+      renderHandler.removeCallbacksAndMessages(null);
+      renderHandler.post(new Runnable() {
+        @Override
+        public void run() {
+          recycleBitmaps();
+          renderThread.quitSafely();
+        }
+      });
+      Log.i(TAG, "PARALLAX_ENGINE_DESTROYED");
+      super.onDestroy();
+    }
+
     private void registerSensor() {
-      if (sensorManager != null && rotationSensor != null) {
+      if (!sensorRegistered && sensorManager != null && rotationSensor != null) {
         sensorManager.registerListener(this, rotationSensor, 16000);
+        sensorRegistered = true;
+        Log.i(TAG, "PARALLAX_SENSOR_REGISTERED");
       }
     }
 
     private void unregisterSensor() {
-      if (sensorManager != null) {
+      if (sensorRegistered && sensorManager != null) {
         sensorManager.unregisterListener(this);
+        sensorRegistered = false;
+        Log.i(TAG, "PARALLAX_SENSOR_UNREGISTERED");
       }
     }
 
-    private void loadComposition() {
+    private void prepareComposition() {
+      if (!reloadCompositionRequested && composition != null) return;
+      reloadCompositionRequested = false;
       String json = getSharedPreferences("parallax_wallpaper", MODE_PRIVATE).getString("composition", null);
-      if (json == null) return;
-      try {
-        composition = new JSONObject(json);
-        bitmaps = new Bitmap[3];
-      } catch (Exception ignored) {
+      if (json == null) {
         composition = null;
+        compositionJson = null;
+        recycleBitmaps();
+        Log.w(TAG, "PARALLAX_COMPOSITION_MISSING");
+        return;
+      }
+      if (json.equals(compositionJson) && composition != null) return;
+
+      try {
+        JSONObject nextComposition = new JSONObject(json);
+        recycleBitmaps();
+        composition = nextComposition;
+        compositionJson = json;
+        intensity = (float) nextComposition.optDouble("intensity", 60) / 60f;
+        JSONObject layers = nextComposition.optJSONObject("layers");
+        if (layers != null) {
+          bitmaps[0] = loadLayerBitmap(layers.optJSONObject("background"), 0);
+          bitmaps[1] = loadLayerBitmap(layers.optJSONObject("middle"), 1);
+          bitmaps[2] = loadLayerBitmap(layers.optJSONObject("foreground"), 2);
+        }
+        Log.i(TAG, "PARALLAX_COMPOSITION_READY");
+      } catch (Exception error) {
+        composition = null;
+        compositionJson = null;
+        recycleBitmaps();
+        Log.e(TAG, "PARALLAX_COMPOSITION_FAILED", error);
       }
     }
 
     @Override
     public void onSensorChanged(SensorEvent event) {
       if (!visible || event.sensor.getType() != Sensor.TYPE_ROTATION_VECTOR) return;
-      float[] rotationMatrix = new float[9];
-      float[] orientation = new float[3];
       SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values);
       WindowManager windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
       Display display = windowManager == null ? null : windowManager.getDefaultDisplay();
+      float[] workingMatrix = rotationMatrix;
       if (display != null) {
-        float[] remappedMatrix = new float[9];
         int axisX = SensorManager.AXIS_X;
         int axisY = SensorManager.AXIS_Y;
         switch (display.getRotation()) {
@@ -326,9 +433,9 @@ public class ParallaxWallpaperService extends WallpaperService {
             break;
         }
         SensorManager.remapCoordinateSystem(rotationMatrix, axisX, axisY, remappedMatrix);
-        rotationMatrix = remappedMatrix;
+        workingMatrix = remappedMatrix;
       }
-      SensorManager.getOrientation(rotationMatrix, orientation);
+      SensorManager.getOrientation(workingMatrix, orientation);
       float pitch = orientation[1];
       float roll = orientation[2];
 
@@ -340,6 +447,7 @@ public class ParallaxWallpaperService extends WallpaperService {
           baselinePitch = pitchSum / calibrationSamples;
           baselineRoll = rollSum / calibrationSamples;
           calibrated = true;
+          Log.i(TAG, "PARALLAX_SENSOR_CALIBRATED");
         }
         lastTimestamp = event.timestamp;
         return;
@@ -347,13 +455,17 @@ public class ParallaxWallpaperService extends WallpaperService {
 
       float dt = lastTimestamp == 0 ? 1f / 60f : Math.max(0.004f, Math.min(0.25f, (event.timestamp - lastTimestamp) / 1000000000f));
       lastTimestamp = event.timestamp;
-      float intensity = composition == null ? 1f : (float) composition.optDouble("intensity", 60) / 60f;
       float targetX = softLimit((float) Math.toDegrees(shortestAngleDelta(roll, baselineRoll)) * 0.45f * intensity, 18f);
       float targetY = softLimit((float) Math.toDegrees(shortestAngleDelta(pitch, baselinePitch)) * 0.4f * intensity, 15f);
       float filter = 1f - (float) Math.exp(-10f * dt);
       motionX += (targetX - motionX) * filter;
       motionY += (targetY - motionY) * filter;
-      drawFrame();
+      long now = SystemClock.elapsedRealtime();
+      if (now - lastSensorLogAt >= DIAGNOSTIC_LOG_INTERVAL_MS) {
+        lastSensorLogAt = now;
+        Log.d(TAG, "PARALLAX_SENSOR_EVENT motionX=" + motionX + " motionY=" + motionY);
+      }
+      requestFrame(false);
     }
 
     @Override
@@ -370,29 +482,93 @@ public class ParallaxWallpaperService extends WallpaperService {
       return limit * (float) Math.tanh(value / limit);
     }
 
-    private Bitmap loadBitmap(String uriString) {
+    private Bitmap loadLayerBitmap(JSONObject layer, int index) {
+      if (layer == null || !layer.optBoolean("enabled", true)) return null;
+      String uriString = layer.optString("uri", "");
+      if (uriString.length() == 0) return null;
+      Log.i(TAG, "PARALLAX_BITMAP_LOAD index=" + index);
       try {
         Uri uri = Uri.parse(uriString);
+        Bitmap bitmap;
         if ("content".equals(uri.getScheme())) {
-          InputStream stream = getContentResolver().openInputStream(uri);
-          Bitmap bitmap = BitmapFactory.decodeStream(stream);
-          if (stream != null) stream.close();
-          return bitmap;
+          try (InputStream stream = getContentResolver().openInputStream(uri)) {
+            bitmap = BitmapFactory.decodeStream(stream);
+          }
+        } else {
+          String path = "file".equals(uri.getScheme()) ? uri.getPath() : uriString;
+          bitmap = BitmapFactory.decodeFile(path);
         }
-        String path = "file".equals(uri.getScheme()) ? uri.getPath() : uriString;
-        return BitmapFactory.decodeFile(path);
-      } catch (Exception ignored) {
+        if (bitmap == null) {
+          Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+        } else {
+          Log.i(TAG, "PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight());
+        }
+        return bitmap;
+      } catch (Exception error) {
+        Log.e(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index, error);
         return null;
       }
     }
 
-    private void drawFrame() {
-      if (!visible || composition == null) return;
+    private void recycleBitmaps() {
+      for (int index = 0; index < bitmaps.length; index += 1) {
+        Bitmap bitmap = bitmaps[index];
+        if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+        bitmaps[index] = null;
+      }
+    }
+
+    private void requestFrame(boolean force) {
+      if (destroyed) return;
+      synchronized (frameLock) {
+        redrawRequested = true;
+        forceDrawRequested = forceDrawRequested || force;
+        if (frameQueued) return;
+        frameQueued = true;
+      }
+      renderHandler.post(renderRunnable);
+    }
+
+    private boolean shouldLogFrame(boolean force) {
+      long now = SystemClock.elapsedRealtime();
+      if (force || !firstFrameDrawn || now - lastFrameLogAt >= DIAGNOSTIC_LOG_INTERVAL_MS) {
+        lastFrameLogAt = now;
+        return true;
+      }
+      return false;
+    }
+
+    private void drawFrame(boolean force) {
+      prepareComposition();
+      boolean logFrame = shouldLogFrame(force);
+      if (!force && !visible) {
+        if (logFrame) Log.d(TAG, "PARALLAX_DRAW_SKIP_NOT_VISIBLE");
+        return;
+      }
+      if (!surfaceReady) {
+        if (logFrame) Log.d(TAG, "PARALLAX_DRAW_SKIP_NO_SURFACE");
+        return;
+      }
+      if (composition == null) {
+        Log.w(TAG, "PARALLAX_DRAW_SKIP_NO_COMPOSITION");
+        return;
+      }
       SurfaceHolder holder = getSurfaceHolder();
+      if (holder.getSurface() == null || !holder.getSurface().isValid()) {
+        Log.w(TAG, "PARALLAX_DRAW_SKIP_NO_SURFACE");
+        return;
+      }
       Canvas canvas = null;
+      boolean posted = false;
       try {
+        if (logFrame) Log.d(TAG, "PARALLAX_DRAW_START force=" + force);
+        if (logFrame) Log.d(TAG, "PARALLAX_LOCK_CANVAS");
         canvas = holder.lockCanvas();
-        if (canvas == null) return;
+        if (canvas == null) {
+          Log.w(TAG, "PARALLAX_LOCK_CANVAS_FAILED reason=null_canvas");
+          return;
+        }
+        if (logFrame) Log.d(TAG, "PARALLAX_LOCK_CANVAS_SUCCESS");
         canvas.drawColor(Color.BLACK);
         float canvasWidth = canvas.getWidth();
         float canvasHeight = canvas.getHeight();
@@ -403,8 +579,22 @@ public class ParallaxWallpaperService extends WallpaperService {
         drawLayer(canvas, layers.optJSONObject("background"), 0, canvasWidth, canvasHeight, coordinateScale);
         drawLayer(canvas, layers.optJSONObject("middle"), 1, canvasWidth, canvasHeight, coordinateScale);
         drawLayer(canvas, layers.optJSONObject("foreground"), 2, canvasWidth, canvasHeight, coordinateScale);
+        posted = true;
+      } catch (Exception error) {
+        Log.e(TAG, "PARALLAX_DRAW_FAILED", error);
       } finally {
-        if (canvas != null) holder.unlockCanvasAndPost(canvas);
+        if (canvas != null) {
+          try {
+            holder.unlockCanvasAndPost(canvas);
+          } catch (Exception error) {
+            posted = false;
+            Log.e(TAG, "PARALLAX_UNLOCK_CANVAS_FAILED", error);
+          }
+        }
+      }
+      if (posted) {
+        firstFrameDrawn = true;
+        if (logFrame) Log.d(TAG, "PARALLAX_DRAW_COMPLETE");
       }
     }
 
@@ -412,7 +602,6 @@ public class ParallaxWallpaperService extends WallpaperService {
       if (layer == null || !layer.optBoolean("enabled", true)) return;
       String uri = layer.optString("uri", "");
       if (uri.length() == 0) return;
-      if (bitmaps[index] == null) bitmaps[index] = loadBitmap(uri);
       Bitmap bitmap = bitmaps[index];
       if (bitmap == null || bitmap.isRecycled()) return;
 
