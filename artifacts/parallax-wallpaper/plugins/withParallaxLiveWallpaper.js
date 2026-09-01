@@ -234,6 +234,8 @@ public class ParallaxWallpaperService extends WallpaperService {
     private final Handler renderHandler;
     private final Object frameLock = new Object();
     private final Bitmap[] bitmaps = new Bitmap[3];
+    private final int[] bitmapSourceWidths = new int[3];
+    private final int[] bitmapSourceHeights = new int[3];
     private final float[] rotationMatrix = new float[9];
     private final float[] remappedMatrix = new float[9];
     private final float[] orientation = new float[3];
@@ -241,6 +243,8 @@ public class ParallaxWallpaperService extends WallpaperService {
     private volatile float intensity = 1f;
     private volatile boolean visible;
     private volatile boolean surfaceReady;
+    private volatile int surfaceWidth;
+    private volatile int surfaceHeight;
     private volatile boolean destroyed;
     private volatile boolean reloadCompositionRequested = true;
     private boolean frameQueued;
@@ -316,6 +320,11 @@ public class ParallaxWallpaperService extends WallpaperService {
     public void onSurfaceCreated(SurfaceHolder holder) {
       super.onSurfaceCreated(holder);
       surfaceReady = true;
+      android.graphics.Rect surfaceFrame = holder.getSurfaceFrame();
+      if (surfaceFrame != null) {
+        surfaceWidth = surfaceFrame.width();
+        surfaceHeight = surfaceFrame.height();
+      }
       reloadCompositionRequested = true;
       Log.i(TAG, "PARALLAX_SURFACE_CREATED valid=" + holder.getSurface().isValid());
       if (visible) registerSensor();
@@ -326,6 +335,8 @@ public class ParallaxWallpaperService extends WallpaperService {
     public void onSurfaceChanged(SurfaceHolder holder, int format, int width, int height) {
       super.onSurfaceChanged(holder, format, width, height);
       surfaceReady = true;
+      surfaceWidth = width;
+      surfaceHeight = height;
       reloadCompositionRequested = true;
       Log.i(TAG, "PARALLAX_SURFACE_CHANGED width=" + width + " height=" + height + " valid=" + holder.getSurface().isValid());
       requestFrame(true);
@@ -334,6 +345,8 @@ public class ParallaxWallpaperService extends WallpaperService {
     @Override
     public void onSurfaceDestroyed(SurfaceHolder holder) {
       surfaceReady = false;
+      surfaceWidth = 0;
+      surfaceHeight = 0;
       unregisterSensor();
       Log.i(TAG, "PARALLAX_SURFACE_DESTROYED");
       super.onSurfaceDestroyed(holder);
@@ -372,7 +385,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       }
     }
 
-    private void prepareComposition() {
+    private void prepareComposition(int targetWidth, int targetHeight) {
       if (!reloadCompositionRequested && composition != null) return;
       reloadCompositionRequested = false;
       String json = getSharedPreferences("parallax_wallpaper", MODE_PRIVATE).getString("composition", null);
@@ -393,9 +406,9 @@ public class ParallaxWallpaperService extends WallpaperService {
         intensity = (float) nextComposition.optDouble("intensity", 60) / 60f;
         JSONObject layers = nextComposition.optJSONObject("layers");
         if (layers != null) {
-          bitmaps[0] = loadLayerBitmap(layers.optJSONObject("background"), 0);
-          bitmaps[1] = loadLayerBitmap(layers.optJSONObject("middle"), 1);
-          bitmaps[2] = loadLayerBitmap(layers.optJSONObject("foreground"), 2);
+          bitmaps[0] = loadLayerBitmap(layers.optJSONObject("background"), 0, targetWidth, targetHeight);
+          bitmaps[1] = loadLayerBitmap(layers.optJSONObject("middle"), 1, targetWidth, targetHeight);
+          bitmaps[2] = loadLayerBitmap(layers.optJSONObject("foreground"), 2, targetWidth, targetHeight);
         }
         Log.i(TAG, "PARALLAX_COMPOSITION_READY");
       } catch (Exception error) {
@@ -482,26 +495,44 @@ public class ParallaxWallpaperService extends WallpaperService {
       return limit * (float) Math.tanh(value / limit);
     }
 
-    private Bitmap loadLayerBitmap(JSONObject layer, int index) {
+    private Bitmap loadLayerBitmap(JSONObject layer, int index, int targetWidth, int targetHeight) {
       if (layer == null || !layer.optBoolean("enabled", true)) return null;
       String uriString = layer.optString("uri", "");
       if (uriString.length() == 0) return null;
       Log.i(TAG, "PARALLAX_BITMAP_LOAD index=" + index);
       try {
         Uri uri = Uri.parse(uriString);
+        String path = "file".equals(uri.getScheme()) ? uri.getPath() : uriString;
+        BitmapFactory.Options boundsOptions = new BitmapFactory.Options();
+        boundsOptions.inJustDecodeBounds = true;
+        if ("content".equals(uri.getScheme())) {
+          try (InputStream stream = getContentResolver().openInputStream(uri)) {
+            BitmapFactory.decodeStream(stream, null, boundsOptions);
+          }
+        } else {
+          BitmapFactory.decodeFile(path, boundsOptions);
+        }
+
+        int sourceWidth = boundsOptions.outWidth;
+        int sourceHeight = boundsOptions.outHeight;
+        int sampleSize = calculateInSampleSize(layer, sourceWidth, sourceHeight, targetWidth, targetHeight);
+        BitmapFactory.Options decodeOptions = new BitmapFactory.Options();
+        decodeOptions.inSampleSize = sampleSize;
+
         Bitmap bitmap;
         if ("content".equals(uri.getScheme())) {
           try (InputStream stream = getContentResolver().openInputStream(uri)) {
-            bitmap = BitmapFactory.decodeStream(stream);
+            bitmap = BitmapFactory.decodeStream(stream, null, decodeOptions);
           }
         } else {
-          String path = "file".equals(uri.getScheme()) ? uri.getPath() : uriString;
-          bitmap = BitmapFactory.decodeFile(path);
+          bitmap = BitmapFactory.decodeFile(path, decodeOptions);
         }
         if (bitmap == null) {
           Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
         } else {
-          Log.i(TAG, "PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight());
+          bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
+          bitmapSourceHeights[index] = sourceHeight > 0 ? sourceHeight : bitmap.getHeight();
+          Log.i(TAG, "PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight() + " sampleSize=" + sampleSize);
         }
         return bitmap;
       } catch (Exception error) {
@@ -510,11 +541,36 @@ public class ParallaxWallpaperService extends WallpaperService {
       }
     }
 
+    private int calculateInSampleSize(JSONObject layer, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight) {
+      if (sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0) return 1;
+
+      double imageWidth = layer.optDouble("imageWidth", sourceWidth);
+      double imageHeight = layer.optDouble("imageHeight", sourceHeight);
+      if (imageWidth <= 0 || imageHeight <= 0) return 1;
+
+      double fitScale = Math.max(targetWidth / imageWidth, targetHeight / imageHeight);
+      double layerScale = Math.max(0.001, layer.optDouble("scale", 1));
+      JSONObject crop = layer.optJSONObject("sourceCrop");
+      double renderedWidth = crop == null ? imageWidth : crop.optDouble("width", imageWidth);
+      double renderedHeight = crop == null ? imageHeight : crop.optDouble("height", imageHeight);
+      double requiredWidth = renderedWidth * fitScale * layerScale;
+      double requiredHeight = renderedHeight * fitScale * layerScale;
+
+      int sampleSize = 1;
+      while (sourceWidth / (sampleSize * 2) >= requiredWidth
+          && sourceHeight / (sampleSize * 2) >= requiredHeight) {
+        sampleSize *= 2;
+      }
+      return sampleSize;
+    }
+
     private void recycleBitmaps() {
       for (int index = 0; index < bitmaps.length; index += 1) {
         Bitmap bitmap = bitmaps[index];
         if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         bitmaps[index] = null;
+        bitmapSourceWidths[index] = 0;
+        bitmapSourceHeights[index] = 0;
       }
     }
 
@@ -539,14 +595,8 @@ public class ParallaxWallpaperService extends WallpaperService {
     }
 
     private void drawFrame(boolean force) {
-      long prepareStartNanos = SystemClock.elapsedRealtimeNanos();
-      prepareComposition();
-      long prepareEndNanos = SystemClock.elapsedRealtimeNanos();
       boolean logFrame = shouldLogFrame(force);
-      if (logFrame) {
-        Log.d(TAG, "PARALLAX_COMPOSITION_TIMING prepare=" + durationMs(prepareStartNanos, prepareEndNanos) + "ms");
-      }
-      if (!force && !visible) {
+      if (!visible) {
         if (logFrame) Log.d(TAG, "PARALLAX_DRAW_SKIP_NOT_VISIBLE");
         return;
       }
@@ -554,13 +604,19 @@ public class ParallaxWallpaperService extends WallpaperService {
         if (logFrame) Log.d(TAG, "PARALLAX_DRAW_SKIP_NO_SURFACE");
         return;
       }
-      if (composition == null) {
-        Log.w(TAG, "PARALLAX_DRAW_SKIP_NO_COMPOSITION");
-        return;
-      }
       SurfaceHolder holder = getSurfaceHolder();
       if (holder.getSurface() == null || !holder.getSurface().isValid()) {
         Log.w(TAG, "PARALLAX_DRAW_SKIP_NO_SURFACE");
+        return;
+      }
+      long prepareStartNanos = SystemClock.elapsedRealtimeNanos();
+      prepareComposition(surfaceWidth, surfaceHeight);
+      long prepareEndNanos = SystemClock.elapsedRealtimeNanos();
+      if (logFrame) {
+        Log.d(TAG, "PARALLAX_COMPOSITION_TIMING prepare=" + durationMs(prepareStartNanos, prepareEndNanos) + "ms");
+      }
+      if (composition == null) {
+        Log.w(TAG, "PARALLAX_DRAW_SKIP_NO_COMPOSITION");
         return;
       }
       Canvas canvas = null;
@@ -682,8 +738,10 @@ public class ParallaxWallpaperService extends WallpaperService {
         float top = (canvasHeight - originalHeight * drawScale) / 2f + cropY * drawScale + layerY + motionTop;
         destination = new RectF(left, top, left + cropWidth * drawScale, top + cropHeight * drawScale);
       } else {
-        float width = bitmap.getWidth() * drawScale;
-        float height = bitmap.getHeight() * drawScale;
+        float sourceWidth = bitmapSourceWidths[index] > 0 ? bitmapSourceWidths[index] : bitmap.getWidth();
+        float sourceHeight = bitmapSourceHeights[index] > 0 ? bitmapSourceHeights[index] : bitmap.getHeight();
+        float width = sourceWidth * drawScale;
+        float height = sourceHeight * drawScale;
         float left = (canvasWidth - width) / 2f + layerX + motionLeft;
         float top = (canvasHeight - height) / 2f + layerY + motionTop;
         destination = new RectF(left, top, left + width, top + height);
