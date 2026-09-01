@@ -21,4 +21,4 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
-packages = ["android-tools"]
+packages = ["android-tools", "android-sdk", "jdk17", "nano"]
