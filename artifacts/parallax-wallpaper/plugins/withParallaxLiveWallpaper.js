@@ -532,7 +532,9 @@ public class ParallaxWallpaperService extends WallpaperService {
         } else {
           bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
           bitmapSourceHeights[index] = sourceHeight > 0 ? sourceHeight : bitmap.getHeight();
-          Log.i(TAG, "PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight() + " sampleSize=" + sampleSize);
+          boolean prewarmed = index == 0;
+          if (prewarmed) bitmap.prepareToDraw();
+          Log.i(TAG, "PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight() + " sampleSize=" + sampleSize + " prewarmed=" + prewarmed);
         }
         return bitmap;
       } catch (Exception error) {
