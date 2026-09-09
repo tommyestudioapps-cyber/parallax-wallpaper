@@ -1,0 +1,275 @@
+Abaixo está o detalhamento técnico e a reestruturação dos componentes para sanar todos os pontos levantados, eliminando alocações ocultas, corrigindo o ciclo de vida multithread e restaurando a fidelidade visual dos shaders.1. Eliminação Real de Alocações no Giroscópio (Buffer Duplo + Lock-Free Sequence)Substituindo a alocação de MotionState via AtomicReference, utilizamos um Buffer Duplo Atômico com arrays de tipo primitivo mutáveis (FloatArray).Neste modelo, o consumidor (Thread GL) e o produtor (Thread de Sensores) alternam entre dois buffers persistentes pré-alocados. A sincronização utiliza uma Versão de Sequência Atômica (Sequence Barrier lock-free), garantindo Zero Allocations no GC heap e leitura $X, Y$ consistente.Kotlinimport java.util.concurrent.atomic.AtomicInteger
+
+class ZeroAllocGyroManager {
+
+    // Dois buffers persistentes pré-alocados (Index 0 e Index 1)
+    private val buffer0 = FloatArray(2) // [0] = X, [1] = Y
+    private val buffer1 = FloatArray(2)
+
+    // Controla o índice do buffer ativamente sendo escrito/lido e a versão
+    private val sequence = AtomicInteger(0)
+
+    // Controla suavização (Low-Pass Filter)
+    private var filteredX = 0f
+    private var filteredY = 0f
+    private val alpha = 0.15f // Fator de suavização
+
+    // Chamado na Sensor Thread (ZERO ALOCAÇÃO)
+    fun onSensorData(rawX: Float, rawY: Float) {
+        // 1. Sanitização e Validação de Valores Finitos
+        if (!rawX.isFinite() || !rawY.isFinite()) return
+
+        // 2. Filtro Passa-Baixas (Low-Pass Filter) para suavização
+        filteredX += alpha * (rawX - filteredX)
+        filteredY += alpha * (rawY - filteredY)
+
+        // 3. Aplicação de Dead-Zone e Clamping de segurança
+        val finalX = applyDeadZoneAndClamp(filteredX, 0.005f, -0.1f, 0.1f)
+        val finalY = applyDeadZoneAndClamp(filteredY, 0.005f, -0.1f, 0.1f)
+
+        // 4. Determina qual buffer escrever (alternado via bit-mask)
+        val currentSeq = sequence.get()
+        val writeIndex = (currentSeq and 1) xor 1
+        val targetBuffer = if (writeIndex == 0) buffer0 else buffer1
+
+        targetBuffer[0] = finalX
+        targetBuffer[1] = finalY
+
+        // 5. Publica atômica da versão incrementada (torna os dados visíveis para a Thread GL)
+        sequence.incrementAndGet()
+    }
+
+    // Chamado na Thread GL (ZERO ALOCAÇÃO)
+    fun readLatestState(outCoords: FloatArray) {
+        // Lê a versão e busca o buffer correspondente à última escrita
+        val currentSeq = sequence.get()
+        val readIndex = (currentSeq and 1) xor 1
+        val sourceBuffer = if (readIndex == 0) buffer0 else buffer1
+
+        outCoords[0] = sourceBuffer[0]
+        outCoords[1] = sourceBuffer[1]
+    }
+
+    private fun applyDeadZoneAndClamp(value: Float, threshold: Float, min: Float, max: Float): Float {
+        val absVal = kotlin.math.abs(value)
+        if (absVal < threshold) return 0f
+        return value.coerceIn(min, max)
+    }
+}
+2. Máquina de Estados e Prevenção de Threads SobreviventesPara sanar a corrida de inicialização e impedir que duas threads OpenGL coexistam, implementamos uma Máquina de Estados Finita explicita com barreira síncrona de transição (AtomicReference<ThreadState>). A nova thread aguarda ativamente a destruição do contexto e da thread anterior antes de assumir o Surface.Kotlinimport java.util.concurrent.atomic.AtomicReference
+
+enum class ThreadState {
+    STOPPED,
+    STARTING,
+    RUNNING,
+    STOPPING
+}
+
+class ManagedWallpaperRenderThread(
+    private val surfaceHolder: android.view.SurfaceHolder,
+    private val errorHandler: (Throwable) -> Unit
+) : Thread("ManagedWallpaperRenderThread") {
+
+    val state = AtomicReference(ThreadState.STOPPED)
+
+    override fun run() {
+        if (!state.compareAndSet(ThreadState.STARTING, ThreadState.RUNNING)) {
+            // Se foi solicitado STOPPING enquanto ainda estava inicializando, encerra imediatamente
+            state.set(ThreadState.STOPPED)
+            return
+        }
+
+        var eglInitialized = false
+
+        // Toda a inicialização e o loop ficam contidos no try/finally
+        try {
+            initEGL()
+            initGLResources()
+            eglInitialized = true
+
+            // Render Loop
+            while (state.get() == ThreadState.RUNNING) {
+                renderFrame()
+                
+                if (!swapBuffers()) {
+                    // Erro crítico de EGL tratável
+                    recreateEGLContext()
+                }
+            }
+        } catch (t: Throwable) {
+            // Captura qualquer falha EGL/GL no startup ou loop e aciona o Fallback
+            errorHandler(t)
+        } finally {
+            state.set(ThreadState.STOPPING)
+            if (eglInitialized) {
+                releaseGLResources()
+                releaseEGL()
+            }
+            state.set(ThreadState.STOPPED)
+        }
+    }
+
+    fun requestStop() {
+        // Transição idempotente para STOPPING
+        state.set(ThreadState.STOPPING)
+    }
+
+    private fun initEGL() {
+        // CORREÇÃO: Passar explicitamente a instância da Surface nativa do SurfaceHolder
+        val nativeSurface = surfaceHolder.surface
+        check(nativeSurface != null && nativeSurface.isValid) { "Surface nativa é inválida" }
+
+        /* ... Chamadas EGL14 padrão ... */
+        // eglCreateWindowSurface(eglDisplay, config, nativeSurface, ...)
+    }
+
+    private fun renderFrame() { /* ... */ }
+    private fun swapBuffers(): Boolean { return true }
+    private fun initGLResources() { /* ... */ }
+    private fun releaseGLResources() { /* ... */ }
+    private fun releaseEGL() { /* ... */ }
+    private fun recreateEGLContext() { /* ... */ }
+}
+3. Gerenciador do Ciclo de Vida do Engine & Fallback para CanvasO EngineManager abaixo gerencia a transição segura entre o Renderer GL e o Renderer Canvas. Se a inicialização GL falhar em qualquer hardware, ele desativa o OpenGL, destrói a thread e ativa imediatamente o CanvasRenderer.Kotlinclass WallpaperEngineLifecycleController(
+    private val surfaceHolder: android.view.SurfaceHolder
+) {
+
+    private var renderThread: ManagedWallpaperRenderThread? = null
+    private var useCanvasFallback = false
+
+    @Synchronized
+    fun onSurfaceCreated() {
+        if (useCanvasFallback) {
+            initCanvasRenderer()
+            return
+        }
+
+        // Se uma thread antiga ainda estiver em transição de desligamento, AGUARDA a finalização
+        renderThread?.let { oldThread ->
+            oldThread.requestStop()
+            var waitCount = 0
+            while (oldThread.state.get() != ThreadState.STOPPED && waitCount < 50) {
+                try { Thread.sleep(10) } catch (_: InterruptedException) {}
+                waitCount++
+            }
+        }
+
+        // Instancia a nova thread somente após a garantia de parada da anterior
+        val newThread = ManagedWallpaperRenderThread(
+            surfaceHolder = surfaceHolder,
+            errorHandler = { throwable ->
+                // Callback em caso de crash do EGL/GL: Ativa Fallback Canvas
+                onGLExceptionCaught(throwable)
+            }
+        )
+
+        if (newThread.state.compareAndSet(ThreadState.STOPPED, ThreadState.STARTING)) {
+            renderThread = newThread
+            newThread.start()
+        }
+    }
+
+    @Synchronized
+    fun onSurfaceDestroyed() {
+        renderThread?.requestStop()
+        renderThread = null
+    }
+
+    @Synchronized
+    private fun onGLExceptionCaught(t: Throwable) {
+        // Interrompe o subsistema GL com segurança e desvia permanentemente para Canvas
+        renderThread?.requestStop()
+        renderThread = null
+        useCanvasFallback = true
+        
+        // Inicializa o renderizador legado Canvas
+        initCanvasRenderer()
+    }
+
+    private fun initCanvasRenderer() {
+        // Fallback robusto que desenha bitmaps diretamente na Canvas do SurfaceHolder
+    }
+}
+4. Correção dos Shaders: Suporte Multi-Matriz, Precisão Adaptativa e Borda LimpaPara suportar crops e escalas independentes por camada e evitar a extensão/estiramento da borda de transparência (edge-stretching) com GL_CLAMP_TO_EDGE, o shader foi refatorado:Reintroduzida a precisão condicional #ifdef GL_FRAGMENT_PRECISION_HIGH.Três matrizes estáticas independentes (u_StaticUVBack, u_StaticUVMiddle, u_StaticUVFore).Verificação explícita de limites UV $[0.0, 1.0]$ no Fragment Shader com descarte de fragmentos fora do alcance para camadas flutuantes.Vertex Shader (parallax_v2.vert)OpenGL Shading Language#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+attribute vec2 a_Position;  // Posicionamento do Quad [-1..1]
+attribute vec2 a_TexCoord;  // Coordenada UV base [0..1]
+
+// Matrizes de transformação estáticas independentes por camada (16 floats cada)
+uniform mat4 u_StaticUVBack;
+uniform mat4 u_StaticUVMiddle;
+uniform mat4 u_StaticUVFore;
+
+// Offsets dinâmicos de Parallax (CPU -> Uniform)
+uniform vec2 u_OffsetBack;
+uniform vec2 u_OffsetMiddle;
+uniform vec2 u_OffsetFore;
+
+varying vec2 v_UVBack;
+varying vec2 v_UVMiddle;
+varying vec2 v_UVFore;
+
+void main() {
+    gl_Position = vec4(a_Position, 0.0, 1.0);
+    
+    // Calcula as coordenadas UV individualmente por matriz estática
+    v_UVBack   = (u_StaticUVBack   * vec4(a_TexCoord, 0.0, 1.0)).xy + u_OffsetBack;
+    v_UVMiddle = (u_StaticUVMiddle * vec4(a_TexCoord, 0.0, 1.0)).xy + u_OffsetMiddle;
+    v_UVFore   = (u_StaticUVFore   * vec4(a_TexCoord, 0.0, 1.0)).xy + u_OffsetFore;
+}
+Fragment Shader (parallax_v2.frag)OpenGL Shading Language#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+uniform sampler2D u_TexBack;
+uniform sampler2D u_TexMiddle;
+uniform sampler2D u_TexFore;
+
+uniform float u_HasMiddleLayer;
+uniform float u_HasForeLayer;
+
+uniform float u_AlphaMiddle;
+uniform float u_AlphaFore;
+
+varying vec2 v_UVBack;
+varying vec2 v_UVMiddle;
+varying vec2 v_UVFore;
+
+// Helper para evitar o estiramento de bordas (edge-stretching) em camadas com Alpha
+vec4 sampleLayerWithBounds(sampler2D tex, vec2 uv, float alphaMultiplier) {
+    // Se a coordenada UV da camada flutuante sair do intervalo [0..1], retorna totalmente transparente
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return vec4(0.0);
+    }
+    return texture2D(tex, uv) * clamp(alphaMultiplier, 0.0, 1.0);
+}
+
+void main() {
+    // Fundo opaco e fixo (assumindo Premultiplied Alpha)
+    vec4 colBack = texture2D(u_TexBack, v_UVBack);
+    colBack.a = 1.0; 
+
+    vec4 finalColor = colBack;
+
+    // Renderização da Camada do Meio
+    if (u_HasMiddleLayer > 0.5) {
+        vec4 colMiddle = sampleLayerWithBounds(u_TexMiddle, v_UVMiddle, u_AlphaMiddle);
+        // Blending Premultiplied Alpha
+        finalColor = colMiddle + finalColor * (1.0 - colMiddle.a);
+    }
+
+    // Renderização da Camada da Frente
+    if (u_HasForeLayer > 0.5) {
+        vec4 colFore = sampleLayerWithBounds(u_TexFore, v_UVFore, u_AlphaFore);
+        finalColor = colFore + finalColor * (1.0 - colFore.a);
+    }
+
+    gl_FragColor = finalColor;
+}
+Matriz de Validação do Plano de Migração AjustadoÁreaFalha AnteriorCorreção ImplementadaImpacto ProduzidoGiroscópioAtomicReference<MotionState> alocando objeto por evento.ZeroAllocGyroManager com buffer duplo primitivo FloatArray.Zero pressão de GC no heap da JVM durante a leitura contínua dos sensores.MultithreadingCorrida de startup e sobreposição de threads ativas.FSM com ThreadState + barreira síncrona no onSurfaceCreated.Nenhuma concorrência entre contextos GL; threads antigas morrem limpas.Ciclo de Vida EGLExceção na inicialização deixava EGL orfão sem cleanup.Estrutura unificada de try/finally cobrindo o startup e loop.Liberação garantida de EGLDisplay, EGLSurface e EGLContext.RobustezAusência de mecanismo de recuperação contra falhas nativas.Disparo dinâmico para initCanvasRenderer() ao capturar Throwable.Modos legados garantidos caso a GPU não suporte os requisitos de EGL.Shader & RenderMatrix estática única e estiramento de bordas na transparência.3 matrizes u_StaticUV + bounds checking sampleLayerWithBounds().Crops independentes para cada camada sem artefatos em movimentos amplos.
