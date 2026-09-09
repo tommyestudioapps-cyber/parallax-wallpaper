@@ -1,0 +1,212 @@
+Esta resposta não traz mais código hipotético completo, nem tenta vender uma "solução definitiva com /* ... */". Em vez disso, ela aceita a sua sequência incremental, responde aos pontos ainda abertos com definições arquiteturais diretas e apresenta o Passo 1 real e executável para você copiar, rodar no aparelho e medir.Fechando as Definições Arquiteturais (Regras do Produto)Para interromper o ciclo visual e de concorrência, estas decisões ficam consolidadas como contrato fixo:Snapshots do Giroscópio (Concorrência vs. Simplicidade):Decisão: Abandona-se a ilusão de lock-free purista. Um @Synchronized extremamente curto (cópia de apenas dois Float em um bloco de $< 1\,\mu\text{s}$) ou uma classe imutável simples é infinitamente mais confiável e livre de corridas do que um buffer duplo complexo e mal validado.Ciclo de Vida da Thread GL (Parada Assíncrona Não-Bloqueante):Decisão: O callback da Surface no Android nunca bloqueia. Ao receber onSurfaceDestroyed(), o controlador envia o sinal de parada e descarta o listener, mas mantém a referência interna da thread viva na FSM. Se onSurfaceCreated() for disparado em seguida, o controlador enfileira a criação ou aguarda o callback de encerramento real da thread antiga (onTerminated). A thread antiga é a única responsável por destruir seu contexto EGL e sinalizar que morreu.Comportamento Visual das Camadas (Regra de Produção):Fundo (Camada 0): Preenchimento total da tela com overscan mínimo (ex: 5% a 10% maior que a viewport) e amostragem GL_CLAMP_TO_EDGE. O fundo absorve o deslocamento sem exibir bordas limítrofes.Meio e Frente (Camadas 1 e 2): Deslocamento estritamente limitado pela margem de segurança. Fora da matriz UV $[0..1]$, o fragment shader retorna vec4(0.0). Se a arte cortar, a responsabilidade é da calibração das matrizes e do overscan da imagem, não do shader.Fallback Canvas:Decisão: Não é um alternador dinâmico em tempo de execução. É uma saída de emergência definitiva. Se a inicialização do EGL falhar ou houver um crash irrecuperável na thread GL, a thread GL se encerra completamente, libera a Surface e sinaliza ao controlador. Somente após a confirmação de encerramento da thread GL, o motor Canvas é instanciado.Sequência Incremental de Implementação e MediçãoConforme o seu roteiro seguro, o desenvolvimento será fatiado estritamente nas seguintes etapas:Plaintext[Passo 1: Ciclo EGL Básico e FSM da Thread] ──► Testar ciclo de vida no aparelho
+  └─► [Passo 2: Renderização de Quad Vermelho Solido (Clear Screen)]
+        └─► [Passo 3: Carregamento de 1 Textura Opaca]
+              └─► [Passo 4: 3 Texturas + Compositing Premultiplied Alpha]
+                    └─► [Passo 5: Aplicação das Matrizes Estáticas]
+                          └─► [Passo 6: Entrada do Giroscópio (Snapshot Simples)]
+                                └─► [Passo 7: Teste de Perda de Contexto e Fallback]
+Passo 1 Executável: Validação do Ciclo EGL e Máquina de Estados da ThreadAbaixo está a implementação mínima e estrita do Passo 1. O único objetivo deste código é validar se a thread OpenGL consegue subir o EGL, rodar um loop de renderização básico (glClearColor), encerrar o próprio contexto EGL de forma assíncrona ao receber a ordem de parada e permitir recriações sucessivas (ex: girar a tela ou alternar o papel de parede) sem travar a UI e sem sobrepor threads.Este código não possui reticências (/* ... */) no ciclo de vida e pode ser testado diretamente no projeto.1. A Thread GL com Auto-Encerramento (EglStage1Thread.kt)Kotlinpackage com.example.wallpaper.gl
+
+import android.opengl.EGL14
+import android.opengl.EGLConfig
+import android.opengl.EGLContext
+import android.opengl.EGLDisplay
+import android.opengl.EGLSurface
+import android.opengl.GLES20
+import android.util.Log
+import android.view.SurfaceHolder
+import java.util.concurrent.atomic.AtomicBoolean
+
+class EglStage1Thread(
+    private val surfaceHolder: SurfaceHolder,
+    private val onThreadTerminated: (EglStage1Thread) -> Unit,
+    private val onEglError: (Throwable) -> Unit
+) : Thread("EglStage1Thread") {
+
+    private val stopRequested = AtomicBoolean(false)
+
+    @Volatile
+    var isTerminated = false
+        private set
+
+    private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
+    private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
+    private var eglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
+
+    override fun run() {
+        Log.d(TAG, "Thread GL iniciada: ${this.name}")
+        try {
+            if (stopRequested.get()) return
+
+            initEGL()
+
+            // Loop de validação do Passo 1: apenas limpa a tela com cor sólida
+            var greenChannel = 0.0f
+            while (!stopRequested.get()) {
+                greenChannel = (greenChannel + 0.01f) % 1.0f
+                
+                GLES20.glClearColor(0.2f, greenChannel, 0.4f, 1.0f)
+                GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+
+                if (!EGL14.eglSwapBuffers(eglDisplay, eglSurface)) {
+                    val error = EGL14.eglGetError()
+                    if (error == EGL14.EGL_CONTEXT_LOST || error == EGL14.EGL_BAD_SURFACE) {
+                        Log.w(TAG, "Contexto EGL perdido ou superfície inválida. Código: $error")
+                        break
+                    }
+                }
+
+                // Limita a taxa no Passo 1 para não sobrecarregar a CPU antes do VSync
+                sleep(16)
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Erro fatal no ciclo EGL", t)
+            onEglError(t)
+        } finally {
+            releaseEGL()
+            isTerminated = true
+            Log.d(TAG, "Thread GL encerrada e EGL liberado completamente: ${this.name}")
+            onThreadTerminated(this)
+        }
+    }
+
+    fun requestStop() {
+        stopRequested.set(true)
+    }
+
+    private fun initEGL() {
+        val surface = surfaceHolder.surface
+        require(surface != null && surface.isValid) { "Surface nativa inválida na inicialização" }
+
+        eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        check(eglDisplay != EGL14.EGL_NO_DISPLAY) { "eglGetDisplay falhou" }
+
+        val version = IntArray(2)
+        check(EGL14.eglInitialize(eglDisplay, version, 0, version, 1)) { "eglInitialize falhou" }
+
+        val configAttribs = intArrayOf(
+            EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
+            EGL14.EGL_RED_SIZE, 8,
+            EGL14.EGL_GREEN_SIZE, 8,
+            EGL14.EGL_BLUE_SIZE, 8,
+            EGL14.EGL_ALPHA_SIZE, 8,
+            EGL14.EGL_NONE
+        )
+
+        val configs = arrayOfNulls<EGLConfig>(1)
+        val numConfigs = IntArray(1)
+        check(EGL14.eglChooseConfig(eglDisplay, configAttribs, 0, configs, 0, 1, numConfigs, 0) && numConfigs[0] > 0) {
+            "Nenhuma configuração EGL 8888 compatível encontrada"
+        }
+
+        val contextAttribs = intArrayOf(
+            EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
+            EGL14.EGL_NONE
+        )
+
+        eglContext = EGL14.eglCreateContext(eglDisplay, configs[0], EGL14.EGL_NO_CONTEXT, contextAttribs, 0)
+        check(eglContext != EGL14.EGL_NO_CONTEXT) { "eglCreateContext falhou" }
+
+        eglSurface = EGL14.eglCreateWindowSurface(eglDisplay, configs[0], surface, intArrayOf(EGL14.EGL_NONE), 0)
+        check(eglSurface != EGL14.EGL_NO_SURFACE) { "eglCreateWindowSurface falhou" }
+
+        check(EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) { "eglMakeCurrent falhou" }
+    }
+
+    private fun releaseEGL() {
+        if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
+            EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+            if (eglSurface != EGL14.EGL_NO_SURFACE) {
+                EGL14.eglDestroySurface(eglDisplay, eglSurface)
+                eglSurface = EGL14.EGL_NO_SURFACE
+            }
+            if (eglContext != EGL14.EGL_NO_CONTEXT) {
+                EGL14.eglDestroyContext(eglDisplay, eglContext)
+                eglContext = EGL14.EGL_NO_CONTEXT
+            }
+            EGL14.eglTerminate(eglDisplay)
+            eglDisplay = EGL14.EGL_NO_DISPLAY
+        }
+    }
+
+    companion object {
+        private const val TAG = "EglStage1Thread"
+    }
+}
+2. O Controlador de Ciclo de Vida Sem Bloqueios (Stage1WallpaperEngine.kt)Kotlinpackage com.example.wallpaper.gl
+
+import android.util.Log
+import android.view.SurfaceHolder
+
+class Stage1WallpaperEngine(
+    private val surfaceHolder: SurfaceHolder
+) {
+
+    @Volatile
+    private var currentThread: EglStage1Thread? = null
+
+    private val lock = Any()
+    private var isPendingSurfaceCreate = false
+
+    fun onSurfaceCreated() {
+        synchronized(lock) {
+            Log.d(TAG, "onSurfaceCreated recebido da UI Thread")
+            val active = currentThread
+
+            if (active != null && !active.isTerminated) {
+                // Existe uma thread antiga ainda rodando. Solicita parada e marca pendência.
+                Log.w(TAG, "Thread antiga ainda em execução. Solicitando parada sem bloquear a UI.")
+                active.requestStop()
+                isPendingSurfaceCreate = true
+            } else {
+                // Nenhuma thread ativa: cria imediatamente a nova thread
+                spawnGlThreadLocked()
+            }
+        }
+    }
+
+    fun onSurfaceDestroyed() {
+        synchronized(lock) {
+            Log.d(TAG, "onSurfaceDestroyed recebido da UI Thread")
+            isPendingSurfaceCreate = false
+            currentThread?.requestStop()
+            // A referência NÃO é anulada aqui. A thread se desassocia no callback de encerramento.
+        }
+    }
+
+    private fun spawnGlThreadLocked() {
+        isPendingSurfaceCreate = false
+        val thread = EglStage1Thread(
+            surfaceHolder = surfaceHolder,
+            onThreadTerminated = { terminatedThread ->
+                handleThreadTerminated(terminatedThread)
+            },
+            onEglError = { throwable ->
+                Log.e(TAG, "EGL falhou na thread. Ativando sinalização de Fallback.", throwable)
+            }
+        )
+        currentThread = thread
+        thread.start()
+    }
+
+    private fun handleThreadTerminated(terminatedThread: EglStage1Thread) {
+        synchronized(lock) {
+            Log.d(TAG, "Callback de encerramento recebido da thread: ${terminatedThread.name}")
+            if (currentThread === terminatedThread) {
+                currentThread = null
+            }
+
+            // Se havia um pedido de reabertura pendente (ex: rotate de tela rápido), executa agora
+            if (isPendingSurfaceCreate) {
+                Log.d(TAG, "Executando abertura de superfície pendente...")
+                spawnGlThreadLocked()
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "Stage1Engine"
+    }
+}
+O Que Medir e Observar com Este Passo 1Ao rodar esse teste no seu dispositivo real, monitore o Logcat filtrando pelas tags Stage1Engine e EglStage1Thread realizando os seguintes procedimentos:Teste de Destruição e Reabertura Rápida: Alternar entre a Home Screen e as Configurações do Live Wallpaper rapidamente, ou girar a tela várias vezes consecutivas.Resultado Esperado: O onSurfaceCreated não deve travar a interface do usuário. A thread antiga encerra seu ciclo EGL, emite o log Thread GL encerrada e EGL liberado completamente e só então a nova thread assume a superfície.Uso de Memória e Leaks de Thread: Observar no Profiler do Android Studio se o número de threads cresce com a troca de superfície ou se permanece constante ($1$ thread ativa por vez).Estabilidade de GPU: Confirmar que a tela pisca em tons de azul/verde (pelo glClearColor) sem gerar erros de EGL_BAD_SURFACE ou crashes de driver no log nativo.
