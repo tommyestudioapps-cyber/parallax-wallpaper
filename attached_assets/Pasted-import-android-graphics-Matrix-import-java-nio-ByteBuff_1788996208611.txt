@@ -1,0 +1,63 @@
+import android.graphics.Matrix
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+
+class ParallaxMatrixHelper {
+
+    private val tempMatrix = Matrix()
+    private val invertedMatrix = Matrix()
+    private val glMatrixValues = FloatArray(9)
+
+    /**
+     * Calcula a matriz de transformação de UV para ser passada ao shader.
+     *
+     * @param isBackground Se true, aplica a margem de segurança (Overscan) para não revelar bordas
+     */
+    fun calculateLayerMatrix(
+        viewWidth: Float, viewHeight: Float,
+        imgWidth: Float, imgHeight: Float,
+        scale: Float, cropX: Float, cropY: Float,
+        parallaxOffsetX: Float, parallaxOffsetY: Float,
+        isBackground: Boolean = false
+    ): FloatBuffer {
+        tempMatrix.reset()
+
+        // 1. Mapeia as coordenadas UV normalizadas da tela (0..1) para pixels
+        tempMatrix.postScale(viewWidth, viewHeight)
+
+        // 2. Define a origem no centro para aplicar a escala no meio da imagem
+        tempMatrix.postTranslate(-viewWidth / 2f, -viewHeight / 2f)
+
+        // 3. Aplica a escala de enquadramento (com +10% de Overscan se for o fundo)
+        val overscan = if (isBackground) 1.10f else 1.0f
+        val finalScale = scale * overscan
+        tempMatrix.postScale(1f / finalScale, 1f / finalScale)
+
+        // 4. Retorna a origem
+        tempMatrix.postTranslate(viewWidth / 2f, viewHeight / 2f)
+
+        // 5. Aplica a Posição/Crop do usuário + o Deslocamento do Giroscópio
+        tempMatrix.postTranslate(-cropX - parallaxOffsetX, -cropY - parallaxOffsetY)
+
+        // 6. Converte de pixels de volta para coordenadas UV da textura (0..1)
+        tempMatrix.postScale(1f / imgWidth, 1f / imgHeight)
+
+        // Inverte a matriz (mapeamos do espaço da Tela para a Textura no Fragment Shader)
+        tempMatrix.invert(invertedMatrix)
+        invertedMatrix.getValues(glMatrixValues)
+
+        // Reorganiza a matriz 3x3 do Android para o formato Column-Major do OpenGL
+        val buffer = ByteBuffer.allocateDirect(9 * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+
+        buffer.put(floatArrayOf(
+            glMatrixValues[0], glMatrixValues[3], glMatrixValues[6],
+            glMatrixValues[1], glMatrixValues[4], glMatrixValues[7],
+            glMatrixValues[2], glMatrixValues[5], glMatrixValues[8]
+        )).position(0)
+
+        return buffer
+    }
+}
