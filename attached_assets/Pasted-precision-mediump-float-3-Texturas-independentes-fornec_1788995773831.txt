@@ -1,0 +1,61 @@
+precision mediump float;
+
+// 3 Texturas independentes fornecidas pelo app
+uniform sampler2D u_TexBackground; // Camada 1 (Fundo)
+uniform sampler2D u_TexMiddle;     // Camada 2 (Meio)
+uniform sampler2D u_TexForeground; // Camada 3 (Frente)
+
+// Matrizes de Transformação UV para cada camada (Contém Scale, Crop, Alignment e Parallax Shift)
+uniform mat3 u_MatBack;
+uniform mat3 u_MatMiddle;
+uniform mat3 u_MatFore;
+
+// Opacidade global configurável por camada no app (Ex: 0.0 a 1.0)
+uniform float u_AlphaBack;
+uniform float u_AlphaMiddle;
+uniform float u_AlphaFore;
+
+varying vec2 v_TexCoord;
+
+// Funçao auxiliar para amostragem com matriz de transformação e descarte de borda
+vec4 sampleLayer(sampler2D tex, mat3 transformMat, float layerAlpha) {
+    // Aplica a matriz de transformação 2D (escala, translação/parallax e crop)
+    vec3 transformedUV = transformMat * vec3(v_TexCoord, 1.0);
+    vec2 uv = transformedUV.xy;
+
+    // Se o UV sair dos limites [0, 1] pós-transformação/parallax, retorna transparente
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return vec4(0.0);
+    }
+
+    vec4 color = texture2D(tex, uv);
+    color.a *= layerAlpha; // Aplica opacidade da camada
+    return color;
+}
+
+// Algoritmo Porter-Duff Source-Over Matematicamente Exato (Straight Alpha)
+vec4 blendSourceOver(vec4 back, vec4 front) {
+    float outAlpha = front.a + back.a * (1.0 - front.a);
+
+    // Evita divisão por zero em áreas 100% transparentes
+    if (outAlpha < 0.0001) {
+        return vec4(0.0);
+    }
+
+    vec3 outRgb = (front.rgb * front.a + back.rgb * back.a * (1.0 - front.a)) / outAlpha;
+    return vec4(outRgb, outAlpha);
+}
+
+void main() {
+    // 1. Amostra as três camadas aplicando suas respectivas matrizes de transformação UV
+    vec4 cBack   = sampleLayer(u_TexBackground, u_MatBack, u_AlphaBack);
+    vec4 cMiddle = sampleLayer(u_TexMiddle, u_MatMiddle, u_AlphaMiddle);
+    vec4 cFore   = sampleLayer(u_TexForeground, u_MatFore, u_AlphaFore);
+
+    // 2. Composição Alpha Real em ordem de profundidade (Fundo -> Meio -> Frente)
+    vec4 composite = blendSourceOver(cBack, cMiddle);
+    composite      = blendSourceOver(composite, cFore);
+
+    // Cor final processada pela GPU em 1 única passagem por pixel
+    gl_FragColor = composite;
+}
