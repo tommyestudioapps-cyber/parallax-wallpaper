@@ -86,6 +86,21 @@ assertContains(eglThread, /volatile ParallaxSensorState sensorState/, 'EGL threa
 assertContains(eglThread, /glRenderer\.updateSensorState\(snapshot\.getX\(\), snapshot\.getY\(\)\)/, 'latest sensor values reach the GL renderer');
 assertContains(eglThread, /glRenderer\.renderFrame\(\)/, 'EGL loop delegates frame rendering');
 assertContains(eglThread, /glRenderer\.release\(\)/, 'GL resources release before EGL teardown');
+assertContains(eglThread, /private long totalGlFrames/, 'GPU frame count is tracked');
+assertContains(eglThread, /private long accumulatedDrawTimeNs/, 'GPU frame time is accumulated');
+assertContains(eglThread, /private double maxFrameTimeMs/, 'maximum GPU frame time is tracked');
+assertContains(eglThread, /private long droppedGlFrames/, 'GPU dropped frames are tracked');
+assertContains(eglThread, /private long vsyncMisses/, 'VSync misses are tracked');
+assertContains(eglThread, /System\.nanoTime\(\)/, 'GPU timing uses monotonic nanoseconds');
+assertContains(eglThread, /METRICS_FRAME_WINDOW = 60L/, 'GPU metrics use a 60-frame window');
+assertContains(eglThread, /METRICS_TIME_WINDOW_NS = 5_000_000_000L/, 'GPU metrics use a five-second window');
+assertContains(eglThread, /PARALLAX_GPU_METRICS/, 'GPU metrics are logged with the comparison tag');
+assertContains(eglThread, /averageFps=/, 'GPU metrics include average FPS');
+assertContains(eglThread, /averageRenderMs=/, 'GPU metrics include average render time');
+assertContains(eglThread, /maxRenderMs=/, 'GPU metrics include maximum render time');
+assertContains(eglThread, /swapStatus=/, 'GPU metrics include swap status');
+assertContains(eglThread, /lastSwapMs=/, 'GPU metrics include swap timing');
+assertContains(eglThread, /recordGlFrame\(frameDurationNs, swapDurationNs, swapSucceeded\)/, 'frame metrics are recorded after swap completion');
 assertOrder(
   methodBody(eglThread, 'public void run()', 'private EGLDisplay currentDisplay'),
   [/initializeEgl\(\)/, /listener\.onEglReady\(this\)/],
