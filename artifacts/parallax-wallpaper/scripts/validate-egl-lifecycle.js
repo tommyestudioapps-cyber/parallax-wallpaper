@@ -17,6 +17,11 @@ const controller = fs.readFileSync(
   path.join(javaRoot, 'ParallaxEglController.java'),
   'utf8',
 );
+
+const wallpaperService = fs.readFileSync(
+  path.join(javaRoot, 'ParallaxWallpaperService.java'),
+  'utf8',
+);
 const eglThread = fs.readFileSync(path.join(javaRoot, 'ParallaxEglThread.java'), 'utf8');
 const textureManager = fs.readFileSync(
   path.join(javaRoot, 'ParallaxTextureManager.java'),
@@ -54,6 +59,11 @@ for (const state of ['STOPPED', 'STARTING', 'RUNNING', 'STOPPING']) {
   assertContains(controller, new RegExp(`\\b${state}\\b`), `FSM state ${state}`);
 }
 
+assertContains(
+  wallpaperService,
+  /USE_OPENGL_RENDERER\s*=\s*true/,
+  'OpenGL renderer is enabled for Android validation',
+);
 assertContains(controller, /state = State\.STOPPING/, 'surface transitions request STOPPING');
 assertContains(controller, /thread\.requestStop\(\)/, 'stopping is asynchronous');
 assertContains(controller, /state == State\.STOPPING/, 'restart is gated by STOPPING');

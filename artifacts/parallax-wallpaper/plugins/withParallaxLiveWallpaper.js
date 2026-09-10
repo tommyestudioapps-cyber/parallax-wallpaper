@@ -137,6 +137,12 @@ function withParallaxWallpaperFiles(config) {
             cause: error,
           });
         }
+        if (fileName === 'ParallaxWallpaperService.java') {
+          canonicalJava = canonicalJava.replace(
+            /(USE_OPENGL_RENDERER\s*=\s*)false/,
+            '$1true',
+          );
+        }
         fs.writeFileSync(path.join(javaDirectory, fileName), canonicalJava, 'utf8');
       }
 
