@@ -1,0 +1,38 @@
+Atue como um Engenheiro Android Nativo especializado em OpenGL ES 2.0 e Gerenciamento de Threads EGL.
+
+OBJETIVO:
+Implementar o ciclo de vida da thread OpenGL/EGL de forma isolada, não-bloqueante e totalmente segura contra vazamentos de contextos nativos, integrada à interface `WallpaperRenderer`.
+
+NOVOS ARQUIVOS A CRIAR (na pasta do serviço Java):
+1. `ParallaxEglThread.java`: Thread dedicada para inicialização do EGLDisplay, EGLContext, EGLSurface e gerenciamento do render loop com VSync.
+2. `ParallaxEglController.java`: Controlador de estado FSM (STOPPED, STARTING, RUNNING, STOPPING) que implementa `WallpaperRenderer` e coordena o ciclo de vida da thread GL sem bloquear os callbacks do Android.
+
+ARQUIVOS A ALTERAR:
+1. `ParallaxWallpaperService.java`: Adicione uma constante/flag de configuração (ex: `private static final boolean USE_OPENGL_RENDERER = false;`). Se for `true`, o Engine instanciará o `ParallaxEglController`; se `false`, manterá o `CanvasWallpaperRenderer`.
+2. `withParallaxLiveWallpaper.js`: Atualize o plugin Expo para incluir/copiar os novos arquivos Java (`ParallaxEglThread.java` e `ParallaxEglController.java`) no prebuild.
+
+REGRAS DE IMPLEMENTAÇÃO DE `ParallaxEglThread.java`:
+1. Inicialize EGL14 para OpenGL ES 2.0 usando `EGL14.eglCreateWindowSurface` com `surfaceHolder.getSurface()`.
+2. Configure o VSync nativo explicitamente via `EGL14.eglSwapInterval(eglDisplay, 1)`. NÃO utilize `Thread.sleep(16)`.
+3. No loop principal (`run()`):
+   - Enquanto rodar, execute apenas:
+     `GLES20.glClearColor(0.2f, 0.4f, 0.6f, 1.0f);`
+     `GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);`
+     `EGL14.eglSwapBuffers(eglDisplay, eglSurface);`
+   - Se `eglSwapBuffers` retornar `false`, registre o erro no Logcat e encerre o loop com segurança para evitar busy-loops de CPU.
+4. No bloco `finally` de encerramento da thread:
+   - Libere explicitamente o contexto e a superfície: `eglMakeCurrent(NO_SURFACE)`, `eglDestroySurface`, `eglDestroyContext`, `eglTerminate`.
+   - Notifique o `ParallaxEglController` sobre o encerramento total da thread nativa.
+
+REGRAS DE IMPLEMENTAÇÃO DE `ParallaxEglController.java`:
+1. NUNCA utilize `Thread.join()` dentro dos callbacks de superfície (`onSurfaceDestroyed`, `onSurfaceCreated`). A parada da thread GL deve ser assíncrona.
+2. Mantenha controle estrito do estado: se uma nova superfície for criada enquanto a thread antiga estiver encerrando, marque uma flag de pendência e só inicie a nova thread GL APÓS a antiga notificar o término do seu contexto EGL.
+3. Antes de iniciar qualquer thread pendente, verifique obrigatoriamente a validade da superfície nativa (`surfaceHolder.getSurface() != null && surfaceHolder.getSurface().isValid()`).
+
+O QUE NÃO ALTERAR:
+- Não adicione carregamento de Bitmaps, shaders customizados ou matrizes GL nesta etapa.
+- Não modifique o funcionamento do `CanvasWallpaperRenderer`.
+- Não altere a interface do React Native nem o `app/index.tsx`.
+
+CRITÉRIO DE ACEITE / VALIDAÇÃO:
+Ao alternar a flag `USE_OPENGL_RENDERER = true` para testes, a tela do wallpaper deve exibir uma cor sólida (azul pastel) animando sem erros. A alternância rápida de telas/reorientação deve registrar no Logcat o encerramento correto da thread anterior antes da criação da nova, sem vazamentos de contextos EGL ou travamentos da UI.
