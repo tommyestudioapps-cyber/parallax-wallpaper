@@ -1,0 +1,37 @@
+Atue como um Engenheiro de Software Android Nativo focado em Arquitetura Limpa e Refatoração de Sistemas de Renderização.
+
+OBJETIVO:
+Refatorar a estrutura do serviço de wallpaper em `ParallaxWallpaperService.java`, separando a lógica de orquestração do Engine da lógica de renderização Canvas. A renderização Canvas deve ser encapsulada em componentes/interfaces dedicados.
+
+NOVOS ARQUIVOS A CRIAR (na mesma pasta do serviço Java):
+1. `WallpaperRenderer.java`: Interface pública para abstrair os motores de renderização.
+2. `CanvasWallpaperRenderer.java`: Implementação concreta contendo todo o código Canvas extraído.
+3. `ParallaxComposition.java`: Classe de modelo imutável para encapsular os dados da composição (bitmaps, escalas, configurações) sem dependência direta de parsing de JSONObject durante os frames.
+4. `ParallaxSensorState.java`: Modelo imutável para representar o snapshot atômico do sensor (x, y).
+
+ARQUIVOS A ALTERAR:
+1. `ParallaxWallpaperService.java`: Atualize o `Engine` interno para utilizar a interface `WallpaperRenderer`, delegando as operações de desenho e gerenciamento de bitmaps.
+2. `withParallaxLiveWallpaper.js` (se necessário): Certifique-se de que o plugin Expo copie/inclua os novos arquivos Java no diretório do projeto Android durante o prebuild.
+
+ESPECIFICAÇÃO DA INTERFACE `WallpaperRenderer.java`:
+Deve conter os métodos essenciais:
+- `void onSurfaceCreated(SurfaceHolder holder);`
+- `void onSurfaceChanged(SurfaceHolder holder, int format, int width, int height);`
+- `void onSurfaceDestroyed(SurfaceHolder holder);`
+- `void updateSensorState(ParallaxSensorState sensorState);`
+- `void setComposition(ParallaxComposition composition);`
+- `void renderFrame();`
+- `void release();`
+
+INSTRUÇÕES DE REFACTORING:
+1. Mova os métodos `drawFrame()`, `drawLayer()`, `prepareComposition()`, `loadLayerBitmap()` e a reciclagem dos Bitmaps para dentro do `CanvasWallpaperRenderer`.
+2. O `ParallaxEngine` em `ParallaxWallpaperService.java` deve manter uma referência para `WallpaperRenderer renderer` (instanciado como `new CanvasWallpaperRenderer(...)`).
+3. Preserve RIGOROSAMENTE todo o comportamento visual, o reaproveitamento dos `RectF` (zerando alocações) e as métricas do Logcat implementadas nas etapas anteriores.
+
+O QUE NÃO ALTERAR:
+- Não altere o comportamento visual nem as fórmulas matemáticas do parallax.
+- Não crie código OpenGL/EGL ainda nesta etapa.
+- Não altere a interface pública do módulo React Native (`ParallaxWallpaperModule.java`) nem o `app/index.tsx`.
+
+CRITÉRIO DE ACEITE / VALIDAÇÃO:
+Verifique se todos os novos arquivos compilam sem erros. O serviço de wallpaper deve funcionar no Android e no prebuild do Expo exatamente da mesma forma que antes, mas agora com o motor Canvas desacoplado do ciclo de vida do Service.
