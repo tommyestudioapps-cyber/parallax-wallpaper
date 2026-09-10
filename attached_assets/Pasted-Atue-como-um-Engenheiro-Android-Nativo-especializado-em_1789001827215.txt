@@ -1,0 +1,40 @@
+Atue como um Engenheiro Android Nativo especializado em OpenGL ES 2.0, Alpha Blending e Renderização Multi-Camadas.
+
+OBJETIVO:
+Expandir o `ParallaxGlRenderer` e o `ParallaxTextureManager` para carregar e renderizar sequencialmente as 3 camadas do wallpaper (Fundo, Meio e Frente) com suporte correto a transparência Alpha Blending.
+
+ARQUIVOS ALVO:
+1. `ParallaxTextureManager.java`
+2. `ParallaxGlRenderer.java`
+3. `ParallaxEglThread.java`
+4. `withParallaxLiveWallpaper.js` (se necessário para ajustes de inclusão)
+
+ALTERAÇÕES SOLICITADAS:
+
+1. Suporte ao Multi-Texturas no `ParallaxTextureManager`:
+   - Atualize o gerenciador para suportar um array de IDs de texturas GL referentes às 3 camadas (`mTextureIds[3]`).
+   - Garanta que ao carregar os Bitmaps de cada camada (Fundo, Meio, Frente), cada textura receba seu próprio ID de textura OpenGL.
+   - Implemente a liberação limpa de todas as 3 texturas em `releaseTextures()`.
+
+2. Configuração de Alpha Blending NATIVO no `ParallaxGlRenderer`:
+   - Antes do loop de desenho das camadas, ative o blending no OpenGL:
+     `GLES20.glEnable(GLES20.GL_BLEND);`
+   - Configure a função de blend adequada para o formato de Bitmap do Android (Premultiplied Alpha):
+     `GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);`
+
+3. Loop de Renderização de Camadas (Back-to-Front):
+   - No método de renderização do `ParallaxGlRenderer`:
+     1. Limpe o buffer de cor (`glClear`).
+     2. Mantenha a ordem estrita de desenho: **Camada 0 (Fundo) -> Camada 1 (Meio) -> Camada 2 (Frente)**.
+     3. Para cada camada ativa, faça o bind de sua respectiva textura (`glBindTexture`), envie a textura para o sampler uniforme e invoque `glDrawArrays`.
+
+4. Zero Alocações por Frame:
+   - Garanta que o loop de desenho reutilize os mesmos buffers, uniforms e IDs de atributos sem instanciar novos objetos dentro da execução do frame.
+
+O QUE NÃO ALTERAR:
+- Não adicione a lógica de deslocamento Parallax/Giroscópio ainda nesta etapa (as camadas ficarão estáticas por enquanto).
+- Não altere o comportamento do `CanvasWallpaperRenderer`.
+- Não modifique a interface do React Native nem o `app/index.tsx`.
+
+CRITÉRIO DE ACEITE / VALIDAÇÃO:
+Ao rodar com `USE_OPENGL_RENDERER = true`, as 3 camadas do wallpaper devem ser desenhadas uma sobre a outra com transparência correta, sem recortes pretos nas bordas ou artefatos de iluminação.
