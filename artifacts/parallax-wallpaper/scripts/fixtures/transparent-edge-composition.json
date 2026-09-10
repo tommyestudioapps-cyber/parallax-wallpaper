@@ -150,6 +150,39 @@
       ]
     }
   ],
+  "sampledComposition": {
+    "name": "four-sampled-alpha-layers",
+    "tolerance": 0.000001,
+    "clearColor": [0, 0, 0, 0],
+    "layers": [
+      {
+        "name": "background",
+        "case": "transparent-magenta-to-opaque-black",
+        "sample": "center"
+      },
+      {
+        "name": "middle",
+        "case": "opaque-white-to-primary-alpha",
+        "sample": "right-biased"
+      },
+      {
+        "name": "detail",
+        "case": "near-zero-alpha-extremes",
+        "sample": "lower-left-biased"
+      },
+      {
+        "name": "foreground",
+        "case": "transparent-magenta-to-opaque-black",
+        "sample": "upper-left-biased"
+      }
+    ],
+    "expectedComposition": [
+      0.5083251706466674,
+      0.5519391221523284,
+      0.5513867259178161,
+      0.8723514896202086
+    ]
+  },
   "expectedComposition": [0.225, 0.275, 0.1125, 1],
   "clearColor": [0, 0, 0, 1]
 }

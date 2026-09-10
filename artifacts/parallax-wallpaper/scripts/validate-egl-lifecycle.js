@@ -210,6 +210,64 @@ function validateTransparentEdgeFixture() {
       }
     });
   });
+  const sampledComposition = fixture.sampledComposition;
+  if (
+    !sampledComposition
+    || !Number.isFinite(sampledComposition.tolerance)
+    || sampledComposition.tolerance <= 0
+    || !Array.isArray(sampledComposition.clearColor)
+    || sampledComposition.clearColor.length !== 4
+    || !Array.isArray(sampledComposition.layers)
+    || sampledComposition.layers.length < 4
+    || !Array.isArray(sampledComposition.expectedComposition)
+    || sampledComposition.expectedComposition.length !== 4
+  ) {
+    throw new Error('Transparent-edge sampled composition fixture is invalid');
+  }
+  const alphaCasesByName = new Map(
+    fixture.bilinearAlphaCases.map((alphaCase) => [alphaCase.name, alphaCase]),
+  );
+  const sampledLayers = sampledComposition.layers.map((layer) => {
+    const alphaCase = alphaCasesByName.get(layer.case);
+    const sample = alphaCase?.samples.find((candidate) => candidate.name === layer.sample);
+    if (!alphaCase || !sample) {
+      throw new Error(
+        `Transparent-edge sampled composition reference is missing: `
+          + `${layer.name} ${layer.case} ${layer.sample}`,
+      );
+    }
+    const sampledColor = sampleBilinear(alphaCase, sample.coordinate, true);
+    assertClose(
+      sampledColor,
+      sample.expectedPremultiplied,
+      `${sampledComposition.name} ${layer.name} ${layer.case} `
+        + `${layer.sample} sampled layer`,
+      sampledComposition.tolerance,
+    );
+    return { name: layer.name, color: sampledColor };
+  });
+  const composeSampledLayers = (layers) => layers
+    .map((layer) => layer.color)
+    .reduce((destination, source) => over(source, destination), sampledComposition.clearColor);
+  const sampledCompositionResult = composeSampledLayers(sampledLayers);
+  assertClose(
+    sampledCompositionResult,
+    sampledComposition.expectedComposition,
+    `${sampledComposition.name} Background -> Middle -> Detail -> Foreground`,
+    sampledComposition.tolerance,
+  );
+  const reversedSampledComposition = composeSampledLayers(sampledLayers.slice().reverse());
+  if (
+    reversedSampledComposition.every(
+      (value, index) => Math.abs(value - sampledCompositionResult[index])
+        <= sampledComposition.tolerance,
+    )
+  ) {
+    throw new Error(
+      `Transparent-edge sampled composition does not distinguish draw order: `
+        + sampledComposition.name,
+    );
+  }
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
   if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {
