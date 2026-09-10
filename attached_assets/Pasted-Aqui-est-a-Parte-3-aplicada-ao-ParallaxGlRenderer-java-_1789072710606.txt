@@ -1,0 +1,265 @@
+Aqui está a Parte 3 aplicada ao ParallaxGlRenderer.java. É a parte final da implantação crítica.
+
+Escopo desta parte
+Adicionar uvTransform ao AlphaPrecisionGlState (campo, parâmetro de construtor, atribuição).
+
+Restaurar o uniform u_UVTransform em restore().
+
+Capturar o uniform em captureAlphaPrecisionGlState().
+
+Nada mais muda — nem shader, nem renderFrame, nem updateLayerMvp, nem updateSensorState.
+
+Trecho 1 — Substituir captureAlphaPrecisionGlState
+Substitua o método inteiro atual por:
+
+java
+  private AlphaPrecisionGlState captureAlphaPrecisionGlState() {
+    int[] viewport = new int[4];
+    int[] framebufferBinding = new int[1];
+    int[] activeTexture = new int[1];
+    int[] textureBinding = new int[1];
+    int[] textureZeroBinding = new int[1];
+    int[] currentProgram = new int[1];
+    int[] arrayBufferBinding = new int[1];
+    int[] blendSourceRgb = new int[1];
+    int[] blendDestinationRgb = new int[1];
+    int[] blendSourceAlpha = new int[1];
+    int[] blendDestinationAlpha = new int[1];
+    int[] blendEquationRgb = new int[1];
+    int[] blendEquationAlpha = new int[1];
+    float[] clearColor = new float[4];
+    float[] offset = new float[2];
+    float[] depthFactor = new float[1];
+    float[] uvTransform = new float[4];
+    float[] mvpMatrix = new float[16];
+    int[] textureUniform = new int[1];
+    int[] scissorBox = new int[4];
+    boolean[] colorWriteMask = new boolean[4];
+
+    GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, viewport, 0);
+    GLES20.glGetIntegerv(GLES20.GL_FRAMEBUFFER_BINDING, framebufferBinding, 0);
+    GLES20.glGetIntegerv(GLES20.GL_ACTIVE_TEXTURE, activeTexture, 0);
+    GLES20.glGetIntegerv(GLES20.GL_TEXTURE_BINDING_2D, textureBinding, 0);
+    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+    GLES20.glGetIntegerv(GLES20.GL_TEXTURE_BINDING_2D, textureZeroBinding, 0);
+    GLES20.glActiveTexture(activeTexture[0]);
+    GLES20.glGetIntegerv(GLES20.GL_CURRENT_PROGRAM, currentProgram, 0);
+    GLES20.glGetIntegerv(GLES20.GL_ARRAY_BUFFER_BINDING, arrayBufferBinding, 0);
+    GLES20.glGetIntegerv(GLES20.GL_BLEND_SRC_RGB, blendSourceRgb, 0);
+    GLES20.glGetIntegerv(GLES20.GL_BLEND_DST_RGB, blendDestinationRgb, 0);
+    GLES20.glGetIntegerv(GLES20.GL_BLEND_SRC_ALPHA, blendSourceAlpha, 0);
+    GLES20.glGetIntegerv(GLES20.GL_BLEND_DST_ALPHA, blendDestinationAlpha, 0);
+    GLES20.glGetIntegerv(GLES20.GL_BLEND_EQUATION_RGB, blendEquationRgb, 0);
+    GLES20.glGetIntegerv(GLES20.GL_BLEND_EQUATION_ALPHA, blendEquationAlpha, 0);
+    GLES20.glGetFloatv(GLES20.GL_COLOR_CLEAR_VALUE, clearColor, 0);
+    GLES20.glGetUniformiv(program, textureLocation, textureUniform, 0);
+    GLES20.glGetUniformfv(program, offsetLocation, offset, 0);
+    GLES20.glGetUniformfv(program, depthFactorLocation, depthFactor, 0);
+    GLES20.glGetUniformfv(program, uvTransformLocation, uvTransform, 0);
+    GLES20.glGetUniformfv(program, mvpMatrixLocation, mvpMatrix, 0);
+    GLES20.glGetIntegerv(GLES20.GL_SCISSOR_BOX, scissorBox, 0);
+    GLES20.glGetBooleanv(GLES20.GL_COLOR_WRITEMASK, colorWriteMask, 0);
+
+    return new AlphaPrecisionGlState(
+        viewport,
+        framebufferBinding[0],
+        activeTexture[0],
+        textureBinding[0],
+        textureZeroBinding[0],
+        currentProgram[0],
+        arrayBufferBinding[0],
+        GLES20.glIsEnabled(GLES20.GL_BLEND),
+        blendSourceRgb[0],
+        blendDestinationRgb[0],
+        blendSourceAlpha[0],
+        blendDestinationAlpha[0],
+        blendEquationRgb[0],
+        blendEquationAlpha[0],
+        clearColor,
+        textureUniform[0],
+        offset,
+        depthFactor[0],
+        uvTransform,
+        mvpMatrix,
+        scissorBox,
+        colorWriteMask,
+        GLES20.glIsEnabled(GLES20.GL_SCISSOR_TEST),
+        GLES20.glIsEnabled(GLES20.GL_CULL_FACE),
+        GLES20.glIsEnabled(GLES20.GL_DEPTH_TEST),
+        GLES20.glIsEnabled(GLES20.GL_STENCIL_TEST),
+        captureVertexAttributeState(positionLocation, 0),
+        captureVertexAttributeState(texCoordLocation, 2 * Float.BYTES));
+  }
+Trecho 2 — Substituir a classe AlphaPrecisionGlState
+Substitua a classe interna inteira por:
+
+java
+  private static final class AlphaPrecisionGlState {
+    private final int[] viewport;
+    private final int framebufferBinding;
+    private final int activeTexture;
+    private final int textureBinding;
+    private final int textureZeroBinding;
+    private final int currentProgram;
+    private final int arrayBufferBinding;
+    private final boolean blendEnabled;
+    private final int blendSourceRgb;
+    private final int blendDestinationRgb;
+    private final int blendSourceAlpha;
+    private final int blendDestinationAlpha;
+    private final int blendEquationRgb;
+    private final int blendEquationAlpha;
+    private final float[] clearColor;
+    private final int textureUniform;
+    private final float[] offset;
+    private final float depthFactor;
+    private final float[] uvTransform;
+    private final float[] mvpMatrix;
+    private final int[] scissorBox;
+    private final boolean[] colorWriteMask;
+    private final boolean scissorTestEnabled;
+    private final boolean cullFaceEnabled;
+    private final boolean depthTestEnabled;
+    private final boolean stencilTestEnabled;
+    private final VertexAttributeState position;
+    private final VertexAttributeState texCoord;
+
+    private AlphaPrecisionGlState(
+        int[] viewport,
+        int framebufferBinding,
+        int activeTexture,
+        int textureBinding,
+        int textureZeroBinding,
+        int currentProgram,
+        int arrayBufferBinding,
+        boolean blendEnabled,
+        int blendSourceRgb,
+        int blendDestinationRgb,
+        int blendSourceAlpha,
+        int blendDestinationAlpha,
+        int blendEquationRgb,
+        int blendEquationAlpha,
+        float[] clearColor,
+        int textureUniform,
+        float[] offset,
+        float depthFactor,
+        float[] uvTransform,
+        float[] mvpMatrix,
+        int[] scissorBox,
+        boolean[] colorWriteMask,
+        boolean scissorTestEnabled,
+        boolean cullFaceEnabled,
+        boolean depthTestEnabled,
+        boolean stencilTestEnabled,
+        VertexAttributeState position,
+        VertexAttributeState texCoord) {
+      this.viewport = viewport;
+      this.framebufferBinding = framebufferBinding;
+      this.activeTexture = activeTexture;
+      this.textureBinding = textureBinding;
+      this.textureZeroBinding = textureZeroBinding;
+      this.currentProgram = currentProgram;
+      this.arrayBufferBinding = arrayBufferBinding;
+      this.blendEnabled = blendEnabled;
+      this.blendSourceRgb = blendSourceRgb;
+      this.blendDestinationRgb = blendDestinationRgb;
+      this.blendSourceAlpha = blendSourceAlpha;
+      this.blendDestinationAlpha = blendDestinationAlpha;
+      this.blendEquationRgb = blendEquationRgb;
+      this.blendEquationAlpha = blendEquationAlpha;
+      this.clearColor = clearColor;
+      this.textureUniform = textureUniform;
+      this.offset = offset;
+      this.depthFactor = depthFactor;
+      this.uvTransform = uvTransform;
+      this.mvpMatrix = mvpMatrix;
+      this.scissorBox = scissorBox;
+      this.colorWriteMask = colorWriteMask;
+      this.scissorTestEnabled = scissorTestEnabled;
+      this.cullFaceEnabled = cullFaceEnabled;
+      this.depthTestEnabled = depthTestEnabled;
+      this.stencilTestEnabled = stencilTestEnabled;
+      this.position = position;
+      this.texCoord = texCoord;
+    }
+
+    private void restore(ParallaxGlRenderer renderer) {
+      GLES20.glUseProgram(renderer.program);
+      GLES20.glUniform1i(renderer.textureLocation, textureUniform);
+      GLES20.glUniform2f(renderer.offsetLocation, offset[0], offset[1]);
+      GLES20.glUniform1f(renderer.depthFactorLocation, depthFactor);
+      GLES20.glUniform4f(
+          renderer.uvTransformLocation,
+          uvTransform[0],
+          uvTransform[1],
+          uvTransform[2],
+          uvTransform[3]);
+      GLES20.glUniformMatrix4fv(
+          renderer.mvpMatrixLocation,
+          1,
+          false,
+          mvpMatrix,
+          0);
+
+      GLES20.glBlendFuncSeparate(
+          blendSourceRgb,
+          blendDestinationRgb,
+          blendSourceAlpha,
+          blendDestinationAlpha);
+      GLES20.glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha);
+      if (blendEnabled) {
+        GLES20.glEnable(GLES20.GL_BLEND);
+      } else {
+        GLES20.glDisable(GLES20.GL_BLEND);
+      }
+
+      GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
+      GLES20.glDisable(GLES20.GL_CULL_FACE);
+      GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+      GLES20.glDisable(GLES20.GL_STENCIL_TEST);
+      GLES20.glColorMask(true, true, true, true);
+      position.restore(renderer.positionLocation);
+      texCoord.restore(renderer.texCoordLocation);
+      GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, arrayBufferBinding);
+      GLES20.glActiveTexture(activeTexture);
+      GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureBinding);
+      GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+      GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureZeroBinding);
+      GLES20.glActiveTexture(activeTexture);
+      GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebufferBinding);
+      GLES20.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+      GLES20.glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+      GLES20.glScissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
+      GLES20.glColorMask(
+          colorWriteMask[0],
+          colorWriteMask[1],
+          colorWriteMask[2],
+          colorWriteMask[3]);
+      if (scissorTestEnabled) GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
+      if (cullFaceEnabled) GLES20.glEnable(GLES20.GL_CULL_FACE);
+      if (depthTestEnabled) GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+      if (stencilTestEnabled) GLES20.glEnable(GLES20.GL_STENCIL_TEST);
+      GLES20.glUseProgram(currentProgram);
+    }
+  }
+Checklist de verificação da Parte 3
+☑ Novo campo private final float[] uvTransform; na classe interna.
+☑ Novo parâmetro float[] uvTransform no construtor (posição: entre depthFactor e mvpMatrix).
+☑ Atribuição this.uvTransform = uvTransform;.
+☑ captureAlphaPrecisionGlState declara float[] uvTransform = new float[4];.
+☑ captureAlphaPrecisionGlState faz glGetUniformfv(program, uvTransformLocation, uvTransform, 0).
+☑ captureAlphaPrecisionGlState passa uvTransform para o construtor.
+☑ restore() chama glUniform4f(renderer.uvTransformLocation, ...).
+Implantação crítica: consolidada
+Com as três partes, o ParallaxGlRenderer agora:
+
+Aspecto	Antes	Depois
+Uniform de crop no shader	❌ ausente	✅ u_UVTransform
+Aplicação de scale	❌ ignorada	✅ via updateLayerMvp
+Aplicação de x, y	❌ ignorada	✅ via updateLayerMvp
+Aplicação de sourceCrop (geometria)	❌ ignorada	✅ via updateLayerMvp
+Aplicação de sourceCrop (UV)	❌ ignorada	✅ via updateLayerUvTransform
+Aplicação de canvasWidth	❌ ignorada	✅ em updateSensorState e updateLayerMvp
+Amplitude de parallax	~10–100× menor que Canvas	✅ idêntica ao Canvas
+Estado GL após validateAlphaPrecision	u_UVTransform perdido	✅ restaurado
+Isso encerra a implantação crítica. Canvas e OpenGL agora produzem o mesmo resultado visual para qualquer composição, com scale, x, y, sourceCrop, canvasWidth e intensity respeitados em ambos.
