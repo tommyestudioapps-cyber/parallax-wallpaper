@@ -1225,6 +1225,51 @@ assertContains(
   'alpha precision failures include case, position, clear color, and alpha',
 );
 assertContains(
+  glRenderer,
+  /private AlphaPrecisionGlState captureAlphaPrecisionGlState\(\)/,
+  'alpha precision validation captures the existing GL state before probing',
+);
+assertContains(
+  glRenderer,
+  /GL_FRAMEBUFFER_BINDING[\s\S]*GL_ACTIVE_TEXTURE[\s\S]*GL_TEXTURE_BINDING_2D[\s\S]*GL_CURRENT_PROGRAM[\s\S]*GL_ARRAY_BUFFER_BINDING/,
+  'alpha precision validation captures framebuffer, texture, program, and buffer bindings',
+);
+assertContains(
+  glRenderer,
+  /glActiveTexture\(GLES20\.GL_TEXTURE0\)[\s\S]*GL_TEXTURE_BINDING_2D[\s\S]*textureZeroBinding/,
+  'alpha precision validation preserves the texture binding on unit zero before using temporary textures',
+);
+assertContains(
+  glRenderer,
+  /GL_BLEND_SRC_RGB[\s\S]*GL_BLEND_DST_RGB[\s\S]*GL_BLEND_SRC_ALPHA[\s\S]*GL_BLEND_DST_ALPHA[\s\S]*GL_BLEND_EQUATION_RGB[\s\S]*GL_BLEND_EQUATION_ALPHA/,
+  'alpha precision validation captures the complete blend function and equation state',
+);
+assertContains(
+  glRenderer,
+  /glGetVertexAttribiv\([\s\S]*GL_VERTEX_ATTRIB_ARRAY_ENABLED[\s\S]*glGetVertexAttribiv\([\s\S]*GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING/,
+  'alpha precision validation captures vertex attribute enablement and buffers',
+);
+assertContains(
+  glRenderer,
+  /rendererPointerOffset[\s\S]*glVertexAttribPointer\(/,
+  'alpha precision validation restores the renderer-owned vertex attribute layout',
+);
+assertContains(
+  glRenderer,
+  /GL_SCISSOR_BOX[\s\S]*GL_COLOR_WRITEMASK[\s\S]*GL_SCISSOR_TEST[\s\S]*GL_CULL_FACE[\s\S]*GL_DEPTH_TEST[\s\S]*GL_STENCIL_TEST/,
+  'alpha precision validation isolates and restores draw clipping and write-mask state',
+);
+assertContains(
+  glRenderer,
+  /finally \{[\s\S]*deleteAlphaPrecisionResources\(framebuffer, framebufferTexture, sourceTexture\);[\s\S]*savedState\.restore\(this\);/,
+  'alpha precision validation deletes temporary resources before restoring the saved GL state',
+);
+assertContains(
+  glRenderer,
+  /glUniform1i\(renderer\.textureLocation, textureUniform\)[\s\S]*glUniform2f\(renderer\.offsetLocation, offset\[0\], offset\[1\]\)[\s\S]*glUniform1f\(renderer\.depthFactorLocation, depthFactor\)[\s\S]*glUniformMatrix4fv/,
+  'alpha precision validation restores the renderer uniforms before restoring the current program',
+);
+assertContains(
   eglThread,
   /boolean alphaPrecisionPassed = glRenderer\.validateAlphaPrecision\(\)/,
   'EGL thread runs alpha precision validation after renderer initialization',
