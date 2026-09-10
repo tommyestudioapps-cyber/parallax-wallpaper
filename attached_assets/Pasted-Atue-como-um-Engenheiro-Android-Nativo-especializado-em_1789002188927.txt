@@ -1,0 +1,40 @@
+Atue como um Engenheiro Android Nativo especializado em Engenharia de Computação Gráfica, Matrizes MVP e Shaders OpenGL ES 2.0.
+
+OBJETIVO:
+Implementar o enquadramento correto de aspecto e proporção de cada camada do wallpaper (source crop / fit scale) no `ParallaxGlRenderer`, utilizando matrizes de transformação (MVP Matrix) no Vertex Shader, replicando visualmente o comportamento exato do renderer Canvas.
+
+ARQUIVOS ALVO:
+1. `ParallaxGlRenderer.java`
+2. `ParallaxEglThread.java`
+3. `withParallaxLiveWallpaper.js` (se necessário)
+
+ALTERAÇÕES SOLICITADAS:
+
+1. Atualização do Vertex Shader (`ParallaxGlRenderer.java`):
+   - Adicione o uniforme de matriz de transformação `uniform mat4 u_MVPMatrix;`.
+   - Modifique a posição final do vértice no Vertex Shader:
+     `gl_Position = u_MVPMatrix * a_Position;`
+
+2. Cálculo Dinâmico de Escala e Enquadramento:
+   - Crie um método utilitário para calcular a matriz de transformação para cada camada com base no tamanho da tela (largura/altura da superfície) e dimensões da textura (largura/altura do Bitmap).
+   - Reutilize o cálculo de escala do Canvas (ex: `fitScale = max(screenWidth / imageWidth, screenHeight / imageHeight)`).
+   - Calcule os fatores de escala $X$ e $Y$ de forma a manter o Aspect Ratio correto da imagem, centralizando-a na tela.
+   - Aplique esses fatores em uma matriz de projeção/escala usando `android.opengl.Matrix` (`setIdentityM`, `scaleM`, `orthoM`).
+
+3. Reutilização de Memória e Zero Alocações no Drawing:
+   - Aloque os arrays de matrizes (`float[] mMVPMatrix = new float[16]`, `float[] mProjMatrix = new float[16]`, etc.) como campos de instância reaproveitáveis.
+   - NUNCA instancie `new float[16]` ou objetos de matriz dentro do método `drawFrame()`.
+
+4. Atualização do Loop de Renderização:
+   - Antes de desenhar cada uma das 3 camadas em `drawFrame()`:
+     1. Calcule/atualize a matriz MVP correspondente às dimensões da camada atual.
+     2. Envie a matriz para o shader via `GLES20.glUniformMatrix4fv(uMVPMatrixLocation, 1, false, mMVPMatrix, 0)`.
+     3. Execute a chamada `glDrawArrays`.
+
+O QUE NÃO ALTERAR:
+- Não adicione o movimento dinâmico do giroscópio ainda nesta etapa (o resultado deve ser estático e perfeitamente enquadrado).
+- Não altere as rotinas de gerenciamento do EGL ou de compilação de texturas da Etapa 6.
+- Não altere o `CanvasWallpaperRenderer`.
+
+CRITÉRIO DE ACEITE / VALIDAÇÃO:
+Ao rodar com `USE_OPENGL_RENDERER = true`, as camadas devem aparecer com proporção correta (sem distorções de aspecto), ocupando a tela cheia de forma idêntica à renderização do Canvas em repouso.

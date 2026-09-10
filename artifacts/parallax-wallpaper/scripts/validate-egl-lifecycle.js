@@ -131,6 +131,15 @@ assertContains(glRenderer, /glGenBuffers/, 'fullscreen quad uses a VBO');
 assertContains(glRenderer, /glBufferData/, 'quad data uploads once to the VBO');
 assertContains(glRenderer, /glDrawArrays/, 'fullscreen quad is rendered');
 assertContains(glRenderer, /texture2D/, 'fragment shader samples the texture');
+assertContains(glRenderer, /uniform mat4 u_MVPMatrix/, 'vertex shader accepts an MVP matrix');
+assertContains(glRenderer, /u_MVPMatrix \* vec4/, 'vertex shader applies the MVP matrix');
+assertContains(glRenderer, /Matrix\.orthoM/, 'projection matrix is initialized');
+assertContains(glRenderer, /Matrix\.scaleM/, 'layer aspect scale is calculated');
+assertContains(glRenderer, /glUniformMatrix4fv/, 'MVP matrix is sent before drawing');
+assertContains(glRenderer, /private final float\[\] mMVPMatrix = new float\[16\]/, 'MVP matrix is reused');
+assertContains(textureManager, /mTextureWidths/, 'decoded texture widths are retained');
+assertContains(textureManager, /mTextureHeights/, 'decoded texture heights are retained');
+assertContains(glRenderer, /fitScale = Math\.max/, 'fit scale matches Canvas cover behavior');
 assertContains(glRenderer, /GLES20\.glEnable\(GLES20\.GL_BLEND\)/, 'alpha blending is enabled');
 assertContains(
   glRenderer,
