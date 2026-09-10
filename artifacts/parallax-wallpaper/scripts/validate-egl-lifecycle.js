@@ -142,8 +142,7 @@ function sampleBilinear(texture, coordinate, premultiplied) {
   });
 }
 
-function validateTransparentEdgeFixture() {
-  const fixture = transparentEdgeFixture;
+function validateTransparentEdgeFixture(fixture = transparentEdgeFixture) {
   const sampledComposition = fixture.sampledComposition;
   const bilinearTolerance = fixture.bilinearTolerance;
   const channelTolerances = sampledComposition?.channelTolerances;
@@ -179,7 +178,8 @@ function validateTransparentEdgeFixture() {
     || Math.abs(alphaTolerance - canonicalTolerance) <= canonicalTolerance * 1e-9
   ) {
     throw new Error(
-      `Transparent-edge alpha tolerance must be positive and distinct from RGB channels: `
+      `Transparent-edge alpha tolerance invalid for `
+        + `${sampledComposition?.name || 'sampled composition'} channel alpha: `
         + `channels [${channelTolerances?.join(',') || 'missing'}] `
         + `alpha ${alphaTolerance}`,
     );
@@ -1190,6 +1190,47 @@ if (/BitmapFactory|new\s+/.test(glFrameBody)) {
   throw new Error('GL renderFrame must not decode bitmaps or allocate objects');
 }
 
+function expectFixtureFailure(name, mutate, expectedMessage) {
+  const candidate = JSON.parse(JSON.stringify(transparentEdgeFixture));
+  mutate(candidate);
+  try {
+    validateTransparentEdgeFixture(candidate);
+  } catch (error) {
+    if (!expectedMessage.test(error.message)) {
+      throw new Error(
+        `Transparent-edge negative case ${name} failed with an unexpected message: `
+          + `${error.message}`,
+      );
+    }
+    return;
+  }
+  throw new Error(`Transparent-edge negative case ${name} unexpectedly passed`);
+}
+
 validateTransparentEdgeFixture();
+expectFixtureFailure(
+  'missing alpha tolerance',
+  (fixture) => {
+    delete fixture.sampledComposition.alphaTolerance;
+  },
+  /four-sampled-alpha-layers channel alpha/,
+);
+expectFixtureFailure(
+  'alpha tolerance equal to RGB',
+  (fixture) => {
+    fixture.sampledComposition.alphaTolerance =
+      Math.max(...fixture.sampledComposition.channelTolerances);
+  },
+  /four-sampled-alpha-layers channel alpha/,
+);
+expectFixtureFailure(
+  'clear-color alpha expectation divergence',
+  (fixture) => {
+    fixture.sampledComposition.clearColorVariants[0].expectedComposition[3] +=
+      fixture.sampledComposition.alphaTolerance * 2;
+  },
+  /four-sampled-alpha-layers clear transparent .* at alpha/,
+);
 console.log('EGL lifecycle static regression checks passed');
 console.log('Transparent-edge composition fixture passed');
+console.log('Transparent-edge alpha tolerance negative cases passed');
