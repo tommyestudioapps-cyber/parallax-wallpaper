@@ -12,11 +12,8 @@ const JAVA_PACKAGE_PATH = PACKAGE_NAME.replace(/\./g, '/');
 const CANONICAL_JAVA_DIRECTORY = path.resolve(
   __dirname,
   '..',
-  'android',
-  'app',
-  'src',
-  'main',
-  'java',
+  'plugins',
+  'parallax-native',
   JAVA_PACKAGE_PATH,
 );
 const CANONICAL_JAVA_FILES = [
