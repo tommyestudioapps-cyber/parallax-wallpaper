@@ -1,0 +1,114 @@
+package com.parallaxwallpaper.app;
+
+import android.app.WallpaperManager;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import com.facebook.react.bridge.Promise;
+import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReactContextBaseJavaModule;
+import com.facebook.react.bridge.ReactMethod;
+
+public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
+  private static final String PREFS_NAME = ParallaxWallpaperService.PREFS_NAME;
+  private static final String PREF_COMPOSITION = "composition";
+
+  private final ReactApplicationContext reactContext;
+
+  public ParallaxWallpaperModule(ReactApplicationContext reactContext) {
+    super(reactContext);
+    this.reactContext = reactContext;
+  }
+
+  @Override
+  public String getName() {
+    return "ParallaxWallpaper";
+  }
+
+  @ReactMethod
+  public void configureLiveWallpaper(String configJson, Promise promise) {
+    try {
+      reactContext
+          .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+          .edit()
+          .putString(PREF_COMPOSITION, configJson)
+          .apply();
+      ParallaxWallpaperService.notifyCompositionChanged();
+      promise.resolve(true);
+    } catch (Exception error) {
+      promise.reject("CONFIGURE_WALLPAPER_FAILED", error);
+    }
+  }
+
+  @ReactMethod
+  public void setRendererType(String rendererType, Promise promise) {
+    if (!ParallaxWallpaperService.RENDERER_OPENGL.equals(rendererType)
+        && !ParallaxWallpaperService.RENDERER_CANVAS.equals(rendererType)) {
+      promise.reject("INVALID_RENDERER_TYPE", "Renderer must be OPENGL or CANVAS");
+      return;
+    }
+    String normalizedType = ParallaxWallpaperService.normalizeRendererType(rendererType);
+    try {
+      reactContext
+          .getSharedPreferences(ParallaxWallpaperService.PREFS_NAME, Context.MODE_PRIVATE)
+          .edit()
+          .putString(ParallaxWallpaperService.PREF_RENDERER_TYPE, normalizedType)
+          .apply();
+      ParallaxWallpaperService.requestRendererType(normalizedType);
+      promise.resolve(normalizedType);
+    } catch (Exception error) {
+      promise.reject("SET_RENDERER_TYPE_FAILED", error);
+    }
+  }
+
+  @ReactMethod
+  public void getRendererType(Promise promise) {
+    try {
+      String rendererType = reactContext
+          .getSharedPreferences(ParallaxWallpaperService.PREFS_NAME, Context.MODE_PRIVATE)
+          .getString(
+              ParallaxWallpaperService.PREF_RENDERER_TYPE,
+              ParallaxWallpaperService.RENDERER_OPENGL);
+      promise.resolve(ParallaxWallpaperService.normalizeRendererType(rendererType));
+    } catch (Exception error) {
+      promise.reject("GET_RENDERER_TYPE_FAILED", error);
+    }
+  }
+
+  @ReactMethod
+  public void openLiveWallpaperChooser(Promise promise) {
+    try {
+      Intent intent = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
+      intent.putExtra(
+          WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+          new ComponentName(reactContext, ParallaxWallpaperService.class)
+      );
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      reactContext.startActivity(intent);
+      promise.resolve(true);
+    } catch (Exception error) {
+      promise.reject("OPEN_WALLPAPER_CHOOSER_FAILED", error);
+    }
+  }
+
+  @ReactMethod
+  public void isWallpaperActive(Promise promise) {
+    try {
+      WallpaperManager manager = WallpaperManager.getInstance(reactContext);
+      if (manager == null) {
+        promise.resolve(false);
+        return;
+      }
+      ComponentName active = manager.getWallpaperInfo() == null
+          ? null
+          : new ComponentName(
+              manager.getWallpaperInfo().getPackageName(),
+              manager.getWallpaperInfo().getServiceName());
+      ComponentName expected = new ComponentName(
+          reactContext, ParallaxWallpaperService.class);
+      promise.resolve(expected.equals(active));
+    } catch (Exception error) {
+      promise.reject("IS_WALLPAPER_ACTIVE_FAILED", error);
+    }
+  }
+}
