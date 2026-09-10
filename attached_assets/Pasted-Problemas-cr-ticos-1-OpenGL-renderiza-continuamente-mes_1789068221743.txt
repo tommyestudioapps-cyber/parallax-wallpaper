@@ -1,0 +1,110 @@
+Problemas críticos
+1. OpenGL renderiza continuamente, mesmo sem movimento
+ParallaxEglThread.run() tem um while (running) que chama renderFrame() e eglSwapBuffers() a cada VSync.
+Isso significa 60 FPS constantes enquanto o wallpaper estiver visível, mesmo se o celular estiver parado.
+O Canvas é sob demanda; o OpenGL não. Isso consome bateria desnecessariamente e não é aceitável para um app premium.
+
+Correção: tornar o OpenGL event-driven. Renderizar apenas quando:
+
+o sensor mudar além da dead zone;
+
+a visibilidade mudar;
+
+a composição for alterada;
+
+houver força de redraw.
+
+2. OpenGL não implementa a composição completa
+O ParallaxGlRenderer ignora:
+
+scale das camadas;
+
+x e y das camadas;
+
+sourceCrop;
+
+canvasWidth;
+
+intensity.
+
+Ele apenas ajusta a textura para cobrir a tela e aplica deslocamento por parallaxMultiplier.
+O Canvas implementa tudo isso. Resultado: a mesma configuração gera visuais diferentes entre Canvas e OpenGL. Isso quebra a qualidade premium.
+
+Correção: completar o shader/OpenGL para aplicar crop, escala, offset, intensidade e sistema de coordenadas igual ao Canvas.
+
+3. OpenGL não atualiza composição em tempo real
+ParallaxEglController.invalidateComposition() e setComposition() estão vazios.
+ParallaxTextureManager.loadTextures() usa texturesLoaded e nunca recarrega.
+Se o usuário alterar o papel de parede com o serviço já visível, o OpenGL não atualiza. O Canvas recarrega via prepareComposition(), mas o OpenGL não.
+
+Correção: adicionar método para invalidar texturas e reiniciar a thread EGL, ou implementar recarga dinâmica de composição.
+
+4. Conversão de movimento inconsistente
+No Canvas, o movimento usa coordenadas da composição (canvasWidth, coordinateScale, intensity).
+No OpenGL, updateSensorState faz:
+
+java
+motionX = sensorMotionX * 2f / surfaceWidth;
+Isso ignora intensity, canvasWidth e a escala usada no Canvas.
+Além disso, ParallaxEglController.getIntensity() retorna 1f, então o serviço não escala o sensor para OpenGL.
+
+Resultado: o parallax OpenGL se move diferente do Canvas, provavelmente menos e sem respeitar a intensidade configurada.
+
+5. onSurfaceChanged no OpenGL não reinicia a thread
+Se o tamanho da superfície mudar sem destruí-la, o ParallaxEglController apenas atualiza requestedSurface, mas não reinicia a thread.
+O ParallaxGlRenderer mantém surfaceWidth/surfaceHeight antigos no viewport e na projeção.
+O Canvas atualiza largura/altura corretamente.
+
+Correção: ao detectar mudança de tamanho, parar e recriar a thread EGL, ou atualizar viewport/projeção no renderer.
+
+6. onSensorChanged faz lookup pesado a cada evento
+Dentro do sensor (60 Hz), o código chama:
+
+java
+WindowManager windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+Display display = windowManager == null ? null : windowManager.getDefaultDisplay();
+Isso é caro e desnecessário. A rotação da tela pode ser cacheada e atualizada em onConfigurationChanged.
+
+7. Dead zone muito pequena
+MOTION_DEAD_ZONE = 0.01f.
+Como targetX e targetY são calculados em graus * 0.45 * intensidade e limitados a ~18, um dead zone de 0.01 é minúsculo.
+Isso faz o Canvas solicitar frames quase sempre, reduzindo o benefício da dead zone.
+
+Sugestão: aumentar para algo como 0.1–0.3, dependendo dos testes.
+
+8. Falta notificação do módulo React para o serviço
+ParallaxWallpaperModule.configureLiveWallpaper() apenas grava SharedPreferences.
+Se o wallpaper já estiver ativo, nada avisa o serviço para recarregar.
+O usuário muda a configuração e não vê atualização imediata.
+
+Correção: criar método estático no ParallaxWallpaperService para invalidar composição e chamá-lo após salvar.
+
+9. Logs em produção
+Há muitos Log.i e Log.d em caminhos quentes (sensor, render, EGL).
+Isso afeta bateria e performance. Em release, devem ser removidos ou ficar atrás de BuildConfig.DEBUG.
+
+10. Race conditions no Canvas
+CanvasWallpaperRenderer tem campos volatile, mas métodos de surface são chamados na main thread e o drawFrame roda na renderThread.
+Há try/catch, então provavelmente não crasha, mas não é o ideal.
+O correto é postar eventos de surface para a mesma thread de renderização ou sincronizar adequadamente.
+
+Recomendações para ficar premium
+Unificar a renderização: ou completar o OpenGL para suportar toda a composição, ou usar apenas Canvas otimizado. O ideal é OpenGL completo.
+
+OpenGL sob demanda: usar HandlerThread + ConditionVariable ou Handler para sinalizar frames. Renderizar só quando necessário.
+
+Recarga dinâmica: invalidateComposition deve recarregar texturas e redesenhar.
+
+Paridade visual: Canvas e OpenGL precisam produzir o mesmo resultado.
+
+Cachear rotação da tela e evitar getSystemService no sensor.
+
+Aumentar dead zone e/ou usar histerese.
+
+Notificar o serviço após configureLiveWallpaper.
+
+Reduzir logs em release.
+
+Sincronizar surface events no Canvas.
+
+Tratar onSurfaceChanged no OpenGL com reinício ou atualização de viewport.
