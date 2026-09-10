@@ -270,7 +270,99 @@
         }
       ],
       "tolerance": 0.000001
-    }
+    },
+    "toleranceBoundarySamples": [
+      {
+        "name": "below-red",
+        "threshold": "below",
+        "channel": 0,
+        "coordinate": [0.625, 0.375],
+        "texture": {
+          "width": 2,
+          "height": 2,
+          "texels": [
+            [[0.0000009, 0, 0, 0], [0.0000009, 0, 0, 0]],
+            [[0.0000009, 0, 0, 0], [0.0000009, 0, 0, 0]]
+          ]
+        },
+        "expectedPremultiplied": [0, 0, 0, 0]
+      },
+      {
+        "name": "above-red",
+        "threshold": "above",
+        "channel": 0,
+        "coordinate": [0.625, 0.375],
+        "texture": {
+          "width": 2,
+          "height": 2,
+          "texels": [
+            [[0.0000011, 0, 0, 0], [0.0000011, 0, 0, 0]],
+            [[0.0000011, 0, 0, 0], [0.0000011, 0, 0, 0]]
+          ]
+        },
+        "expectedPremultiplied": [0, 0, 0, 0]
+      },
+      {
+        "name": "below-green",
+        "threshold": "below",
+        "channel": 1,
+        "coordinate": [0.625, 0.375],
+        "texture": {
+          "width": 2,
+          "height": 2,
+          "texels": [
+            [[0, 0.0000009, 0, 0], [0, 0.0000009, 0, 0]],
+            [[0, 0.0000009, 0, 0], [0, 0.0000009, 0, 0]]
+          ]
+        },
+        "expectedPremultiplied": [0, 0, 0, 0]
+      },
+      {
+        "name": "above-green",
+        "threshold": "above",
+        "channel": 1,
+        "coordinate": [0.625, 0.375],
+        "texture": {
+          "width": 2,
+          "height": 2,
+          "texels": [
+            [[0, 0.0000011, 0, 0], [0, 0.0000011, 0, 0]],
+            [[0, 0.0000011, 0, 0], [0, 0.0000011, 0, 0]]
+          ]
+        },
+        "expectedPremultiplied": [0, 0, 0, 0]
+      },
+      {
+        "name": "below-blue",
+        "threshold": "below",
+        "channel": 2,
+        "coordinate": [0.625, 0.375],
+        "texture": {
+          "width": 2,
+          "height": 2,
+          "texels": [
+            [[0, 0, 0.0000009, 0], [0, 0, 0.0000009, 0]],
+            [[0, 0, 0.0000009, 0], [0, 0, 0.0000009, 0]]
+          ]
+        },
+        "expectedPremultiplied": [0, 0, 0, 0]
+      },
+      {
+        "name": "above-blue",
+        "threshold": "above",
+        "channel": 2,
+        "coordinate": [0.625, 0.375],
+        "texture": {
+          "width": 2,
+          "height": 2,
+          "texels": [
+            [[0, 0, 0.0000011, 0], [0, 0, 0.0000011, 0]],
+            [[0, 0, 0.0000011, 0], [0, 0, 0.0000011, 0]]
+          ]
+        },
+        "expectedPremultiplied": [0, 0, 0, 0]
+      }
+    ]
   },
   "expectedComposition": [0.225, 0.275, 0.1125, 1],
   "clearColor": [0, 0, 0, 1]

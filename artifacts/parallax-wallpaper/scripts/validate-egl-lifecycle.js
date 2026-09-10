@@ -552,6 +552,125 @@ function validateTransparentEdgeFixture() {
       });
     });
   });
+  if (
+    !Array.isArray(sampledComposition.toleranceBoundarySamples)
+    || sampledComposition.toleranceBoundarySamples.length < 6
+  ) {
+    throw new Error(
+      `Transparent-edge tolerance boundary must cover below/above red, green, and blue: `
+        + sampledComposition.name,
+    );
+  }
+  const toleranceBoundaryChannels = new Set();
+  sampledComposition.toleranceBoundarySamples.forEach((boundary) => {
+    const boundaryTexture = boundary.texture;
+    if (
+      !boundary.name
+      || !['below', 'above'].includes(boundary.threshold)
+      || !Number.isInteger(boundary.channel)
+      || boundary.channel < 0
+      || boundary.channel > 2
+      || !Array.isArray(boundary.coordinate)
+      || boundary.coordinate.length !== 2
+      || !boundaryTexture
+      || boundaryTexture.width < 2
+      || boundaryTexture.height < 2
+      || boundaryTexture.texels.length !== boundaryTexture.height
+      || boundaryTexture.texels.some((row) => row.length !== boundaryTexture.width)
+      || !Array.isArray(boundary.expectedPremultiplied)
+      || boundary.expectedPremultiplied.length !== 4
+    ) {
+      throw new Error(
+        `Transparent-edge tolerance boundary is invalid: `
+          + `${sampledComposition.name} ${boundary.name || 'unnamed'}`,
+      );
+    }
+    const boundaryTexels = boundaryTexture.texels.flat();
+    if (!boundaryTexels.every((rgba) => rgba[3] === 0)) {
+      throw new Error(
+        `Transparent-edge tolerance boundary must use alpha-zero texels: `
+          + `${sampledComposition.name} ${boundary.name}`,
+      );
+    }
+    const premultipliedBoundaryColor = sampleBilinear(
+      boundaryTexture,
+      boundary.coordinate,
+      true,
+    );
+    const straightBoundaryColor = sampleBilinear(
+      boundaryTexture,
+      boundary.coordinate,
+      false,
+    );
+    const boundaryDescription =
+      `${sampledComposition.name} ${boundary.name} coordinate ${boundary.coordinate.join(',')}`;
+    assertClose(
+      premultipliedBoundaryColor,
+      boundary.expectedPremultiplied,
+      `${boundaryDescription} premultiplied sample`,
+      bilinearTransparentSample.tolerance,
+    );
+    const expectedDistance = bilinearTransparentSample.tolerance * 0.1;
+    if (
+      Math.abs(
+        Math.abs(straightBoundaryColor[boundary.channel] - bilinearTransparentSample.tolerance)
+          - expectedDistance,
+      ) > bilinearTransparentSample.tolerance * 0.25
+    ) {
+      throw new Error(
+        `Transparent-edge tolerance boundary is not close to the threshold: `
+          + `${boundaryDescription} channel ${boundary.channel}`,
+      );
+    }
+    toleranceBoundaryChannels.add(boundary.channel);
+    transparentLayerSample.positions.forEach((position) => {
+      const referenceLayerName = position.insertBefore || position.insertAfter;
+      const referenceIndex = sampledLayers.findIndex(
+        (layer) => layer.name === referenceLayerName,
+      );
+      const insertionIndex = position.insertBefore ? referenceIndex : referenceIndex + 1;
+      sampledComposition.clearColorVariants.forEach((variant) => {
+        const passesThreshold =
+          boundary.threshold === 'below'
+            ? straightBoundaryColor[boundary.channel] <= bilinearTransparentSample.tolerance
+            : straightBoundaryColor[boundary.channel] > bilinearTransparentSample.tolerance;
+        if (!passesThreshold) {
+          throw new Error(
+            `Transparent-edge tolerance classification failed: ${boundaryDescription} `
+              + `position ${position.name} clear ${variant.name} `
+              + `channel ${boundary.channel}`,
+          );
+        }
+        const sampledLayersWithBoundary = sampledLayers.slice();
+        sampledLayersWithBoundary.splice(
+          insertionIndex,
+          0,
+          {
+            name: boundary.name,
+            color: premultipliedBoundaryColor,
+          },
+        );
+        const withoutBoundary = composeSampledLayers(sampledLayers, variant.clearColor);
+        const withBoundary = composeSampledLayers(
+          sampledLayersWithBoundary,
+          variant.clearColor,
+        );
+        assertClose(
+          withBoundary,
+          withoutBoundary,
+          `${boundaryDescription} position ${position.name} clear ${variant.name} `
+            + `before vs after composition channel ${boundary.channel}`,
+          variant.tolerance,
+        );
+      });
+    });
+  });
+  if (toleranceBoundaryChannels.size !== 3) {
+    throw new Error(
+      `Transparent-edge tolerance boundary must cover all RGB channels: `
+        + sampledComposition.name,
+    );
+  }
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
   if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {
