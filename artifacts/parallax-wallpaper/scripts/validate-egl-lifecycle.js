@@ -1191,6 +1191,16 @@ assertContains(glRenderer, /u_Offset \* u_DepthFactor/, 'vertex shader displaces
 assertContains(glRenderer, /glUniform2f\(offsetLocation, motionX, motionY\)/, 'sensor offset is sent per layer');
 assertContains(glRenderer, /glUniform1f\(depthFactorLocation, textureManager\.getDepthFactor\(index\)\)/, 'layer depth is sent per layer');
 assertContains(glRenderer, /public void updateSensorState\(float sensorMotionX, float sensorMotionY\)/, 'GL renderer receives sensor values without objects');
+assertContains(
+  glRenderer,
+  /surfaceAvailable[\s\S]*surfaceWidth = Math\.max\(1, surfaceWidth\)[\s\S]*surfaceHeight = Math\.max\(1, surfaceHeight\)/,
+  'GL renderer stores a complete surface-ready snapshot',
+);
+assertContains(
+  glRenderer,
+  /if \(!surfaceAvailable[\s\S]*GLES20\.glClear/,
+  'GL renderer never clears or swaps a frame before it is ready',
+);
 assertContains(glRenderer, /GLES20\.glEnable\(GLES20\.GL_BLEND\)/, 'alpha blending is enabled');
 assertContains(
   glRenderer,
@@ -1333,6 +1343,9 @@ assertOrder(
 );
 if (/BitmapFactory|new\s+/.test(glFrameBody)) {
   throw new Error('GL renderFrame must not decode bitmaps or allocate objects');
+}
+if (/loadTextures|releaseTextures/.test(glFrameBody)) {
+  throw new Error('GL renderFrame must not reload or release textures');
 }
 
 function expectFixtureFailure(name, mutate, expectedMessage) {
