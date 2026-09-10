@@ -471,6 +471,52 @@ function validateTransparentEdgeFixture() {
       color: premultipliedBilinearColor,
     };
   });
+  const isolatedChannelSamples = bilinearTransparentSamples.filter(
+    (sample) => sample.isolatedChannel !== undefined,
+  );
+  if (
+    isolatedChannelSamples.length < 3
+    || new Set(isolatedChannelSamples.map((sample) => sample.isolatedChannel)).size !== 3
+  ) {
+    throw new Error(
+      `Transparent-edge bilinear samples must cover isolated red, green, and blue residuals: `
+        + `${sampledComposition.name}`,
+    );
+  }
+  isolatedChannelSamples.forEach((sample) => {
+    if (
+      !Number.isInteger(sample.isolatedChannel)
+      || sample.isolatedChannel < 0
+      || sample.isolatedChannel > 2
+    ) {
+      throw new Error(
+        `Transparent-edge isolated channel is invalid: `
+          + `${sample.description} channel ${sample.isolatedChannel}`,
+      );
+    }
+    const straightColor = sampleBilinear(
+      bilinearTransparentTexture,
+      sample.coordinate,
+      false,
+    );
+    if (straightColor[sample.isolatedChannel] <= bilinearTransparentSample.tolerance) {
+      throw new Error(
+        `Transparent-edge isolated RGB residual is missing: `
+          + `${sample.description} channel ${sample.isolatedChannel}`,
+      );
+    }
+    for (let channel = 0; channel < 3; channel += 1) {
+      if (
+        channel !== sample.isolatedChannel
+        && Math.abs(straightColor[channel]) > bilinearTransparentSample.tolerance
+      ) {
+        throw new Error(
+          `Transparent-edge isolated RGB residual leaked: `
+            + `${sample.description} channel ${channel}`,
+        );
+      }
+    }
+  });
   transparentLayerSample.positions.forEach((position) => {
     const referenceLayerName = position.insertBefore || position.insertAfter;
     const referenceIndex = sampledLayers.findIndex(
