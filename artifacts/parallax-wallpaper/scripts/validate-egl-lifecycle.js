@@ -28,6 +28,10 @@ const wallpaperService = fs.readFileSync(
   path.join(javaRoot, 'ParallaxWallpaperService.java'),
   'utf8',
 );
+const wallpaperModule = fs.readFileSync(
+  path.join(javaRoot, 'ParallaxWallpaperModule.java'),
+  'utf8',
+);
 const eglThread = fs.readFileSync(path.join(javaRoot, 'ParallaxEglThread.java'), 'utf8');
 const textureManager = fs.readFileSync(
   path.join(javaRoot, 'ParallaxTextureManager.java'),
@@ -36,6 +40,10 @@ const textureManager = fs.readFileSync(
 const glRenderer = fs.readFileSync(path.join(javaRoot, 'ParallaxGlRenderer.java'), 'utf8');
 const alphaMatrixScript = fs.readFileSync(
   path.join(__dirname, 'android-alpha-matrix.js'),
+  'utf8',
+);
+const expoPlugin = fs.readFileSync(
+  path.join(__dirname, '..', 'plugins', 'withParallaxLiveWallpaper.js'),
   'utf8',
 );
 
@@ -1040,9 +1048,12 @@ for (const state of ['STOPPED', 'STARTING', 'RUNNING', 'STOPPING']) {
 
 assertContains(
   wallpaperService,
-  /USE_OPENGL_RENDERER\s*=\s*(?:true|false)/,
-  'OpenGL renderer can be selected without changing the Canvas default',
+  /DEFAULT_RENDERER_TYPE\s*=\s*RENDERER_OPENGL/,
+  'OpenGL is the default renderer preference',
 );
+assertContains(wallpaperService, /PREF_RENDERER_TYPE/, 'renderer preference is read from SharedPreferences');
+assertContains(wallpaperService, /createRenderer\(rendererType\)/, 'engine creates the configured renderer');
+assertContains(wallpaperService, /switchRenderer\(RENDERER_CANVAS, reason\)/, 'engine falls back to Canvas after GPU failure');
 assertContains(controller, /state = State\.STOPPING/, 'surface transitions request STOPPING');
 assertContains(controller, /thread\.requestStop\(\)/, 'stopping is asynchronous');
 assertContains(controller, /state == State\.STOPPING/, 'restart is gated by STOPPING');
@@ -1052,6 +1063,8 @@ assertContains(controller, /isSurfaceValid\(requestedSurface\)/, 'surface validi
 assertContains(controller, /released = true/, 'release marks the controller as released');
 assertContains(controller, /volatile ParallaxSensorState sensorState/, 'sensor snapshots are retained safely');
 assertContains(controller, /thread\.updateSensorState\(nextState\)/, 'sensor snapshots reach the EGL thread');
+assertContains(controller, /onEglFailure\(ParallaxEglThread thread, String reason\)/, 'EGL failures reach the controller');
+assertContains(controller, /failureReported/, 'failed EGL threads cannot restart continuously');
 
 if (/Thread\.join|Thread\.sleep|sleep\s*\(/.test(controller)) {
   throw new Error('EGL controller must not block callbacks with join or sleep');
@@ -1063,6 +1076,7 @@ assertContains(
   'swap result is captured for timing and failure handling',
 );
 assertContains(eglThread, /running = false/, 'swap failure stops the loop');
+assertContains(eglThread, /listener\.onEglFailure\(this, reason\)/, 'EGL initialization failures notify the controller');
 assertContains(eglThread, /new ParallaxGlRenderer/, 'EGL thread owns the GL renderer');
 assertContains(eglThread, /initializeGlRenderer\(\)/, 'GL renderer initializes after EGL');
 assertContains(eglThread, /volatile ParallaxSensorState sensorState/, 'EGL thread reads a volatile sensor snapshot');
@@ -1274,6 +1288,10 @@ assertContains(
   /boolean alphaPrecisionPassed = glRenderer\.validateAlphaPrecision\(\)/,
   'EGL thread runs alpha precision validation after renderer initialization',
 );
+assertContains(wallpaperModule, /setRendererType\(String rendererType, Promise promise\)/, 'React Native can select the renderer');
+assertContains(wallpaperModule, /putString\(ParallaxWallpaperService\.PREF_RENDERER_TYPE, normalizedType\)/, 'renderer selection is persisted');
+assertContains(wallpaperModule, /getRendererType\(Promise promise\)/, 'React Native can read the renderer selection');
+assertContains(expoPlugin, /'ParallaxWallpaperModule\.java'/, 'Expo plugin copies the native module');
 assertContains(
   alphaMatrixScript,
   /ANDROID_ALPHA_MATRIX_SERIALS/,

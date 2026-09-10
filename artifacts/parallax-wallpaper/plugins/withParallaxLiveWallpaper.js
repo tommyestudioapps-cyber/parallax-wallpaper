@@ -21,6 +21,7 @@ const CANONICAL_JAVA_DIRECTORY = path.resolve(
 );
 const CANONICAL_JAVA_FILES = [
   'ParallaxWallpaperService.java',
+  'ParallaxWallpaperModule.java',
   'WallpaperRenderer.java',
   'CanvasWallpaperRenderer.java',
   'ParallaxComposition.java',
@@ -137,17 +138,10 @@ function withParallaxWallpaperFiles(config) {
             cause: error,
           });
         }
-        if (fileName === 'ParallaxWallpaperService.java') {
-          canonicalJava = canonicalJava.replace(
-            /(USE_OPENGL_RENDERER\s*=\s*)false/,
-            '$1true',
-          );
-        }
         fs.writeFileSync(path.join(javaDirectory, fileName), canonicalJava, 'utf8');
       }
 
-      fs.writeFileSync(path.join(javaDirectory, 'ParallaxWallpaperPackage.java'), PARALLAX_PACKAGE_JAVA);
-      fs.writeFileSync(path.join(javaDirectory, 'ParallaxWallpaperModule.java'), PARALLAX_MODULE_JAVA);
+        fs.writeFileSync(path.join(javaDirectory, 'ParallaxWallpaperPackage.java'), PARALLAX_PACKAGE_JAVA);
       fs.writeFileSync(path.join(xmlDirectory, 'parallax_wallpaper.xml'), PARALLAX_XML);
       return modConfig;
     },
@@ -175,62 +169,6 @@ public class ParallaxWallpaperPackage implements ReactPackage {
   @Override
   public List<ViewManager> createViewManagers(ReactApplicationContext reactContext) {
     return Collections.emptyList();
-  }
-}
-`;
-
-const PARALLAX_MODULE_JAVA = `package ${PACKAGE_NAME};
-
-import android.app.WallpaperManager;
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.Intent;
-import com.facebook.react.bridge.Promise;
-import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
-
-public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
-  private final ReactApplicationContext reactContext;
-
-  public ParallaxWallpaperModule(ReactApplicationContext reactContext) {
-    super(reactContext);
-    this.reactContext = reactContext;
-  }
-
-  @Override
-  public String getName() {
-    return "ParallaxWallpaper";
-  }
-
-  @ReactMethod
-  public void configureLiveWallpaper(String configJson, Promise promise) {
-    try {
-      reactContext
-          .getSharedPreferences("parallax_wallpaper", Context.MODE_PRIVATE)
-          .edit()
-          .putString("composition", configJson)
-          .apply();
-      promise.resolve(true);
-    } catch (Exception error) {
-      promise.reject("CONFIGURE_WALLPAPER_FAILED", error);
-    }
-  }
-
-  @ReactMethod
-  public void openLiveWallpaperChooser(Promise promise) {
-    try {
-      Intent intent = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
-      intent.putExtra(
-          WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-          new ComponentName(reactContext, ParallaxWallpaperService.class)
-      );
-      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-      reactContext.startActivity(intent);
-      promise.resolve(true);
-    } catch (Exception error) {
-      promise.reject("OPEN_WALLPAPER_CHOOSER_FAILED", error);
-    }
   }
 }
 `;

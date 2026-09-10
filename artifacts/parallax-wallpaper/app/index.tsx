@@ -76,6 +76,7 @@ const PARALLAX_SMOOTHING_RATE = 10;
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
+type RendererType = 'OPENGL' | 'CANVAS';
 type ImageCrop = {
   originX: number;
   originY: number;
@@ -680,6 +681,70 @@ function Header({
   );
 }
 
+function RendererSelector({
+  rendererType,
+  changing,
+  colors,
+  onChange,
+}: {
+  rendererType: RendererType;
+  changing: boolean;
+  colors: ReturnType<typeof useColors>;
+  onChange: (rendererType: RendererType) => void;
+}) {
+  return (
+    <View style={[styles.rendererCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+      <View style={styles.rendererHeader}>
+        <View style={[styles.rendererIcon, { backgroundColor: colors.primary }]}>
+          <Ionicons name="speedometer-outline" size={17} color={colors.primaryForeground} />
+        </View>
+        <View style={styles.rendererCopy}>
+          <Text style={[styles.controlLabel, { color: colors.foreground }]}>Motor do wallpaper</Text>
+          <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>
+            {changing
+              ? 'Atualizando o preview nativo…'
+              : rendererType === 'OPENGL'
+                ? 'GPU ativa · fallback automático para Canvas'
+                : 'CPU ativa · compatível com mais aparelhos'}
+          </Text>
+        </View>
+      </View>
+      <View style={[styles.rendererOptions, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        {([
+          ['OPENGL', 'GPU · OpenGL', 'hardware-chip-outline'],
+          ['CANVAS', 'CPU · Canvas', 'easel-outline'],
+        ] as const).map(([value, label, icon]) => {
+          const active = rendererType === value;
+          return (
+            <Pressable
+              key={value}
+              testID={`renderer-${value.toLowerCase()}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active, disabled: changing }}
+              accessibilityLabel={`Usar ${label}`}
+              disabled={changing}
+              onPress={() => onChange(value)}
+              style={({ pressed }) => [
+                styles.rendererOption,
+                {
+                  backgroundColor: active ? colors.primary : 'transparent',
+                  borderColor: active ? colors.primary : colors.border,
+                  opacity: pressed ? 0.78 : 1,
+                },
+              ]}
+            >
+              <Ionicons name={icon} size={16} color={active ? colors.primaryForeground : colors.mutedForeground} />
+              <Text style={[styles.rendererOptionText, { color: active ? colors.primaryForeground : colors.foreground }]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function getLayerSurface(layer: Layer, extraMarginX: number, extraMarginY: number) {
   const marginX = Math.abs(layer.x) + extraMarginX;
   const marginY = Math.abs(layer.y) + extraMarginY;
@@ -1025,6 +1090,8 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [rendererType, setRendererType] = useState<RendererType>('OPENGL');
+  const [rendererChanging, setRendererChanging] = useState(false);
   const projectRef = useRef(project);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureStart = useRef<{
@@ -1063,6 +1130,20 @@ export default function HomeScreen() {
         }
       })
       .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const nativeWallpaper = NativeModules.ParallaxWallpaper;
+    if (!nativeWallpaper?.getRendererType) return;
+    nativeWallpaper
+      .getRendererType()
+      .then((value: unknown) => {
+        if (value === 'OPENGL' || value === 'CANVAS') setRendererType(value);
+      })
+      .catch(() => {
+        // The default OpenGL selection remains valid when the native module is unavailable.
+      });
   }, []);
 
   useEffect(() => {
@@ -1277,6 +1358,29 @@ export default function HomeScreen() {
       Alert.alert('Wallpaper criado', 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.');
     }
   };
+
+  const changeRendererType = useCallback(async (nextType: RendererType) => {
+    if (nextType === rendererType || rendererChanging) return;
+    const nativeWallpaper = NativeModules.ParallaxWallpaper;
+    if (Platform.OS !== 'android' || !nativeWallpaper?.setRendererType) {
+      Alert.alert('Motor nativo indisponível', 'Instale um build Android que inclua o serviço nativo de wallpaper para trocar o motor.');
+      return;
+    }
+
+    const previousType = rendererType;
+    setRendererType(nextType);
+    setRendererChanging(true);
+    try {
+      await nativeWallpaper.setRendererType(nextType);
+      setApplied(false);
+      Haptics.selectionAsync();
+    } catch {
+      setRendererType(previousType);
+      Alert.alert('Não foi possível trocar o motor', 'A configuração anterior foi mantida.');
+    } finally {
+      setRendererChanging(false);
+    }
+  }, [rendererChanging, rendererType]);
 
   const edit = project.layers[editingLayer];
   const importedCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
@@ -1683,6 +1787,14 @@ export default function HomeScreen() {
           <Text style={[styles.heroTitle, { color: colors.foreground }]}>Transforme fotos{'\n'}em <Text style={{ color: colors.primary }}>profundidade.</Text></Text>
           <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Crie um wallpaper vivo com três imagens e um movimento que parece real.</Text>
         </View>
+        {Platform.OS === 'android' ? (
+          <RendererSelector
+            rendererType={rendererType}
+            changing={rendererChanging}
+            colors={colors}
+            onChange={changeRendererType}
+          />
+        ) : null}
         <View style={styles.layersHeader}>
           <View>
             <Text style={[styles.sectionKicker, { color: colors.primary }]}>SEU PROJETO</Text>
@@ -1804,6 +1916,13 @@ const styles = StyleSheet.create({
   progressArrow: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   progressArrowDisabled: { opacity: 0.35 },
   hero: { paddingBottom: 28 },
+  rendererCard: { borderWidth: 1, borderRadius: 18, padding: 14, marginBottom: 22 },
+  rendererHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  rendererIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  rendererCopy: { flex: 1, gap: 2 },
+  rendererOptions: { flexDirection: 'row', gap: 7, borderWidth: 1, borderRadius: 13, padding: 4 },
+  rendererOption: { flex: 1, minHeight: 38, borderRadius: 9, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  rendererOptionText: { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
   heroKicker: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 99, gap: 7, marginBottom: 16 },
   heroKickerText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
