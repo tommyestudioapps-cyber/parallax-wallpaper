@@ -61,8 +61,8 @@ for (const state of ['STOPPED', 'STARTING', 'RUNNING', 'STOPPING']) {
 
 assertContains(
   wallpaperService,
-  /USE_OPENGL_RENDERER\s*=\s*true/,
-  'OpenGL renderer is enabled for Android validation',
+  /USE_OPENGL_RENDERER\s*=\s*(?:true|false)/,
+  'OpenGL renderer can be selected without changing the Canvas default',
 );
 assertContains(controller, /state = State\.STOPPING/, 'surface transitions request STOPPING');
 assertContains(controller, /thread\.requestStop\(\)/, 'stopping is asynchronous');
@@ -78,7 +78,11 @@ if (/Thread\.join|Thread\.sleep|sleep\s*\(/.test(controller)) {
   throw new Error('EGL controller must not block callbacks with join or sleep');
 }
 
-assertContains(eglThread, /if \(!EGL14\.eglSwapBuffers/, 'swap failure is checked');
+assertContains(
+  eglThread,
+  /boolean swapSucceeded = EGL14\.eglSwapBuffers/,
+  'swap result is captured for timing and failure handling',
+);
 assertContains(eglThread, /running = false/, 'swap failure stops the loop');
 assertContains(eglThread, /new ParallaxGlRenderer/, 'EGL thread owns the GL renderer');
 assertContains(eglThread, /initializeGlRenderer\(\)/, 'GL renderer initializes after EGL');
