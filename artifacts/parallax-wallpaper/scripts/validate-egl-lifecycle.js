@@ -61,6 +61,31 @@ function assertContains(source, pattern, description) {
   }
 }
 
+function assertSensorSamplingRate(source) {
+  const samplingMatch = source.match(
+    /registerListener\(this,\s*rotationSensor,\s*(\d+)\s*\)/,
+  );
+  if (!samplingMatch) {
+    throw new Error(
+      'Missing EGL lifecycle guarantee: sensor sampling requests approximately 30 Hz',
+    );
+  }
+
+  const samplingPeriodUs = Number(samplingMatch[1]);
+  const samplingRateHz = 1_000_000 / samplingPeriodUs;
+  if (
+    !Number.isFinite(samplingPeriodUs)
+    || samplingPeriodUs <= 0
+    || !Number.isFinite(samplingRateHz)
+    || Math.abs(samplingRateHz - 30) > 1
+  ) {
+    throw new Error(
+      `Sensor sampling rate is not approximately 30 Hz: ${samplingRateHz} Hz `
+        + `(${samplingPeriodUs} us)`,
+    );
+  }
+}
+
 function assertOrder(source, patterns, description) {
   let previousIndex = -1;
   for (const pattern of patterns) {
@@ -1072,12 +1097,12 @@ assertContains(
   /renderHandler\.post\(new Runnable\(\)[\s\S]*currentRenderer\.onTrimMemory\(level\)[\s\S]*requestFrame\(true\)/,
   'memory pressure is handled asynchronously on the render thread',
 );
+assertSensorSamplingRate(wallpaperService);
 assertContains(
   wallpaperService,
-  /SENSOR_SAMPLE_PERIOD_US = 33_333[\s\S]*registerListener\(this, rotationSensor, SENSOR_SAMPLE_PERIOD_US\)/,
-  'sensor sampling requests approximately 30 Hz',
+  /AtomicLong totalSensorEvents[\s\S]*AtomicLong skippedSensorFrames[\s\S]*AtomicLong requestedFrames/,
+  'sensor frame metrics are tracked',
 );
-assertContains(wallpaperService, /PARALLAX_SENSOR_METRICS/, 'observed sensor rate is logged');
 assertContains(controller, /state = State\.STOPPING/, 'surface transitions request STOPPING');
 assertContains(controller, /thread\.requestStop\(\)/, 'stopping is asynchronous');
 assertContains(controller, /state == State\.STOPPING/, 'restart is gated by STOPPING');
