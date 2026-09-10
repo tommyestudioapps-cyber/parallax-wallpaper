@@ -144,6 +144,72 @@ function validateTransparentEdgeFixture() {
       throw new Error(`Transparent-edge fixture is missing bilinear coordinate: ${corner}`);
     }
   });
+  if (!Array.isArray(fixture.bilinearAlphaCases) || fixture.bilinearAlphaCases.length < 2) {
+    throw new Error('Transparent-edge fixture must define multiple bilinear alpha cases');
+  }
+  const alphaCaseNames = new Set();
+  fixture.bilinearAlphaCases.forEach((alphaCase) => {
+    if (
+      !alphaCase.name
+      || alphaCaseNames.has(alphaCase.name)
+      || alphaCase.width < 2
+      || alphaCase.height < 2
+      || alphaCase.texels.length !== alphaCase.height
+      || alphaCase.texels.some((row) => row.length !== alphaCase.width)
+    ) {
+      throw new Error(
+        `Transparent-edge bilinear alpha case is invalid: ${alphaCase.name || 'unnamed'}`,
+      );
+    }
+    alphaCaseNames.add(alphaCase.name);
+    alphaCase.samples.forEach((sample) => {
+      if (
+        !Array.isArray(sample.coordinate)
+        || sample.coordinate.length !== 2
+        || !Array.isArray(sample.expectedPremultiplied)
+        || sample.expectedPremultiplied.length !== 4
+      ) {
+        throw new Error(
+          `Transparent-edge bilinear alpha sample is invalid: `
+            + `${alphaCase.name} ${sample.name || 'unnamed'}`,
+        );
+      }
+      const calculatedSample = sampleBilinear(alphaCase, sample.coordinate, true);
+      const sampleDescription =
+        `${alphaCase.name} ${sample.name} coordinate ${sample.coordinate.join(',')}`;
+      assertClose(
+        calculatedSample,
+        sample.expectedPremultiplied,
+        `${sampleDescription} premultiplied reference`,
+        bilinearTolerance,
+      );
+
+      const naiveStraightAlphaSample = sampleBilinear(alphaCase, sample.coordinate, false);
+      let differenceChannel = -1;
+      for (let channel = 0; channel < 3; channel += 1) {
+        if (
+          Math.abs(naiveStraightAlphaSample[channel] - calculatedSample[channel])
+            > bilinearTolerance
+        ) {
+          differenceChannel = channel;
+          break;
+        }
+      }
+      if (differenceChannel < 0) {
+        throw new Error(
+          `Transparent-edge alpha case is not interpolation-sensitive: `
+            + `${sampleDescription} channel ${differenceChannel}`,
+        );
+      }
+      for (let channel = 0; channel < 3; channel += 1) {
+        if (calculatedSample[channel] > calculatedSample[3] + bilinearTolerance) {
+          throw new Error(
+            `Transparent-edge alpha reference halo at ${sampleDescription} channel ${channel}`,
+          );
+        }
+      }
+    });
+  });
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
   if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {

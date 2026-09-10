@@ -85,6 +85,71 @@
     "bottom-left": [0.25, 0.75],
     "bottom-right": [0.75, 0.75]
   },
+  "bilinearAlphaCases": [
+    {
+      "name": "transparent-magenta-to-opaque-black",
+      "width": 2,
+      "height": 2,
+      "texels": [
+        [[1, 0, 1, 0], [0.8, 0.1, 0.2, 0.25]],
+        [[0.2, 0.7, 1, 0.5], [0, 0, 0, 1]]
+      ],
+      "samples": [
+        {
+          "name": "center",
+          "coordinate": [0.5, 0.5],
+          "expectedPremultiplied": [0.075, 0.09375, 0.1375, 0.4375]
+        },
+        {
+          "name": "upper-left-biased",
+          "coordinate": [0.375, 0.375],
+          "expectedPremultiplied": [0.05625, 0.0703125, 0.103125, 0.203125]
+        }
+      ]
+    },
+    {
+      "name": "opaque-white-to-primary-alpha",
+      "width": 2,
+      "height": 2,
+      "texels": [
+        [[0, 0, 0, 0.01], [1, 1, 1, 0.99]],
+        [[1, 0, 0, 0.5], [0, 1, 0, 0.125]]
+      ],
+      "samples": [
+        {
+          "name": "center",
+          "coordinate": [0.5, 0.5],
+          "expectedPremultiplied": [0.3725, 0.27875, 0.2475, 0.40625]
+        },
+        {
+          "name": "right-biased",
+          "coordinate": [0.625, 0.375],
+          "expectedPremultiplied": [0.588125, 0.5803125, 0.556875, 0.6134375]
+        }
+      ]
+    },
+    {
+      "name": "near-zero-alpha-extremes",
+      "width": 2,
+      "height": 2,
+      "texels": [
+        [[1, 1, 0, 0.001], [0, 0, 1, 0.01]],
+        [[1, 0, 1, 0.2], [0, 1, 0, 0.8]]
+      ],
+      "samples": [
+        {
+          "name": "center",
+          "coordinate": [0.5, 0.5],
+          "expectedPremultiplied": [0.05025, 0.20025, 0.0525, 0.25275]
+        },
+        {
+          "name": "lower-left-biased",
+          "coordinate": [0.375, 0.625],
+          "expectedPremultiplied": [0.1126875, 0.1501875, 0.113125, 0.2633125]
+        }
+      ]
+    }
+  ],
   "expectedComposition": [0.225, 0.275, 0.1125, 1],
   "clearColor": [0, 0, 0, 1]
 }
