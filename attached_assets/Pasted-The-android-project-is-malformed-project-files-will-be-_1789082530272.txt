@@ -1,0 +1,22 @@
+The android project is malformed, project files will be cleared and reinitialized.
+- Clearing android
+✔ Cleared android code
+- Creating native directory (./android)
+✔ Created native directory
+- Updating package.json
+✔ Updated package.json | no changes
+- Running prebuild
+✖ Prebuild failed
+Error: [android.dangerous]: withAndroidDangerousBaseMod: Canonical ParallaxWallpaperService.java was not found at /home/expo/workingdir/build/artifacts/parallax-wallpaper/android/app/src/main/java/com/parallaxwallpaper/app/ParallaxWallpaperService.java
+Error: [android.dangerous]: withAndroidDangerousBaseMod: Canonical ParallaxWallpaperService.java was not found at /home/expo/workingdir/build/artifacts/parallax-wallpaper/android/app/src/main/java/com/parallaxwallpaper/app/ParallaxWallpaperService.java
+    at /home/expo/workingdir/build/artifacts/parallax-wallpaper/plugins/withParallaxLiveWallpaper.js:130:17
+    at action (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:197:29)
+    at interceptingMod (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:102:27)
+    at action (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:202:14)
+    at async interceptingMod (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:102:21)
+    at async interceptingMod (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:102:21)
+    at async interceptingMod (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:102:21)
+    at async interceptingMod (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:102:21)
+    at async interceptingMod (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:102:21)
+    at async interceptingMod (/home/expo/workingdir/build/node_modules/.pnpm/@expo+config-plugins@54.0.5/node_modules/@expo/config-plugins/build/plugins/withMod.js:102:21)
+pnpm expo prebuild --no-install --platform android exited with non-zero code: 1
