@@ -1057,7 +1057,11 @@ assertContains(wallpaperService, /switchRenderer\(RENDERER_CANVAS, reason\)/, 'e
 assertContains(controller, /state = State\.STOPPING/, 'surface transitions request STOPPING');
 assertContains(controller, /thread\.requestStop\(\)/, 'stopping is asynchronous');
 assertContains(controller, /state == State\.STOPPING/, 'restart is gated by STOPPING');
-assertContains(controller, /threadHadEglReady && state == State\.STOPPING/, 'restart requires a completed EGL thread');
+assertContains(
+  controller,
+  /state == State\.STOPPING[\s\S]*pendingReload \|\| threadHadEglReady/,
+  'restart requires an intentional stop or a completed EGL thread',
+);
 assertContains(controller, /state != State\.STOPPED/, 'new threads only start from STOPPED');
 assertContains(controller, /isSurfaceValid\(requestedSurface\)/, 'surface validity is checked before start');
 assertContains(controller, /released = true/, 'release marks the controller as released');
