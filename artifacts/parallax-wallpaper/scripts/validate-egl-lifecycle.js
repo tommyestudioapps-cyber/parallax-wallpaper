@@ -260,6 +260,60 @@ function validateTransparentEdgeFixture() {
         }
       }
     });
+
+    if (layer.gradientEdge) {
+      const gradient = layer.gradientEdge;
+      if (
+        gradient.width !== 4
+        || gradient.height !== 2
+        || gradient.texels.length !== gradient.height
+        || gradient.texels.some((row) => row.length !== gradient.width)
+      ) {
+        throw new Error(
+          `Transparent-edge gradient must be 4x2: ${layer.name}`,
+        );
+      }
+      const gradientAlphaValues = gradient.texels[0].map((rgba) => rgba[3]);
+      if (new Set(gradientAlphaValues).size < 3) {
+        throw new Error(
+          `Transparent-edge gradient needs gradual alpha values: ${layer.name} top edge`,
+        );
+      }
+
+      Object.entries(gradient.sampleCoordinates).forEach(([sampleName, coordinate]) => {
+        if (!Array.isArray(coordinate) || coordinate.length !== 2) {
+          throw new Error(
+            `Transparent-edge gradient coordinate is invalid: ${layer.name} ${sampleName}`,
+          );
+        }
+        const expectedSample = sampleBilinear(gradient, coordinate, true);
+        const naiveStraightAlphaSample = sampleBilinear(gradient, coordinate, false);
+        assertClose(
+          expectedSample,
+          sampleBilinear(gradient, coordinate, true),
+          `${layer.name} ${sampleName} coordinate ${coordinate.join(',')} gradient sample`,
+          bilinearTolerance,
+        );
+        if (
+          naiveStraightAlphaSample.every(
+            (value, index) => Math.abs(value - expectedSample[index]) <= bilinearTolerance,
+          )
+        ) {
+          throw new Error(
+            `Transparent-edge gradient is not halo-sensitive: `
+              + `${layer.name} ${sampleName} coordinate ${coordinate.join(',')}`,
+          );
+        }
+        for (let channel = 0; channel < 3; channel += 1) {
+          if (expectedSample[channel] > expectedSample[3] + bilinearTolerance) {
+            throw new Error(
+              `Transparent-edge gradient halo at ${layer.name} ${sampleName} `
+                + `coordinate ${coordinate.join(',')} channel ${channel}`,
+            );
+          }
+        }
+      });
+    }
   });
 
   const transparentStack = fixture.layers
