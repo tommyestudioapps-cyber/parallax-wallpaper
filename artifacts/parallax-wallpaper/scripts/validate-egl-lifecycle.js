@@ -101,8 +101,49 @@ function sampleRepeated(edge, interior, coordinate) {
   return coordinate < 0.5 ? edge : interior;
 }
 
+function sampleBilinear(texture, coordinate, premultiplied) {
+  const x = coordinate[0] * texture.width - 0.5;
+  const y = coordinate[1] * texture.height - 0.5;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = x0 + 1;
+  const y1 = y0 + 1;
+  const tx = x - x0;
+  const ty = y - y0;
+  const clamp = (value, maximum) => Math.max(0, Math.min(maximum - 1, value));
+  const texel = (column, row) => {
+    const rgba = texture.texels[clamp(row, texture.height)][clamp(column, texture.width)];
+    return premultiplied ? premultiply(rgba) : rgba;
+  };
+  const topLeft = texel(x0, y0);
+  const topRight = texel(x1, y0);
+  const bottomLeft = texel(x0, y1);
+  const bottomRight = texel(x1, y1);
+  return topLeft.map((value, channel) => {
+    const top = value + (topRight[channel] - value) * tx;
+    const bottom = bottomLeft[channel] + (bottomRight[channel] - bottomLeft[channel]) * tx;
+    return top + (bottom - top) * ty;
+  });
+}
+
 function validateTransparentEdgeFixture() {
   const fixture = transparentEdgeFixture;
+  const bilinearTolerance = fixture.bilinearTolerance;
+  const bilinearCorners = [
+    'top-left',
+    'top-right',
+    'bottom-left',
+    'bottom-right',
+  ];
+  if (!Number.isFinite(bilinearTolerance) || bilinearTolerance <= 0) {
+    throw new Error('Transparent-edge fixture must define a positive bilinear tolerance');
+  }
+  bilinearCorners.forEach((corner) => {
+    const coordinate = fixture.bilinearSampleCoordinates[corner];
+    if (!Array.isArray(coordinate) || coordinate.length !== 2) {
+      throw new Error(`Transparent-edge fixture is missing bilinear coordinate: ${corner}`);
+    }
+  });
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
   if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {
@@ -166,6 +207,59 @@ function validateTransparentEdgeFixture() {
     ) {
       throw new Error(`Transparent-edge fixture does not distinguish clamping: ${layer.name}`);
     }
+
+    const texture = layer.texture;
+    if (
+      !texture
+      || texture.width !== 4
+      || texture.height !== 4
+      || texture.texels.length !== texture.height
+      || texture.texels.some((row) => row.length !== texture.width)
+    ) {
+      throw new Error(
+        `Transparent-edge fixture must define a 4x4 texture grid: ${layer.name}`,
+      );
+    }
+
+    const cornerTexels = {
+      'top-left': texture.texels[0][0],
+      'top-right': texture.texels[0][texture.width - 1],
+      'bottom-left': texture.texels[texture.height - 1][0],
+      'bottom-right': texture.texels[texture.height - 1][texture.width - 1],
+    };
+    bilinearCorners.forEach((corner) => {
+      if (cornerTexels[corner][3] !== 0) {
+        throw new Error(
+          `Transparent-edge fixture corner must be transparent: ${layer.name} ${corner}`,
+        );
+      }
+
+      const coordinate = fixture.bilinearSampleCoordinates[corner];
+      const expectedSample = sampleBilinear(texture, coordinate, true);
+      const naiveStraightAlphaSample = sampleBilinear(texture, coordinate, false);
+      assertClose(
+        expectedSample,
+        sampleBilinear(texture, coordinate, true),
+        `${layer.name} ${corner} premultiplied bilinear sample`,
+        bilinearTolerance,
+      );
+      if (
+        naiveStraightAlphaSample.every(
+          (value, index) => Math.abs(value - expectedSample[index]) <= bilinearTolerance,
+        )
+      ) {
+        throw new Error(
+          `Transparent-edge fixture is not halo-sensitive: ${layer.name} ${corner}`,
+        );
+      }
+      for (let channel = 0; channel < 3; channel += 1) {
+        if (expectedSample[channel] > expectedSample[3] + bilinearTolerance) {
+          throw new Error(
+            `Transparent-edge bilinear halo at ${layer.name} ${corner} channel ${channel}`,
+          );
+        }
+      }
+    });
   });
 
   const transparentStack = fixture.layers
