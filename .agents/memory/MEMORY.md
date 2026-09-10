@@ -1,3 +1,4 @@
 - [Expo SDK package resolution](expo-sdk-package-resolution.md) — check the workspace registry when SDK-matched module aliases are unavailable.
+- [Canvas bitmap ownership](canvas-bitmap-ownership.md) — decoded Canvas bitmaps need renderer-owned references so lifecycle cleanup can recycle them centrally.
 - [GLES20 attribute state](gles20-attribute-state.md) — Android GLES20 lacks pointer readback; preserve renderer-owned canonical offsets with queryable attribute state.
 - [Wallpaper rendering thread](wallpaper-rendering-thread.md) — never decode images or block on canvas rendering from WallpaperService callbacks.

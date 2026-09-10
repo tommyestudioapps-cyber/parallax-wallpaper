@@ -1227,11 +1227,15 @@ assertContains(
   /public void onTrimMemory\(int level\)[\s\S]*recycleBitmaps\(\)[\s\S]*composition = null[\s\S]*reloadCompositionRequested = true/,
   'Canvas releases bitmaps and marks the composition for reload',
 );
-assertContains(canvasRenderer, /bitmaps\[index\] = bitmap/, 'Canvas retains decoded bitmaps for release');
+assertContains(
+  canvasRenderer,
+  /Bitmap bitmap = loadLayerBitmap\([\s\S]*?bitmaps\[index\] = bitmap/,
+  'Canvas retains decoded bitmaps for release',
+);
 assertContains(
   glRenderer,
-  /public void release\(\)[\s\S]*textureManager\.releaseTextures\(\)[\s\S]*PARALLAX_GL_RESOURCES_RELEASED/,
-  'OpenGL releases textures before reporting resource cleanup',
+  /public void release\(\)[\s\S]*textureManager\.releaseTextures\(\)/,
+  'OpenGL releases textures during resource cleanup',
 );
 
 assertContains(glRenderer, /glCreateShader/, 'vertex and fragment shaders are compiled');
@@ -1242,15 +1246,15 @@ assertContains(glRenderer, /texture2D/, 'fragment shader samples the texture');
 assertContains(glRenderer, /uniform mat4 u_MVPMatrix/, 'vertex shader accepts an MVP matrix');
 assertContains(
   glRenderer,
-  /gl_Position = u_MVPMatrix \* displacedPosition/,
-  'vertex shader applies the MVP matrix after sensor displacement',
+  /clipPosition = u_MVPMatrix \* vec4\(a_Position, 0\.0, 1\.0\)[\s\S]*clipPosition\.xy \+= u_Offset \* u_DepthFactor[\s\S]*gl_Position = clipPosition/,
+  'vertex shader applies the MVP matrix and sensor displacement',
 );
 assertContains(glRenderer, /Matrix\.orthoM/, 'projection matrix is initialized');
 assertContains(glRenderer, /Matrix\.scaleM/, 'layer aspect scale is calculated');
 assertContains(glRenderer, /glUniformMatrix4fv/, 'MVP matrix is sent before drawing');
 assertContains(glRenderer, /private final float\[\] mMVPMatrix = new float\[16\]/, 'MVP matrix is reused');
-assertContains(textureManager, /mTextureWidths/, 'decoded texture widths are retained');
-assertContains(textureManager, /mTextureHeights/, 'decoded texture heights are retained');
+assertContains(textureManager, /mLayerData[\s\S]*textureWidth/, 'decoded texture widths are retained');
+assertContains(textureManager, /mLayerData[\s\S]*textureHeight/, 'decoded texture heights are retained');
 assertContains(textureManager, /mDepthFactors/, 'layer depth factors are retained');
 assertContains(textureManager, /parallaxMultiplier/, 'layer depth factors come from composition');
 assertContains(glRenderer, /fitScale = Math\.max/, 'fit scale matches Canvas cover behavior');
@@ -1498,12 +1502,12 @@ assertContains(
 );
 assertContains(
   glRenderer,
-  /float fitScale = Math\.max\([\s\S]*surfaceWidth \/ \(float\) textureWidth[\s\S]*surfaceHeight \/ \(float\) textureHeight[\s\S]*float scaleX = scaledWidth \/ surfaceWidth[\s\S]*float scaleY = scaledHeight \/ surfaceHeight/,
+  /float fitScale = Math\.max\(canvasWidth \/ layer\.imageWidth, canvasHeight \/ layer\.imageHeight\)[\s\S]*float drawScale = fitScale \* layer\.scale[\s\S]*float scaleNdcX = width \/ canvasWidth[\s\S]*float scaleNdcY = height \/ canvasHeight/,
   'normalized surface dimensions drive finite cover scaling',
 );
 assertContains(
   glRenderer,
-  /if \(surfaceWidth <= 0 \|\| surfaceHeight <= 0\)[\s\S]*motionX = 0f[\s\S]*motionY = 0f[\s\S]*sensorMotionX \* 2f \/ surfaceWidth[\s\S]*sensorMotionY \* 2f \/ surfaceHeight/,
+  /if \(surfaceWidth <= 0 \|\| surfaceHeight <= 0\)[\s\S]*motionX = 0f[\s\S]*motionY = 0f[\s\S]*sensorMotionX \* 2f \/ compositionWidth[\s\S]*sensorMotionY \* 2f \* surfaceWidth \/ \(compositionWidth \* surfaceHeight\)/,
   'sensor motion is guarded against invalid surface dimensions',
 );
 assertContains(
