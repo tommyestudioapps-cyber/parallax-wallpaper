@@ -75,6 +75,22 @@ function assertClose(actual, expected, description, epsilon = 1e-6) {
   });
 }
 
+function assertRgbaClose(actual, expected, rgbTolerance, alphaTolerance, description) {
+  if (actual.length !== expected.length) {
+    throw new Error(`Transparent-edge fixture length mismatch: ${description}`);
+  }
+  actual.forEach((value, index) => {
+    const tolerance = index === 3 ? alphaTolerance : rgbTolerance;
+    if (Math.abs(value - expected[index]) > tolerance) {
+      const channel = index === 3 ? 'alpha' : `channel ${index}`;
+      throw new Error(
+        `Transparent-edge fixture mismatch: ${description} at ${channel} `
+          + `(tolerance ${tolerance}, expected ${expected[index]}, received ${value})`,
+      );
+    }
+  });
+}
+
 function premultiply(rgba) {
   return [rgba[0] * rgba[3], rgba[1] * rgba[3], rgba[2] * rgba[3], rgba[3]];
 }
@@ -131,6 +147,7 @@ function validateTransparentEdgeFixture() {
   const sampledComposition = fixture.sampledComposition;
   const bilinearTolerance = fixture.bilinearTolerance;
   const channelTolerances = sampledComposition?.channelTolerances;
+  const alphaTolerance = sampledComposition?.alphaTolerance;
   const canonicalTolerance = Array.isArray(channelTolerances)
     ? Math.max(...channelTolerances)
     : NaN;
@@ -156,6 +173,17 @@ function validateTransparentEdgeFixture() {
     throw new Error('Transparent-edge fixture must define a positive bilinear tolerance');
   }
   assertCanonicalTolerance(bilinearTolerance, 'global bilinear sampling');
+  if (
+    !Number.isFinite(alphaTolerance)
+    || alphaTolerance <= 0
+    || Math.abs(alphaTolerance - canonicalTolerance) <= canonicalTolerance * 1e-9
+  ) {
+    throw new Error(
+      `Transparent-edge alpha tolerance must be positive and distinct from RGB channels: `
+        + `channels [${channelTolerances?.join(',') || 'missing'}] `
+        + `alpha ${alphaTolerance}`,
+    );
+  }
   bilinearCorners.forEach((corner) => {
     const coordinate = fixture.bilinearSampleCoordinates[corner];
     if (!Array.isArray(coordinate) || coordinate.length !== 2) {
@@ -195,11 +223,12 @@ function validateTransparentEdgeFixture() {
       const calculatedSample = sampleBilinear(alphaCase, sample.coordinate, true);
       const sampleDescription =
         `${alphaCase.name} ${sample.name} coordinate ${sample.coordinate.join(',')}`;
-      assertClose(
+      assertRgbaClose(
         calculatedSample,
         sample.expectedPremultiplied,
-        `${sampleDescription} premultiplied reference`,
         bilinearTolerance,
+        alphaTolerance,
+        `${sampleDescription} premultiplied reference`,
       );
 
       const naiveStraightAlphaSample = sampleBilinear(alphaCase, sample.coordinate, false);
@@ -207,7 +236,7 @@ function validateTransparentEdgeFixture() {
       for (let channel = 0; channel < 3; channel += 1) {
         if (
           Math.abs(naiveStraightAlphaSample[channel] - calculatedSample[channel])
-            > bilinearTolerance
+            > channelTolerances[channel]
         ) {
           differenceChannel = channel;
           break;
@@ -220,7 +249,7 @@ function validateTransparentEdgeFixture() {
         );
       }
       for (let channel = 0; channel < 3; channel += 1) {
-        if (calculatedSample[channel] > calculatedSample[3] + bilinearTolerance) {
+        if (calculatedSample[channel] > calculatedSample[3] + channelTolerances[channel]) {
           throw new Error(
             `Transparent-edge alpha reference halo at ${sampleDescription} channel ${channel}`,
           );
@@ -266,12 +295,13 @@ function validateTransparentEdgeFixture() {
       );
     }
     const sampledColor = sampleBilinear(alphaCase, sample.coordinate, true);
-    assertClose(
+    assertRgbaClose(
       sampledColor,
       sample.expectedPremultiplied,
+      sampledComposition.tolerance,
+      alphaTolerance,
       `${sampledComposition.name} ${layer.name} ${layer.case} `
         + `${layer.sample} sampled layer`,
-      sampledComposition.tolerance,
     );
     return { name: layer.name, color: sampledColor };
   });
@@ -283,12 +313,13 @@ function validateTransparentEdgeFixture() {
     .reduce((destination, source) => over(source, destination), clearColor);
   const sampledLayerOrder = sampledLayers.map((layer) => layer.name).join(' -> ');
   const sampledCompositionResult = composeSampledLayers(sampledLayers);
-  assertClose(
+  assertRgbaClose(
     sampledCompositionResult,
     sampledComposition.expectedComposition,
+    sampledComposition.tolerance,
+    alphaTolerance,
     `${sampledComposition.name} clear ${sampledComposition.clearColor.join(',')} `
       + `layers ${sampledLayerOrder}`,
-    sampledComposition.tolerance,
   );
   const reversedSampledComposition = composeSampledLayers(sampledLayers.slice().reverse());
   if (
@@ -334,12 +365,13 @@ function validateTransparentEdgeFixture() {
     );
     clearColorVariantNames.add(variant.name);
     const variantResult = composeSampledLayers(sampledLayers, variant.clearColor);
-    assertClose(
+    assertRgbaClose(
       variantResult,
       variant.expectedComposition,
+      variant.tolerance,
+      alphaTolerance,
       `${sampledComposition.name} clear ${variant.name} `
         + `(${variant.clearColor.join(',')}) layers ${sampledLayerOrder}`,
-      variant.tolerance,
     );
   });
   const transparentLayerSample = sampledComposition.transparentLayerSample;
@@ -407,13 +439,14 @@ function validateTransparentEdgeFixture() {
         sampledLayersWithTransparent,
         variant.clearColor,
       );
-      assertClose(
+      assertRgbaClose(
         withTransparent,
         withoutTransparent,
+        variant.tolerance,
+        alphaTolerance,
         `${sampledComposition.name} position ${position.name} clear ${variant.name} `
           + `without vs ${transparentLayerSample.name} `
           + `layers ${sampledLayerOrderWithTransparent}`,
-        variant.tolerance,
       );
     });
     transparentPositionNames.add(position.name);
@@ -475,11 +508,12 @@ function validateTransparentEdgeFixture() {
       sample.coordinate,
       true,
     );
-    assertClose(
+    assertRgbaClose(
       premultipliedBilinearColor,
       sample.expectedPremultiplied,
-      `${bilinearSampleDescription} premultiplied sample`,
       bilinearTransparentSample.tolerance,
+      alphaTolerance,
+      `${bilinearSampleDescription} premultiplied sample`,
     );
     const straightBilinearColor = sampleBilinear(
       bilinearTransparentTexture,
@@ -579,12 +613,13 @@ function validateTransparentEdgeFixture() {
           sampledLayersWithBilinearTransparent,
           variant.clearColor,
         );
-        assertClose(
+        assertRgbaClose(
           withSample,
           withoutSample,
+          variant.tolerance,
+          alphaTolerance,
           `${sample.description} position ${position.name} clear ${variant.name} `
             + `before vs after composition layers ${sampledLayerOrderWithBilinearTransparent}`,
-          variant.tolerance,
         );
       });
     });
@@ -642,11 +677,12 @@ function validateTransparentEdgeFixture() {
     const channelTolerance = channelTolerances[boundary.channel];
     const boundaryDescription =
       `${sampledComposition.name} ${boundary.name} coordinate ${boundary.coordinate.join(',')}`;
-    assertClose(
+    assertRgbaClose(
       premultipliedBoundaryColor,
       boundary.expectedPremultiplied,
-      `${boundaryDescription} premultiplied sample`,
       channelTolerance,
+      alphaTolerance,
+      `${boundaryDescription} premultiplied sample`,
     );
     const expectedDistance = channelTolerance * 0.1;
     if (
@@ -693,12 +729,13 @@ function validateTransparentEdgeFixture() {
           sampledLayersWithBoundary,
           variant.clearColor,
         );
-        assertClose(
+        assertRgbaClose(
           withBoundary,
           withoutBoundary,
+          variant.tolerance,
+          alphaTolerance,
           `${boundaryDescription} position ${position.name} clear ${variant.name} `
             + `before vs after composition channel ${boundary.channel}`,
-          variant.tolerance,
         );
       });
     });
@@ -721,9 +758,11 @@ function validateTransparentEdgeFixture() {
   const composition = fixture.layers
     .map((layer) => layer.center)
     .reduce((destination, source) => over(source, destination));
-  assertClose(
+  assertRgbaClose(
     composition,
     fixture.expectedComposition,
+    canonicalTolerance,
+    alphaTolerance,
     'Background -> Middle -> Foreground premultiplied composition',
   );
 
@@ -734,7 +773,8 @@ function validateTransparentEdgeFixture() {
     .reduce((destination, source) => over(source, destination));
   if (
     reversedComposition.every(
-      (value, index) => Math.abs(value - fixture.expectedComposition[index]) <= 1e-6,
+      (value, index) => Math.abs(value - fixture.expectedComposition[index])
+        <= (index === 3 ? alphaTolerance : channelTolerances[index]),
     )
   ) {
     throw new Error('Transparent-edge fixture does not distinguish draw order');
@@ -745,7 +785,13 @@ function validateTransparentEdgeFixture() {
     if (layer.transparentEdgeSource[3] !== 0) {
       throw new Error(`Transparent-edge fixture edge must be transparent: ${layer.name}`);
     }
-    assertClose(expectedEdge, [0, 0, 0, 0], `${layer.name} premultiplied transparent edge`);
+    assertRgbaClose(
+      expectedEdge,
+      [0, 0, 0, 0],
+      canonicalTolerance,
+      alphaTolerance,
+      `${layer.name} premultiplied transparent edge`,
+    );
 
     const leftSample = sampleClamped(
       expectedEdge,
@@ -757,8 +803,20 @@ function validateTransparentEdgeFixture() {
       layer.edgeInterior,
       fixture.outsideTextureCoordinates[1],
     );
-    assertClose(leftSample, expectedEdge, `${layer.name} GL_CLAMP_TO_EDGE left sample`);
-    assertClose(rightSample, layer.edgeInterior, `${layer.name} GL_CLAMP_TO_EDGE right sample`);
+    assertRgbaClose(
+      leftSample,
+      expectedEdge,
+      canonicalTolerance,
+      alphaTolerance,
+      `${layer.name} GL_CLAMP_TO_EDGE left sample`,
+    );
+    assertRgbaClose(
+      rightSample,
+      layer.edgeInterior,
+      canonicalTolerance,
+      alphaTolerance,
+      `${layer.name} GL_CLAMP_TO_EDGE right sample`,
+    );
 
     const repeatedLeftSample = sampleRepeated(
       expectedEdge,
@@ -802,15 +860,17 @@ function validateTransparentEdgeFixture() {
       const coordinate = fixture.bilinearSampleCoordinates[corner];
       const expectedSample = sampleBilinear(texture, coordinate, true);
       const naiveStraightAlphaSample = sampleBilinear(texture, coordinate, false);
-      assertClose(
+      assertRgbaClose(
         expectedSample,
         sampleBilinear(texture, coordinate, true),
+        canonicalTolerance,
+        alphaTolerance,
         `${layer.name} ${corner} premultiplied bilinear sample`,
-        bilinearTolerance,
       );
       if (
         naiveStraightAlphaSample.every(
-          (value, index) => Math.abs(value - expectedSample[index]) <= bilinearTolerance,
+          (value, index) => Math.abs(value - expectedSample[index])
+            <= (index === 3 ? alphaTolerance : channelTolerances[index]),
         )
       ) {
         throw new Error(
@@ -818,7 +878,7 @@ function validateTransparentEdgeFixture() {
         );
       }
       for (let channel = 0; channel < 3; channel += 1) {
-        if (expectedSample[channel] > expectedSample[3] + bilinearTolerance) {
+        if (expectedSample[channel] > expectedSample[3] + channelTolerances[channel]) {
           throw new Error(
             `Transparent-edge bilinear halo at ${layer.name} ${corner} channel ${channel}`,
           );
@@ -853,15 +913,17 @@ function validateTransparentEdgeFixture() {
         }
         const expectedSample = sampleBilinear(gradient, coordinate, true);
         const naiveStraightAlphaSample = sampleBilinear(gradient, coordinate, false);
-        assertClose(
+        assertRgbaClose(
           expectedSample,
           sampleBilinear(gradient, coordinate, true),
+          canonicalTolerance,
+          alphaTolerance,
           `${layer.name} ${sampleName} coordinate ${coordinate.join(',')} gradient sample`,
-          bilinearTolerance,
         );
         if (
           naiveStraightAlphaSample.every(
-            (value, index) => Math.abs(value - expectedSample[index]) <= bilinearTolerance,
+            (value, index) => Math.abs(value - expectedSample[index])
+              <= (index === 3 ? alphaTolerance : channelTolerances[index]),
           )
         ) {
           throw new Error(
@@ -870,7 +932,7 @@ function validateTransparentEdgeFixture() {
           );
         }
         for (let channel = 0; channel < 3; channel += 1) {
-          if (expectedSample[channel] > expectedSample[3] + bilinearTolerance) {
+          if (expectedSample[channel] > expectedSample[3] + channelTolerances[channel]) {
             throw new Error(
               `Transparent-edge gradient halo at ${layer.name} ${sampleName} `
                 + `coordinate ${coordinate.join(',')} channel ${channel}`,
@@ -918,18 +980,19 @@ function validateTransparentEdgeFixture() {
         }
         const expectedSample = sampleBilinear(extreme, coordinate, true);
         const naiveStraightAlphaSample = sampleBilinear(extreme, coordinate, false);
-        assertClose(
+        assertRgbaClose(
           expectedSample,
           sampleBilinear(extreme, coordinate, true),
+          canonicalTolerance,
+          alphaTolerance,
           `${layer.name} ${sampleName} coordinate ${coordinate.join(',')} extreme-alpha sample`,
-          extremeTolerance,
         );
 
         let naiveDifferenceChannel = -1;
         for (let channel = 0; channel < 3; channel += 1) {
           if (
             Math.abs(naiveStraightAlphaSample[channel] - expectedSample[channel])
-              > extremeTolerance
+              > channelTolerances[channel]
           ) {
             naiveDifferenceChannel = channel;
             break;
@@ -944,7 +1007,7 @@ function validateTransparentEdgeFixture() {
         }
 
         for (let channel = 0; channel < 3; channel += 1) {
-          if (expectedSample[channel] > expectedSample[3] + extremeTolerance) {
+          if (expectedSample[channel] > expectedSample[3] + channelTolerances[channel]) {
             throw new Error(
               `Transparent-edge extreme-alpha halo at ${layer.name} ${sampleName} `
                 + `coordinate ${coordinate.join(',')} channel ${channel}`,
@@ -958,9 +1021,11 @@ function validateTransparentEdgeFixture() {
   const transparentStack = fixture.layers
     .map((layer) => premultiply(layer.transparentEdgeSource))
     .reduce((destination, source) => over(source, destination), fixture.clearColor);
-  assertClose(
+  assertRgbaClose(
     transparentStack,
     fixture.clearColor,
+    canonicalTolerance,
+    alphaTolerance,
     'transparent edge preserves the clear color without a black halo',
   );
 }
