@@ -209,7 +209,20 @@
     "transparentLayerSample": {
       "name": "transparent-rgb-residual",
       "rgba": [1, 0.25, 0.75, 0],
-      "insertAfter": "middle"
+      "positions": [
+        {
+          "name": "before-background",
+          "insertBefore": "background"
+        },
+        {
+          "name": "after-middle",
+          "insertAfter": "middle"
+        },
+        {
+          "name": "after-foreground",
+          "insertAfter": "foreground"
+        }
+      ]
     }
   },
   "expectedComposition": [0.225, 0.275, 0.1125, 1],

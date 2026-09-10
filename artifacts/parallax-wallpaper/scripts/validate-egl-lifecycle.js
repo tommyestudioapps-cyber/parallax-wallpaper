@@ -323,41 +323,67 @@ function validateTransparentEdgeFixture() {
         + sampledComposition.name,
     );
   }
-  const transparentInsertionIndex = sampledLayers.findIndex(
-    (layer) => layer.name === transparentLayerSample.insertAfter,
-  );
-  if (transparentInsertionIndex < 0) {
+  if (
+    !Array.isArray(transparentLayerSample.positions)
+    || transparentLayerSample.positions.length !== 3
+  ) {
     throw new Error(
-      `Transparent-edge transparent layer insertion point is missing: `
-        + `${sampledComposition.name} ${transparentLayerSample.insertAfter}`,
+      `Transparent-edge transparent layer must define start, middle, and end positions: `
+        + sampledComposition.name,
     );
   }
-  const sampledLayersWithTransparent = sampledLayers.slice();
-  sampledLayersWithTransparent.splice(
-    transparentInsertionIndex + 1,
-    0,
-    {
-      name: transparentLayerSample.name,
-      color: premultiply(transparentLayerSample.rgba),
-    },
-  );
-  const sampledLayerOrderWithTransparent = sampledLayersWithTransparent
-    .map((layer) => layer.name)
-    .join(' -> ');
-  sampledComposition.clearColorVariants.forEach((variant) => {
-    const withoutTransparent = composeSampledLayers(sampledLayers, variant.clearColor);
-    const withTransparent = composeSampledLayers(
-      sampledLayersWithTransparent,
-      variant.clearColor,
+  const transparentPositionNames = new Set();
+  transparentLayerSample.positions.forEach((position) => {
+    if (
+      !position.name
+      || transparentPositionNames.has(position.name)
+      || (position.insertBefore && position.insertAfter)
+      || (!position.insertBefore && !position.insertAfter)
+    ) {
+      throw new Error(
+        `Transparent-edge transparent layer position is invalid: `
+          + `${sampledComposition.name} ${position.name || 'unnamed'}`,
+      );
+    }
+    const referenceLayerName = position.insertBefore || position.insertAfter;
+    const referenceIndex = sampledLayers.findIndex(
+      (layer) => layer.name === referenceLayerName,
     );
-    assertClose(
-      withTransparent,
-      withoutTransparent,
-      `${sampledComposition.name} clear ${variant.name} `
-        + `without vs ${transparentLayerSample.name} `
-        + `layers ${sampledLayerOrderWithTransparent}`,
-      variant.tolerance,
+    if (referenceIndex < 0) {
+      throw new Error(
+        `Transparent-edge transparent layer position is missing: `
+          + `${sampledComposition.name} ${position.name} ${referenceLayerName}`,
+      );
+    }
+    const insertionIndex = position.insertBefore ? referenceIndex : referenceIndex + 1;
+    const sampledLayersWithTransparent = sampledLayers.slice();
+    sampledLayersWithTransparent.splice(
+      insertionIndex,
+      0,
+      {
+        name: transparentLayerSample.name,
+        color: premultiply(transparentLayerSample.rgba),
+      },
     );
+    const sampledLayerOrderWithTransparent = sampledLayersWithTransparent
+      .map((layer) => layer.name)
+      .join(' -> ');
+    sampledComposition.clearColorVariants.forEach((variant) => {
+      const withoutTransparent = composeSampledLayers(sampledLayers, variant.clearColor);
+      const withTransparent = composeSampledLayers(
+        sampledLayersWithTransparent,
+        variant.clearColor,
+      );
+      assertClose(
+        withTransparent,
+        withoutTransparent,
+        `${sampledComposition.name} position ${position.name} clear ${variant.name} `
+          + `without vs ${transparentLayerSample.name} `
+          + `layers ${sampledLayerOrderWithTransparent}`,
+        variant.tolerance,
+      );
+    });
+    transparentPositionNames.add(position.name);
   });
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
