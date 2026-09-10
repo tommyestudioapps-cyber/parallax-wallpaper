@@ -34,6 +34,10 @@ const textureManager = fs.readFileSync(
   'utf8',
 );
 const glRenderer = fs.readFileSync(path.join(javaRoot, 'ParallaxGlRenderer.java'), 'utf8');
+const alphaMatrixScript = fs.readFileSync(
+  path.join(__dirname, 'android-alpha-matrix.js'),
+  'utf8',
+);
 
 function assertContains(source, pattern, description) {
   if (!pattern.test(source)) {
@@ -1224,6 +1228,31 @@ assertContains(
   eglThread,
   /boolean alphaPrecisionPassed = glRenderer\.validateAlphaPrecision\(\)/,
   'EGL thread runs alpha precision validation after renderer initialization',
+);
+assertContains(
+  alphaMatrixScript,
+  /ANDROID_ALPHA_MATRIX_SERIALS/,
+  'alpha GPU matrix supports explicit device selection',
+);
+assertContains(
+  alphaMatrixScript,
+  /distinctGpuKeys\.size < 2/,
+  'alpha GPU matrix requires distinct GPU or EGL implementations',
+);
+assertContains(
+  alphaMatrixScript,
+  /cmd['"]?,\s*['"]wallpaper['"]?/,
+  'alpha GPU matrix activates the live wallpaper on every target',
+);
+assertContains(
+  alphaMatrixScript,
+  /PARALLAX_GL_ALPHA_PRECISION_VALIDATION PASSED/,
+  'alpha GPU matrix waits for a passing alpha validation log',
+);
+assertContains(
+  alphaMatrixScript,
+  /PARALLAX_GL_ALPHA_PRECISION_FAILED/,
+  'alpha GPU matrix preserves detailed alpha failure logs',
 );
 const glFrameBody = methodBody(
   glRenderer,
