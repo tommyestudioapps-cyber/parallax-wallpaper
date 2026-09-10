@@ -224,6 +224,18 @@ function validateTransparentEdgeFixture() {
   ) {
     throw new Error('Transparent-edge sampled composition fixture is invalid');
   }
+  const channelTolerances = sampledComposition.channelTolerances;
+  if (
+    !Array.isArray(channelTolerances)
+    || channelTolerances.length !== 3
+    || channelTolerances.some((tolerance) => !Number.isFinite(tolerance) || tolerance <= 0)
+    || new Set(channelTolerances).size !== 3
+  ) {
+    throw new Error(
+      `Transparent-edge sampled composition must define three distinct channel tolerances: `
+        + sampledComposition.name,
+    );
+  }
   const alphaCasesByName = new Map(
     fixture.bilinearAlphaCases.map((alphaCase) => [alphaCase.name, alphaCase]),
   );
@@ -602,18 +614,19 @@ function validateTransparentEdgeFixture() {
       boundary.coordinate,
       false,
     );
+    const channelTolerance = channelTolerances[boundary.channel];
     const boundaryDescription =
       `${sampledComposition.name} ${boundary.name} coordinate ${boundary.coordinate.join(',')}`;
     assertClose(
       premultipliedBoundaryColor,
       boundary.expectedPremultiplied,
       `${boundaryDescription} premultiplied sample`,
-      bilinearTransparentSample.tolerance,
+      channelTolerance,
     );
-    const expectedDistance = bilinearTransparentSample.tolerance * 0.1;
+    const expectedDistance = channelTolerance * 0.1;
     if (
       Math.abs(
-        Math.abs(straightBoundaryColor[boundary.channel] - bilinearTransparentSample.tolerance)
+        Math.abs(straightBoundaryColor[boundary.channel] - channelTolerance)
           - expectedDistance,
       ) > bilinearTransparentSample.tolerance * 0.25
     ) {
@@ -632,8 +645,8 @@ function validateTransparentEdgeFixture() {
       sampledComposition.clearColorVariants.forEach((variant) => {
         const passesThreshold =
           boundary.threshold === 'below'
-            ? straightBoundaryColor[boundary.channel] <= bilinearTransparentSample.tolerance
-            : straightBoundaryColor[boundary.channel] > bilinearTransparentSample.tolerance;
+            ? straightBoundaryColor[boundary.channel] <= channelTolerance
+            : straightBoundaryColor[boundary.channel] > channelTolerance;
         if (!passesThreshold) {
           throw new Error(
             `Transparent-edge tolerance classification failed: ${boundaryDescription} `
