@@ -28,6 +28,14 @@ const wallpaperService = fs.readFileSync(
   path.join(javaRoot, 'ParallaxWallpaperService.java'),
   'utf8',
 );
+const canvasRenderer = fs.readFileSync(
+  path.join(javaRoot, 'CanvasWallpaperRenderer.java'),
+  'utf8',
+);
+const rendererInterface = fs.readFileSync(
+  path.join(javaRoot, 'WallpaperRenderer.java'),
+  'utf8',
+);
 const wallpaperModule = fs.readFileSync(
   path.join(javaRoot, 'ParallaxWallpaperModule.java'),
   'utf8',
@@ -1054,6 +1062,22 @@ assertContains(
 assertContains(wallpaperService, /PREF_RENDERER_TYPE/, 'renderer preference is read from SharedPreferences');
 assertContains(wallpaperService, /createRenderer\(rendererType\)/, 'engine creates the configured renderer');
 assertContains(wallpaperService, /switchRenderer\(RENDERER_CANVAS, reason\)/, 'engine falls back to Canvas after GPU failure');
+assertContains(
+  wallpaperService,
+  /public void onTrimMemory\(int level\)[\s\S]*super\.onTrimMemory\(level\)[\s\S]*engine\.onTrimMemory\(level\)/,
+  'service forwards memory pressure without dropping the event',
+);
+assertContains(
+  wallpaperService,
+  /renderHandler\.post\(new Runnable\(\)[\s\S]*currentRenderer\.onTrimMemory\(level\)[\s\S]*requestFrame\(true\)/,
+  'memory pressure is handled asynchronously on the render thread',
+);
+assertContains(
+  wallpaperService,
+  /SENSOR_SAMPLE_PERIOD_US = 33_333[\s\S]*registerListener\(this, rotationSensor, SENSOR_SAMPLE_PERIOD_US\)/,
+  'sensor sampling requests approximately 30 Hz',
+);
+assertContains(wallpaperService, /PARALLAX_SENSOR_METRICS/, 'observed sensor rate is logged');
 assertContains(controller, /state = State\.STOPPING/, 'surface transitions request STOPPING');
 assertContains(controller, /thread\.requestStop\(\)/, 'stopping is asynchronous');
 assertContains(controller, /state == State\.STOPPING/, 'restart is gated by STOPPING');
@@ -1067,6 +1091,11 @@ assertContains(controller, /isSurfaceValid\(requestedSurface\)/, 'surface validi
 assertContains(controller, /released = true/, 'release marks the controller as released');
 assertContains(controller, /volatile ParallaxSensorState sensorState/, 'sensor snapshots are retained safely');
 assertContains(controller, /thread\.updateSensorState\(nextState\)/, 'sensor snapshots reach the EGL thread');
+assertContains(
+  controller,
+  /public void onTrimMemory\(int level\)[\s\S]*pendingReload = true[\s\S]*state = State\.STOPPING[\s\S]*requestStop\(threadToStop\)[\s\S]*startIfPossible\(\)/,
+  'EGL memory pressure stops and reloads the current composition',
+);
 assertContains(controller, /onEglFailure\(ParallaxEglThread thread, String reason\)/, 'EGL failures reach the controller');
 assertContains(controller, /failureReported/, 'failed EGL threads cannot restart continuously');
 
@@ -1087,6 +1116,8 @@ assertContains(eglThread, /volatile ParallaxSensorState sensorState/, 'EGL threa
 assertContains(eglThread, /glRenderer\.updateSensorState\(snapshot\.getX\(\), snapshot\.getY\(\)\)/, 'latest sensor values reach the GL renderer');
 assertContains(eglThread, /glRenderer\.renderFrame\(\)/, 'EGL loop delegates frame rendering');
 assertContains(eglThread, /glRenderer\.release\(\)/, 'GL resources release before EGL teardown');
+assertContains(eglThread, /cleanupEgl\(currentDisplay, currentContext, currentSurface\)/, 'EGL context cleanup follows GL resource release');
+assertContains(eglThread, /PARALLAX_EGL_THREAD_CLEANUP_COMPLETE/, 'EGL cleanup completion is observable');
 assertContains(eglThread, /private long totalGlFrames/, 'GPU frame count is tracked');
 assertContains(eglThread, /private long accumulatedDrawTimeNs/, 'GPU frame time is accumulated');
 assertContains(eglThread, /private double maxFrameTimeMs/, 'maximum GPU frame time is tracked');
@@ -1164,6 +1195,19 @@ assertContains(textureManager, /public void releaseTextures\(\)/, 'all textures 
 assertContains(textureManager, /GLES20\.glDeleteTextures\(1, mTextureIds, index\)/, 'all texture IDs are deleted');
 assertContains(textureManager, /if \(texturesLoaded\) return mTextureIds/, 'texture upload is guarded per context');
 assertContains(textureManager, /BitmapFactory\.decode/, 'background bitmap loading is isolated from the frame loop');
+
+assertContains(rendererInterface, /void onTrimMemory\(int level\)/, 'all renderers expose memory-pressure handling');
+assertContains(
+  canvasRenderer,
+  /public void onTrimMemory\(int level\)[\s\S]*recycleBitmaps\(\)[\s\S]*composition = null[\s\S]*reloadCompositionRequested = true/,
+  'Canvas releases bitmaps and marks the composition for reload',
+);
+assertContains(canvasRenderer, /bitmaps\[index\] = bitmap/, 'Canvas retains decoded bitmaps for release');
+assertContains(
+  glRenderer,
+  /public void release\(\)[\s\S]*textureManager\.releaseTextures\(\)[\s\S]*PARALLAX_GL_RESOURCES_RELEASED/,
+  'OpenGL releases textures before reporting resource cleanup',
+);
 
 assertContains(glRenderer, /glCreateShader/, 'vertex and fragment shaders are compiled');
 assertContains(glRenderer, /glGenBuffers/, 'fullscreen quad uses a VBO');
