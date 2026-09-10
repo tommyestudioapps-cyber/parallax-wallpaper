@@ -1,0 +1,30 @@
+O que mudou em relação ao original
+Rotação cacheada: adicionados cachedRotation, cachedAxisX, cachedAxisY, refreshCachedRotation(), chamado no construtor, em onVisibilityChanged(true) e em onConfigurationChanged. O onSensorChanged agora só usa cachedAxisX/cachedAxisY — sem getSystemService.
+
+onConfigurationChanged: nova sobrescrita que atualiza o cache de rotação.
+
+Dead zone: 0.01f → 0.12f. Isso reduz bastante a quantidade de frames disparados por ruído do sensor sem prejudicar a sensação de movimento (18 graus / 0.12 ≈ 150 passos).
+
+notifyCompositionChanged(): método estático novo. O módulo React Native deve chamá-lo após gravar nova composição em configureLiveWallpaper. Internamente, onCompositionChangedExternally() invalida a composição no renderer e força frame — sem depender de onVisibilityChanged.
+
+onSensorChanged mais limpo: removidos logs periódicos de PARALLAX_SENSOR_EVENT (caminho quente). Métrica agregada continua em PARALLAX_CANVAS_METRICS e PARALLAX_GPU_METRICS.
+
+Intensidade: o sensor agora consulta renderer.getIntensity() a cada evento, o que no OpenGL retorna o valor real (cacheado no controller), e no Canvas também. Antes o OpenGL recebia intensidade 1f fixa.
+
+getConfiguredRendererType agora é chamado depois de refreshCachedRotation() no construtor — apenas ordem interna.
+
+Ponto de integração importante
+Para o notifyCompositionChanged() funcionar, o ParallaxWallpaperModule.configureLiveWallpaper() deve, após gravar o SharedPreferences, chamar:
+
+java
+ParallaxWallpaperService.notifyCompositionChanged();
+Isso será feito no próximo passo, ao revisar o módulo React Native (que hoje não sinaliza nada).
+
+Impacto
+Bateria: menos frames em Canvas (dead zone maior), menos chamadas de sistema no sensor (rotação cacheada), menos logs em caminho quente.
+
+Estabilidade: onConfigurationChanged garante que remapeamento de eixos continua correto após rotação do dispositivo.
+
+Qualidade premium: composição pode ser atualizada dinamicamente em tempo real, sem o usuário precisar reabrir o seletor de wallpaper.
+
+Consistência: intensidade agora é a mesma para Canvas e OpenGL.
