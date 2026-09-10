@@ -59,6 +59,13 @@ public class ParallaxWallpaperService extends WallpaperService {
     if (engine != null) engine.onTrimMemory(level);
   }
 
+  @Override
+  public void onConfigurationChanged(Configuration newConfig) {
+    super.onConfigurationChanged(newConfig);
+    ParallaxEngine engine = activeEngine;
+    if (engine != null) engine.onConfigurationChanged();
+  }
+
   private class ParallaxEngine extends Engine implements SensorEventListener {
     private static final float MOTION_DEAD_ZONE = 0.12f;
 
@@ -228,9 +235,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       super.onDestroy();
     }
 
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-      super.onConfigurationChanged(newConfig);
+    void onConfigurationChanged() {
       boolean rotationChanged = refreshCachedRotation();
       if (rotationChanged) {
         invalidateSensorCalibration();
