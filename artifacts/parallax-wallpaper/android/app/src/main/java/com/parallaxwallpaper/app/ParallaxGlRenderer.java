@@ -11,6 +11,7 @@ public final class ParallaxGlRenderer {
   private static final String TAG = "ParallaxWallpaper";
   private static final float ALPHA_TOLERANCE = 0.0000005f;
   private static final float FRAMEBUFFER_ALPHA_HALF_LSB = 0.5f / 255f;
+  private static final float DEFAULT_CANVAS_WIDTH = 280f;
 
   private static final AlphaPrecisionCase[] ALPHA_PRECISION_CASES = {
     new AlphaPrecisionCase(
@@ -41,12 +42,13 @@ public final class ParallaxGlRenderer {
           + "uniform mat4 u_MVPMatrix;\n"
           + "uniform vec2 u_Offset;\n"
           + "uniform float u_DepthFactor;\n"
+          + "uniform vec4 u_UVTransform;\n"
           + "varying vec2 v_TexCoord;\n"
           + "void main() {\n"
           + "  vec4 displacedPosition = vec4(a_Position, 0.0, 1.0)\n"
           + "      + vec4(u_Offset * u_DepthFactor, 0.0, 0.0);\n"
           + "  gl_Position = u_MVPMatrix * displacedPosition;\n"
-          + "  v_TexCoord = a_TexCoord;\n"
+          + "  v_TexCoord = a_TexCoord * u_UVTransform.zw + u_UVTransform.xy;\n"
           + "}\n";
 
   private static final String FRAGMENT_SHADER =
@@ -69,6 +71,7 @@ public final class ParallaxGlRenderer {
   private final float[] mMVPMatrix = new float[16];
   private final float[] mProjMatrix = new float[16];
   private final float[] mModelMatrix = new float[16];
+  private final float[] mUvTransform = new float[4];
   private int[] textureIds;
   private int program;
   private int positionLocation;
@@ -77,6 +80,7 @@ public final class ParallaxGlRenderer {
   private int mvpMatrixLocation;
   private int offsetLocation;
   private int depthFactorLocation;
+  private int uvTransformLocation;
   private int vertexBuffer;
   private int surfaceWidth;
   private int surfaceHeight;
@@ -131,12 +135,14 @@ public final class ParallaxGlRenderer {
     mvpMatrixLocation = GLES20.glGetUniformLocation(program, "u_MVPMatrix");
     offsetLocation = GLES20.glGetUniformLocation(program, "u_Offset");
     depthFactorLocation = GLES20.glGetUniformLocation(program, "u_DepthFactor");
+    uvTransformLocation = GLES20.glGetUniformLocation(program, "u_UVTransform");
     if (positionLocation < 0
         || texCoordLocation < 0
         || textureLocation < 0
         || mvpMatrixLocation < 0
         || offsetLocation < 0
-        || depthFactorLocation < 0) {
+        || depthFactorLocation < 0
+        || uvTransformLocation < 0) {
       Log.e(TAG, "PARALLAX_GL_SHADER_LOCATION_FAILED");
       release();
       return false;
@@ -201,11 +207,18 @@ public final class ParallaxGlRenderer {
       int textureId = textureIds[index];
       if (textureId == 0) continue;
       updateLayerMvp(index);
+      updateLayerUvTransform(index);
       GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
       GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
       GLES20.glUniform1i(textureLocation, 0);
       GLES20.glUniform2f(offsetLocation, motionX, motionY);
       GLES20.glUniform1f(depthFactorLocation, textureManager.getDepthFactor(index));
+      GLES20.glUniform4f(
+          uvTransformLocation,
+          mUvTransform[0],
+          mUvTransform[1],
+          mUvTransform[2],
+          mUvTransform[3]);
       GLES20.glUniformMatrix4fv(mvpMatrixLocation, 1, false, mMVPMatrix, 0);
       GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
     }
@@ -294,6 +307,8 @@ public final class ParallaxGlRenderer {
       GLES20.glUniform1i(textureLocation, 0);
       GLES20.glUniform2f(offsetLocation, 0f, 0f);
       GLES20.glUniform1f(depthFactorLocation, 0f);
+      GLES20.glUniform4f(uvTransformLocation, 0f, 0f, 1f, 1f);
+      Matrix.setIdentityM(mMVPMatrix, 0);
       GLES20.glUniformMatrix4fv(mvpMatrixLocation, 1, false, mMVPMatrix, 0);
       GLES20.glViewport(0, 0, 1, 1);
       GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
@@ -382,6 +397,7 @@ public final class ParallaxGlRenderer {
     float[] clearColor = new float[4];
     float[] offset = new float[2];
     float[] depthFactor = new float[1];
+    float[] uvTransform = new float[4];
     float[] mvpMatrix = new float[16];
     int[] textureUniform = new int[1];
     int[] scissorBox = new int[4];
@@ -406,6 +422,7 @@ public final class ParallaxGlRenderer {
     GLES20.glGetUniformiv(program, textureLocation, textureUniform, 0);
     GLES20.glGetUniformfv(program, offsetLocation, offset, 0);
     GLES20.glGetUniformfv(program, depthFactorLocation, depthFactor, 0);
+    GLES20.glGetUniformfv(program, uvTransformLocation, uvTransform, 0);
     GLES20.glGetUniformfv(program, mvpMatrixLocation, mvpMatrix, 0);
     GLES20.glGetIntegerv(GLES20.GL_SCISSOR_BOX, scissorBox, 0);
     GLES20.glGetBooleanv(GLES20.GL_COLOR_WRITEMASK, colorWriteMask, 0);
@@ -429,6 +446,7 @@ public final class ParallaxGlRenderer {
         textureUniform[0],
         offset,
         depthFactor[0],
+        uvTransform,
         mvpMatrix,
         scissorBox,
         colorWriteMask,
@@ -488,6 +506,7 @@ public final class ParallaxGlRenderer {
     private final int textureUniform;
     private final float[] offset;
     private final float depthFactor;
+    private final float[] uvTransform;
     private final float[] mvpMatrix;
     private final int[] scissorBox;
     private final boolean[] colorWriteMask;
@@ -517,6 +536,7 @@ public final class ParallaxGlRenderer {
         int textureUniform,
         float[] offset,
         float depthFactor,
+        float[] uvTransform,
         float[] mvpMatrix,
         int[] scissorBox,
         boolean[] colorWriteMask,
@@ -544,6 +564,7 @@ public final class ParallaxGlRenderer {
       this.textureUniform = textureUniform;
       this.offset = offset;
       this.depthFactor = depthFactor;
+      this.uvTransform = uvTransform;
       this.mvpMatrix = mvpMatrix;
       this.scissorBox = scissorBox;
       this.colorWriteMask = colorWriteMask;
@@ -560,6 +581,12 @@ public final class ParallaxGlRenderer {
       GLES20.glUniform1i(renderer.textureLocation, textureUniform);
       GLES20.glUniform2f(renderer.offsetLocation, offset[0], offset[1]);
       GLES20.glUniform1f(renderer.depthFactorLocation, depthFactor);
+      GLES20.glUniform4f(
+          renderer.uvTransformLocation,
+          uvTransform[0],
+          uvTransform[1],
+          uvTransform[2],
+          uvTransform[3]);
       GLES20.glUniformMatrix4fv(
           renderer.mvpMatrixLocation,
           1,
@@ -669,8 +696,12 @@ public final class ParallaxGlRenderer {
   }
 
   public void updateSensorState(float sensorMotionX, float sensorMotionY) {
-    motionX = sensorMotionX * 2f / surfaceWidth;
-    motionY = sensorMotionY * 2f / surfaceHeight;
+    float compositionWidth = textureManager.getCompositionCanvasWidth();
+    if (compositionWidth <= 0) compositionWidth = DEFAULT_CANVAS_WIDTH;
+    float compositionHeight =
+        compositionWidth * surfaceHeight / Math.max(1f, surfaceWidth);
+    motionX = sensorMotionX * 2f / compositionWidth;
+    motionY = sensorMotionY * 2f / Math.max(1f, compositionHeight);
   }
 
   private void configureAlphaPrecisionTexture() {
@@ -761,24 +792,70 @@ public final class ParallaxGlRenderer {
   }
 
   private void updateLayerMvp(int index) {
-    int textureWidth = textureManager.getTextureWidth(index);
-    int textureHeight = textureManager.getTextureHeight(index);
-    if (textureWidth <= 0 || textureHeight <= 0) {
+    ParallaxTextureManager.LayerData layer = textureManager.getLayerData(index);
+    if (layer == null || layer.imageWidth <= 0f || layer.imageHeight <= 0f) {
       Matrix.setIdentityM(mMVPMatrix, 0);
       return;
     }
 
-    float fitScale = Math.max(
-        surfaceWidth / (float) textureWidth,
-        surfaceHeight / (float) textureHeight);
-    float scaledWidth = textureWidth * fitScale;
-    float scaledHeight = textureHeight * fitScale;
-    float scaleX = scaledWidth / surfaceWidth;
-    float scaleY = scaledHeight / surfaceHeight;
+    float canvasWidth = surfaceWidth;
+    float canvasHeight = surfaceHeight;
+    float compositionWidth = textureManager.getCompositionCanvasWidth();
+    if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
+    float coordinateScale = canvasWidth / compositionWidth;
+
+    float fitScale = Math.max(canvasWidth / layer.imageWidth, canvasHeight / layer.imageHeight);
+    float drawScale = fitScale * layer.scale;
+
+    float renderedWidth;
+    float renderedHeight;
+    float centerX;
+    float centerY;
+    if (layer.hasSourceCrop) {
+      renderedWidth = layer.cropWidth * drawScale;
+      renderedHeight = layer.cropHeight * drawScale;
+      float left = (canvasWidth - layer.imageWidth * drawScale) / 2f
+          + layer.cropOriginX * drawScale
+          + layer.x * coordinateScale;
+      float top = (canvasHeight - layer.imageHeight * drawScale) / 2f
+          + layer.cropOriginY * drawScale
+          + layer.y * coordinateScale;
+      centerX = left + renderedWidth / 2f;
+      centerY = top + renderedHeight / 2f;
+    } else {
+      renderedWidth = layer.sourceWidth * drawScale;
+      renderedHeight = layer.sourceHeight * drawScale;
+      centerX = canvasWidth / 2f + layer.x * coordinateScale;
+      centerY = canvasHeight / 2f + layer.y * coordinateScale;
+    }
+
+    float centerNdcX = (centerX / canvasWidth) * 2f - 1f;
+    float centerNdcY = 1f - (centerY / canvasHeight) * 2f;
+    float scaleNdcX = renderedWidth / canvasWidth;
+    float scaleNdcY = renderedHeight / canvasHeight;
 
     Matrix.setIdentityM(mModelMatrix, 0);
-    Matrix.scaleM(mModelMatrix, 0, scaleX, scaleY, 1f);
+    Matrix.translateM(mModelMatrix, 0, centerNdcX, centerNdcY, 0f);
+    Matrix.scaleM(mModelMatrix, 0, scaleNdcX, scaleNdcY, 1f);
     Matrix.multiplyMM(mMVPMatrix, 0, mProjMatrix, 0, mModelMatrix, 0);
+  }
+
+  private void updateLayerUvTransform(int index) {
+    ParallaxTextureManager.LayerData layer = textureManager.getLayerData(index);
+    if (layer == null
+        || !layer.hasSourceCrop
+        || layer.imageWidth <= 0f
+        || layer.imageHeight <= 0f) {
+      mUvTransform[0] = 0f;
+      mUvTransform[1] = 0f;
+      mUvTransform[2] = 1f;
+      mUvTransform[3] = 1f;
+      return;
+    }
+    mUvTransform[0] = layer.cropOriginX / layer.imageWidth;
+    mUvTransform[1] = layer.cropOriginY / layer.imageHeight;
+    mUvTransform[2] = layer.cropWidth / layer.imageWidth;
+    mUvTransform[3] = layer.cropHeight / layer.imageHeight;
   }
 
   private int compileShader(int type, String source) {
