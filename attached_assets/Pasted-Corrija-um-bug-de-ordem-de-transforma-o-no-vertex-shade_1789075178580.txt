@@ -1,0 +1,51 @@
+Corrija um bug de ordem de transformação no vertex shader do arquivo ParallaxGlRenderer.java.
+
+Arquivo: android/app/src/main/java/com/parallaxwallpaper/app/ParallaxGlRenderer.java
+
+Problema:
+No VERTEX_SHADER, o offset de parallax (u_Offset * u_DepthFactor) é somado à posição antes da multiplicação pela matriz MVP:
+
+glsl
+vec4 displacedPosition = vec4(a_Position, 0.0, 1.0)
+    + vec4(u_Offset * u_DepthFactor, 0.0, 0.0);
+gl_Position = u_MVPMatrix * displacedPosition;
+Como a MVP inclui a escala por camada (scaleNdcX, scaleNdcY), o offset efetivo em NDC fica multiplicado por essa escala. Em camadas que transbordam horizontalmente (fitScale < 1, típico em retrato com imagem paisagem), o deslocamento do OpenGL fica 2–3× maior que o do Canvas, quebrando a paridade visual entre os renderizadores.
+
+Correção desejada:
+Aplicar o offset depois do MVP, em espaço de clip/NDC, para que o deslocamento seja somado diretamente em unidades NDC — exatamente como o Canvas aplica em pixels.
+
+Substitua o bloco atual do VERTEX_SHADER por:
+
+glsl
+"attribute vec2 a_Position;\n"
+    + "attribute vec2 a_TexCoord;\n"
+    + "uniform mat4 u_MVPMatrix;\n"
+    + "uniform vec2 u_Offset;\n"
+    + "uniform float u_DepthFactor;\n"
+    + "uniform vec4 u_UVTransform;\n"
+    + "varying vec2 v_TexCoord;\n"
+    + "void main() {\n"
+    + "  vec4 clipPosition = u_MVPMatrix * vec4(a_Position, 0.0, 1.0);\n"
+    + "  clipPosition.xy += u_Offset * u_DepthFactor;\n"
+    + "  gl_Position = clipPosition;\n"
+    + "  v_TexCoord = a_TexCoord * u_UVTransform.zw + u_UVTransform.xy;\n"
+    + "}\n";
+Restrições:
+
+Não altere mais nada no arquivo. Nada em renderFrame, updateLayerMvp, updateLayerUvTransform, updateSensorState, validateAlphaPrecision ou em AlphaPrecisionGlState.
+
+Não altere assinaturas de métodos.
+
+Não altere os uniforms existentes nem adicione novos.
+
+Mantenha o nome clipPosition apenas como variável local do shader.
+
+Verificação esperada após a correção:
+
+Compilação do shader sem erros no Logcat (PARALLAX_GL_SHADER_COMPILE_FAILED ausente).
+
+Log PARALLAX_GL_RENDERER_READY continua aparecendo.
+
+Ao comparar Canvas e OpenGL com a mesma composição (por exemplo, canvasWidth = 280, uma camada com imageWidth = 4000, scale = 1, sem crop), a amplitude de deslocamento das camadas deve ser idêntica entre os dois renderizadores para o mesmo movimento do sensor.
+
+Nenhum log de falha de GPU (PARALLAX_RENDERER_FALLBACK) deve aparecer como consequência desta mudança.
