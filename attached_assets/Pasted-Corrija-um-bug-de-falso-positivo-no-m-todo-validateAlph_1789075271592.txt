@@ -1,0 +1,61 @@
+Corrija um bug de falso positivo no método validateAlphaPrecision do arquivo ParallaxGlRenderer.java.
+
+Arquivo: android/app/src/main/java/com/parallaxwallpaper/app/ParallaxGlRenderer.java
+
+Problema:
+No método validateAlphaPrecision, o uniform u_MVPMatrix é setado a partir do campo mMVPMatrix:
+
+java
+GLES20.glUniformMatrix4fv(mvpMatrixLocation, 1, false, mMVPMatrix, 0);
+Porém, validateAlphaPrecision() é chamado em ParallaxEglThread.run() logo após initializeGlRenderer() e antes de qualquer chamada a renderFrame(). Nesse momento, o campo mMVPMatrix ainda contém apenas zeros — ele só é populado dentro de updateLayerMvp(), que roda por camada durante renderFrame().
+
+Com uma matriz MVP de zeros, gl_Position = u_MVPMatrix * vec4(a_Position, 0.0, 1.0) resulta em (0, 0, 0, 0) para os quatro vértices. A GPU monta um triângulo degenerado, nenhum fragmento é rasterizado, e o framebuffer fica com o valor de glClear. O teste então compara o alpha do clear contra expectedAlpha() e passa — mas nunca exercita o blending nem o fragment shader. É um falso positivo.
+
+Correção desejada:
+Usar uma matriz de identidade local para o teste, sem depender nem alterar o campo mMVPMatrix. Isso garante que o quad cubra o framebuffer 1×1 e que o blending seja realmente exercitado.
+
+No método validateAlphaPrecision, localize o bloco:
+
+java
+      GLES20.glUniform1i(textureLocation, 0);
+      GLES20.glUniform2f(offsetLocation, 0f, 0f);
+      GLES20.glUniform1f(depthFactorLocation, 0f);
+      GLES20.glUniform4f(uvTransformLocation, 0f, 0f, 1f, 1f);
+      GLES20.glUniformMatrix4fv(mvpMatrixLocation, 1, false, mMVPMatrix, 0);
+      GLES20.glViewport(0, 0, 1, 1);
+E substitua por:
+
+java
+      GLES20.glUniform1i(textureLocation, 0);
+      GLES20.glUniform2f(offsetLocation, 0f, 0f);
+      GLES20.glUniform1f(depthFactorLocation, 0f);
+      GLES20.glUniform4f(uvTransformLocation, 0f, 0f, 1f, 1f);
+      float[] identityMvp = new float[16];
+      Matrix.setIdentityM(identityMvp, 0);
+      GLES20.glUniformMatrix4fv(mvpMatrixLocation, 1, false, identityMvp, 0);
+      GLES20.glViewport(0, 0, 1, 1);
+Justificativa da escolha de matriz local:
+
+Evita mutar o campo mMVPMatrix, que é compartilhado com o pipeline de renderização.
+
+O captureAlphaPrecisionGlState() já captura o valor de u_MVPMatrix do programa e o AlphaPrecisionGlState.restore() já restaura esse valor após o teste — então o estado do uniform é preservado.
+
+O import android.opengl.Matrix já existe no arquivo; nenhum import novo é necessário.
+
+Restrições:
+
+Não altere mais nada no arquivo. Nada em renderFrame, updateLayerMvp, updateLayerUvTransform, updateSensorState, shader, AlphaPrecisionGlState, VertexAttributeState, release ou initialize.
+
+Não remova nem renomeie uniforms.
+
+Não altere a assinatura de validateAlphaPrecision.
+
+Não modifique a classe AlphaPrecisionCase nem os casos de teste.
+
+Verificação esperada após a correção:
+
+Log PARALLAX_GL_ALPHA_PRECISION_VALIDATION PASSED continua aparecendo no Logcat.
+
+Em dispositivos onde a precisão de alpha do framebuffer é realmente duvidosa, o teste agora pode falhar e emitir PARALLAX_GL_ALPHA_PRECISION_FAILED com case=... — isso é o comportamento correto. Antes, mesmo um framebuffer problemático passaria silenciosamente.
+
+Nenhuma regressão em renderFrame: a matriz usada em produção continua vindo de updateLayerMvp, sem interferência do teste.
