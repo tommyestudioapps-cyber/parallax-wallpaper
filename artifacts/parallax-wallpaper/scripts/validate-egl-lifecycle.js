@@ -314,6 +314,80 @@ function validateTransparentEdgeFixture() {
         }
       });
     }
+
+    if (layer.extremeAlphaEdge) {
+      const extreme = layer.extremeAlphaEdge;
+      const extremeTolerance = extreme.tolerance;
+      if (
+        extreme.width !== 2
+        || extreme.height !== 2
+        || extreme.texels.length !== extreme.height
+        || extreme.texels.some((row) => row.length !== extreme.width)
+        || !Number.isFinite(extremeTolerance)
+        || extremeTolerance <= 0
+      ) {
+        throw new Error(
+          `Transparent-edge extreme-alpha fixture is invalid: ${layer.name}`,
+        );
+      }
+
+      const extremeTexels = extreme.texels.flat();
+      const nearZeroTexels = extremeTexels.filter(
+        (rgba) => rgba[3] > 0 && rgba[3] <= 0.00001,
+      );
+      const hasExtremeRgb = nearZeroTexels.some(
+        (rgba) => rgba.slice(0, 3).some((channel) => channel === 1),
+      );
+      if (nearZeroTexels.length === 0 || !hasExtremeRgb) {
+        throw new Error(
+          `Transparent-edge extreme-alpha fixture needs near-zero alpha and RGB extremes: ${layer.name}`,
+        );
+      }
+
+      Object.entries(extreme.sampleCoordinates).forEach(([sampleName, coordinate]) => {
+        if (!Array.isArray(coordinate) || coordinate.length !== 2) {
+          throw new Error(
+            `Transparent-edge extreme-alpha coordinate is invalid: `
+              + `${layer.name} ${sampleName}`,
+          );
+        }
+        const expectedSample = sampleBilinear(extreme, coordinate, true);
+        const naiveStraightAlphaSample = sampleBilinear(extreme, coordinate, false);
+        assertClose(
+          expectedSample,
+          sampleBilinear(extreme, coordinate, true),
+          `${layer.name} ${sampleName} coordinate ${coordinate.join(',')} extreme-alpha sample`,
+          extremeTolerance,
+        );
+
+        let naiveDifferenceChannel = -1;
+        for (let channel = 0; channel < 3; channel += 1) {
+          if (
+            Math.abs(naiveStraightAlphaSample[channel] - expectedSample[channel])
+              > extremeTolerance
+          ) {
+            naiveDifferenceChannel = channel;
+            break;
+          }
+        }
+        if (naiveDifferenceChannel < 0) {
+          throw new Error(
+            `Transparent-edge extreme-alpha fixture is not halo-sensitive: `
+              + `${layer.name} ${sampleName} coordinate ${coordinate.join(',')} `
+              + `channel ${naiveDifferenceChannel}`,
+          );
+        }
+
+        for (let channel = 0; channel < 3; channel += 1) {
+          if (expectedSample[channel] > expectedSample[3] + extremeTolerance) {
+            throw new Error(
+              `Transparent-edge extreme-alpha halo at ${layer.name} ${sampleName} `
+                + `coordinate ${coordinate.join(',')} channel ${channel}`,
+            );
+          }
+        }
+      });
+    }
   });
 
   const transparentStack = fixture.layers
