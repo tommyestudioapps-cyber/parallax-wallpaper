@@ -246,14 +246,19 @@ function validateTransparentEdgeFixture() {
     );
     return { name: layer.name, color: sampledColor };
   });
-  const composeSampledLayers = (layers) => layers
+  const composeSampledLayers = (
+    layers,
+    clearColor = sampledComposition.clearColor,
+  ) => layers
     .map((layer) => layer.color)
-    .reduce((destination, source) => over(source, destination), sampledComposition.clearColor);
+    .reduce((destination, source) => over(source, destination), clearColor);
+  const sampledLayerOrder = sampledLayers.map((layer) => layer.name).join(' -> ');
   const sampledCompositionResult = composeSampledLayers(sampledLayers);
   assertClose(
     sampledCompositionResult,
     sampledComposition.expectedComposition,
-    `${sampledComposition.name} Background -> Middle -> Detail -> Foreground`,
+    `${sampledComposition.name} clear ${sampledComposition.clearColor.join(',')} `
+      + `layers ${sampledLayerOrder}`,
     sampledComposition.tolerance,
   );
   const reversedSampledComposition = composeSampledLayers(sampledLayers.slice().reverse());
@@ -268,6 +273,42 @@ function validateTransparentEdgeFixture() {
         + sampledComposition.name,
     );
   }
+  if (
+    !Array.isArray(sampledComposition.clearColorVariants)
+    || sampledComposition.clearColorVariants.length < 2
+  ) {
+    throw new Error(
+      `Transparent-edge sampled composition must define transparent and opaque clear colors: `
+        + sampledComposition.name,
+    );
+  }
+  const clearColorVariantNames = new Set();
+  sampledComposition.clearColorVariants.forEach((variant) => {
+    if (
+      !variant.name
+      || clearColorVariantNames.has(variant.name)
+      || !Array.isArray(variant.clearColor)
+      || variant.clearColor.length !== 4
+      || !Number.isFinite(variant.tolerance)
+      || variant.tolerance <= 0
+      || !Array.isArray(variant.expectedComposition)
+      || variant.expectedComposition.length !== 4
+    ) {
+      throw new Error(
+        `Transparent-edge clear-color variant is invalid: `
+          + `${sampledComposition.name} ${variant.name || 'unnamed'}`,
+      );
+    }
+    clearColorVariantNames.add(variant.name);
+    const variantResult = composeSampledLayers(sampledLayers, variant.clearColor);
+    assertClose(
+      variantResult,
+      variant.expectedComposition,
+      `${sampledComposition.name} clear ${variant.name} `
+        + `(${variant.clearColor.join(',')}) layers ${sampledLayerOrder}`,
+      variant.tolerance,
+    );
+  });
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
   if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {
