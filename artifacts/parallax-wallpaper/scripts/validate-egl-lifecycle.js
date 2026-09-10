@@ -309,6 +309,56 @@ function validateTransparentEdgeFixture() {
       variant.tolerance,
     );
   });
+  const transparentLayerSample = sampledComposition.transparentLayerSample;
+  if (
+    !transparentLayerSample
+    || !transparentLayerSample.name
+    || !Array.isArray(transparentLayerSample.rgba)
+    || transparentLayerSample.rgba.length !== 4
+    || transparentLayerSample.rgba[3] !== 0
+    || !transparentLayerSample.rgba.slice(0, 3).some((channel) => channel !== 0)
+  ) {
+    throw new Error(
+      `Transparent-edge layer sample must have alpha zero and non-zero RGB: `
+        + sampledComposition.name,
+    );
+  }
+  const transparentInsertionIndex = sampledLayers.findIndex(
+    (layer) => layer.name === transparentLayerSample.insertAfter,
+  );
+  if (transparentInsertionIndex < 0) {
+    throw new Error(
+      `Transparent-edge transparent layer insertion point is missing: `
+        + `${sampledComposition.name} ${transparentLayerSample.insertAfter}`,
+    );
+  }
+  const sampledLayersWithTransparent = sampledLayers.slice();
+  sampledLayersWithTransparent.splice(
+    transparentInsertionIndex + 1,
+    0,
+    {
+      name: transparentLayerSample.name,
+      color: premultiply(transparentLayerSample.rgba),
+    },
+  );
+  const sampledLayerOrderWithTransparent = sampledLayersWithTransparent
+    .map((layer) => layer.name)
+    .join(' -> ');
+  sampledComposition.clearColorVariants.forEach((variant) => {
+    const withoutTransparent = composeSampledLayers(sampledLayers, variant.clearColor);
+    const withTransparent = composeSampledLayers(
+      sampledLayersWithTransparent,
+      variant.clearColor,
+    );
+    assertClose(
+      withTransparent,
+      withoutTransparent,
+      `${sampledComposition.name} clear ${variant.name} `
+        + `without vs ${transparentLayerSample.name} `
+        + `layers ${sampledLayerOrderWithTransparent}`,
+      variant.tolerance,
+    );
+  });
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
   if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {

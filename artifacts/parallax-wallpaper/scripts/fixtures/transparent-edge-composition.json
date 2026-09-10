@@ -205,7 +205,12 @@
           1
         ]
       }
-    ]
+    ],
+    "transparentLayerSample": {
+      "name": "transparent-rgb-residual",
+      "rgba": [1, 0.25, 0.75, 0],
+      "insertAfter": "middle"
+    }
   },
   "expectedComposition": [0.225, 0.275, 0.1125, 1],
   "clearColor": [0, 0, 0, 1]
