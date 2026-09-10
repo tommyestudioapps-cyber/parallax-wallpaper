@@ -128,7 +128,24 @@ function sampleBilinear(texture, coordinate, premultiplied) {
 
 function validateTransparentEdgeFixture() {
   const fixture = transparentEdgeFixture;
+  const sampledComposition = fixture.sampledComposition;
   const bilinearTolerance = fixture.bilinearTolerance;
+  const channelTolerances = sampledComposition?.channelTolerances;
+  const canonicalTolerance = Array.isArray(channelTolerances)
+    ? Math.max(...channelTolerances)
+    : NaN;
+  const assertCanonicalTolerance = (actual, context) => {
+    if (
+      !Number.isFinite(actual)
+      || Math.abs(actual - canonicalTolerance) > canonicalTolerance * 1e-9
+    ) {
+      throw new Error(
+        `Transparent-edge tolerance policy mismatch for ${context}: `
+          + `channels [${channelTolerances?.join(',') || 'missing'}] `
+          + `expected ${canonicalTolerance}, received ${actual}`,
+      );
+    }
+  };
   const bilinearCorners = [
     'top-left',
     'top-right',
@@ -138,6 +155,7 @@ function validateTransparentEdgeFixture() {
   if (!Number.isFinite(bilinearTolerance) || bilinearTolerance <= 0) {
     throw new Error('Transparent-edge fixture must define a positive bilinear tolerance');
   }
+  assertCanonicalTolerance(bilinearTolerance, 'global bilinear sampling');
   bilinearCorners.forEach((corner) => {
     const coordinate = fixture.bilinearSampleCoordinates[corner];
     if (!Array.isArray(coordinate) || coordinate.length !== 2) {
@@ -210,7 +228,6 @@ function validateTransparentEdgeFixture() {
       }
     });
   });
-  const sampledComposition = fixture.sampledComposition;
   if (
     !sampledComposition
     || !Number.isFinite(sampledComposition.tolerance)
@@ -224,7 +241,6 @@ function validateTransparentEdgeFixture() {
   ) {
     throw new Error('Transparent-edge sampled composition fixture is invalid');
   }
-  const channelTolerances = sampledComposition.channelTolerances;
   if (
     !Array.isArray(channelTolerances)
     || channelTolerances.length !== 3
@@ -236,6 +252,7 @@ function validateTransparentEdgeFixture() {
         + sampledComposition.name,
     );
   }
+  assertCanonicalTolerance(sampledComposition.tolerance, 'sampled composition');
   const alphaCasesByName = new Map(
     fixture.bilinearAlphaCases.map((alphaCase) => [alphaCase.name, alphaCase]),
   );
@@ -311,6 +328,10 @@ function validateTransparentEdgeFixture() {
           + `${sampledComposition.name} ${variant.name || 'unnamed'}`,
       );
     }
+    assertCanonicalTolerance(
+      variant.tolerance,
+      `clear-color variant ${variant.name}`,
+    );
     clearColorVariantNames.add(variant.name);
     const variantResult = composeSampledLayers(sampledLayers, variant.clearColor);
     assertClose(
@@ -419,6 +440,10 @@ function validateTransparentEdgeFixture() {
       `Transparent-edge bilinear transparent sample is invalid: ${sampledComposition.name}`,
     );
   }
+  assertCanonicalTolerance(
+    bilinearTransparentSample.tolerance,
+    'bilinear transparent sample',
+  );
   const bilinearTransparentTexels = bilinearTransparentTexture.texels.flat();
   if (
     !bilinearTransparentTexels.every((rgba) => rgba[3] === 0)

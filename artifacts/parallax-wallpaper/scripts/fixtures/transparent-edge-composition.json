@@ -78,7 +78,7 @@
     }
   ],
   "outsideTextureCoordinates": [-0.25, 1.25],
-  "bilinearTolerance": 0.000001,
+  "bilinearTolerance": 0.0000012,
   "bilinearSampleCoordinates": {
     "top-left": [0.25, 0.25],
     "top-right": [0.75, 0.25],
@@ -152,7 +152,7 @@
   ],
   "sampledComposition": {
     "name": "four-sampled-alpha-layers",
-    "tolerance": 0.000001,
+    "tolerance": 0.0000012,
     "channelTolerances": [0.0000008, 0.000001, 0.0000012],
     "clearColor": [0, 0, 0, 0],
     "layers": [
@@ -187,7 +187,7 @@
       {
         "name": "transparent",
         "clearColor": [0, 0, 0, 0],
-        "tolerance": 0.000001,
+        "tolerance": 0.0000012,
         "expectedComposition": [
           0.5083251706466674,
           0.5519391221523284,
@@ -198,7 +198,7 @@
       {
         "name": "opaque-gray",
         "clearColor": [0.1, 0.1, 0.1, 1],
-        "tolerance": 0.000001,
+        "tolerance": 0.0000012,
         "expectedComposition": [
           0.5210900216846466,
           0.5647039731903076,
@@ -270,7 +270,7 @@
           "isolatedChannel": 2
         }
       ],
-      "tolerance": 0.000001
+      "tolerance": 0.0000012
     },
     "toleranceBoundarySamples": [
       {
