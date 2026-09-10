@@ -1,0 +1,55 @@
+Perfeito. Aqui está a correção agora, isolada no ParallaxEglThread.java.
+
+Escopo
+Adicionar PARALLAX_EGL_THREAD_CLEANUP_COMPLETE no bloco finally do run(), após cleanupEgl(...) e antes de listener.onEglThreadTerminated(this).
+
+Manter PARALLAX_EGL_TERMINATED intacto dentro de cleanupEgl.
+
+Nada mais muda.
+
+Substituir o bloco finally do método run()
+Substitua o finally atual:
+
+java
+    } finally {
+      if (glRenderer != null) {
+        glRenderer.release();
+        glRenderer = null;
+      }
+      emitGlMetricsIfNeeded(true);
+      cleanupEgl(currentDisplay, currentContext, currentSurface);
+      listener.onEglThreadTerminated(this);
+    }
+por:
+
+java
+    } finally {
+      if (glRenderer != null) {
+        glRenderer.release();
+        glRenderer = null;
+      }
+      emitGlMetricsIfNeeded(true);
+      cleanupEgl(currentDisplay, currentContext, currentSurface);
+      Log.i(TAG, "PARALLAX_EGL_THREAD_CLEANUP_COMPLETE");
+      listener.onEglThreadTerminated(this);
+    }
+Verificação
+☑ Log emitido apenas após cleanupEgl retornar — garante que surface, context, display foram destruídos e eglReleaseThread foi chamado.
+☑ Log emitido antes de onEglThreadTerminated, ou seja, o controller é notificado só depois que a thread registra o término completo da limpeza.
+☑ PARALLAX_EGL_TERMINATED continua sendo emitido dentro de cleanupEgl — sem remoção, sem renomeação.
+☑ Nenhum outro caminho de código é alterado. reportFailure continua disparando normalmente antes do finally.
+☑ Cobre os três casos: saída limpa (requestStop), falha EGL (reportFailure) e exceção (catch (Throwable)), porque todos passam pelo mesmo finally.
+Observação de ordem de logs
+Com a correção, o Logcat passa a mostrar, em sequência, algo como:
+
+text
+PARALLAX_EGL_TERMINATED
+PARALLAX_EGL_THREAD_CLEANUP_COMPLETE
+PARALLAX_EGL_CONTROLLER_STOPPED
+PARALLAX_EGL_TERMINATED → limpeza EGL concluída (dentro de cleanupEgl).
+
+PARALLAX_EGL_THREAD_CLEANUP_COMPLETE → thread terminou o pipeline completo de limpeza.
+
+PARALLAX_EGL_CONTROLLER_STOPPED → controller recebeu a notificação e atualizou o estado.
+
+O teste estático agora tem o marcador que procura, e a sequência continua semanticamente correta.
