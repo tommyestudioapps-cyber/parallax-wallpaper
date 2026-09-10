@@ -27,6 +27,8 @@ const CANONICAL_JAVA_FILES = [
   'ParallaxSensorState.java',
   'ParallaxEglThread.java',
   'ParallaxEglController.java',
+  'ParallaxTextureManager.java',
+  'ParallaxGlRenderer.java',
 ];
 
 function withParallaxWallpaperManifest(config) {

@@ -18,6 +18,11 @@ const controller = fs.readFileSync(
   'utf8',
 );
 const eglThread = fs.readFileSync(path.join(javaRoot, 'ParallaxEglThread.java'), 'utf8');
+const textureManager = fs.readFileSync(
+  path.join(javaRoot, 'ParallaxTextureManager.java'),
+  'utf8',
+);
+const glRenderer = fs.readFileSync(path.join(javaRoot, 'ParallaxGlRenderer.java'), 'utf8');
 
 function assertContains(source, pattern, description) {
   if (!pattern.test(source)) {
@@ -63,6 +68,10 @@ if (/Thread\.join|Thread\.sleep|sleep\s*\(/.test(controller)) {
 
 assertContains(eglThread, /if \(!EGL14\.eglSwapBuffers/, 'swap failure is checked');
 assertContains(eglThread, /running = false/, 'swap failure stops the loop');
+assertContains(eglThread, /new ParallaxGlRenderer/, 'EGL thread owns the GL renderer');
+assertContains(eglThread, /initializeGlRenderer\(\)/, 'GL renderer initializes after EGL');
+assertContains(eglThread, /glRenderer\.renderFrame\(\)/, 'EGL loop delegates frame rendering');
+assertContains(eglThread, /glRenderer\.release\(\)/, 'GL resources release before EGL teardown');
 assertOrder(
   methodBody(eglThread, 'public void run()', 'private EGLDisplay currentDisplay'),
   [/initializeEgl\(\)/, /listener\.onEglReady\(this\)/],
@@ -104,5 +113,22 @@ assertOrder(
   [/PARALLAX_EGL_CONTROLLER_STARTING/, /eglThread\.start\(\)/],
   'STARTING is logged before the EGL thread starts',
 );
+
+assertContains(textureManager, /GLES20\.glGenTextures/, 'textures are generated on GL');
+assertContains(textureManager, /GLUtils\.texImage2D/, 'bitmaps upload through GLUtils');
+assertContains(textureManager, /GLES20\.GL_LINEAR/, 'linear texture filtering is configured');
+assertContains(textureManager, /GLES20\.GL_CLAMP_TO_EDGE/, 'edge wrapping is configured');
+assertContains(textureManager, /GLES20\.glDeleteTextures/, 'textures are deleted');
+assertContains(textureManager, /if \(backgroundTextureId != 0\)/, 'texture upload is guarded per context');
+assertContains(textureManager, /BitmapFactory\.decode/, 'background bitmap loading is isolated from the frame loop');
+
+assertContains(glRenderer, /glCreateShader/, 'vertex and fragment shaders are compiled');
+assertContains(glRenderer, /glGenBuffers/, 'fullscreen quad uses a VBO');
+assertContains(glRenderer, /glBufferData/, 'quad data uploads once to the VBO');
+assertContains(glRenderer, /glDrawArrays/, 'fullscreen quad is rendered');
+assertContains(glRenderer, /texture2D/, 'fragment shader samples the texture');
+if (/BitmapFactory|new\s+/.test(methodBody(glRenderer, 'public void renderFrame()', 'public void release()'))) {
+  throw new Error('GL renderFrame must not decode bitmaps or allocate objects');
+}
 
 console.log('EGL lifecycle static regression checks passed');
