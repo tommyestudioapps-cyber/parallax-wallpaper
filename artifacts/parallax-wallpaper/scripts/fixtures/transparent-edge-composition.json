@@ -227,14 +227,14 @@
     "bilinearTransparentSample": {
       "name": "bilinear-transparent-rgb-residual",
       "texture": {
-        "width": 2,
+        "width": 3,
         "height": 2,
         "texels": [
-          [[1, 0, 0, 0], [0, 1, 0, 0]],
-          [[0, 0, 1, 0], [1, 1, 1, 0]]
+          [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]],
+          [[1, 1, 0, 0], [0, 1, 1, 0], [1, 0, 1, 0]]
         ]
       },
-      "coordinate": [0.625, 0.375],
+      "coordinate": [0.5833333333333334, 0.375],
       "expectedPremultiplied": [0, 0, 0, 0],
       "tolerance": 0.000001
     }

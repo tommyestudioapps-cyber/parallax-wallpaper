@@ -391,8 +391,9 @@ function validateTransparentEdgeFixture() {
     !bilinearTransparentSample
     || !bilinearTransparentSample.name
     || !bilinearTransparentTexture
-    || bilinearTransparentTexture.width !== 2
-    || bilinearTransparentTexture.height !== 2
+    || bilinearTransparentTexture.width < 2
+    || bilinearTransparentTexture.height < 2
+    || bilinearTransparentTexture.width === bilinearTransparentTexture.height
     || bilinearTransparentTexture.texels.length !== bilinearTransparentTexture.height
     || bilinearTransparentTexture.texels.some(
       (row) => row.length !== bilinearTransparentTexture.width,
