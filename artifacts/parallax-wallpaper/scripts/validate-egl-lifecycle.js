@@ -1,6 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 
+const transparentEdgeFixture = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, 'fixtures', 'transparent-edge-composition.json'),
+    'utf8',
+  ),
+);
 const javaRoot = path.resolve(
   __dirname,
   '..',
@@ -53,6 +59,123 @@ function methodBody(source, signature, nextSignature) {
     throw new Error(`Missing method boundaries for lifecycle check: ${signature}`);
   }
   return source.slice(start, end);
+}
+
+function assertClose(actual, expected, description, epsilon = 1e-6) {
+  if (actual.length !== expected.length) {
+    throw new Error(`Transparent-edge fixture length mismatch: ${description}`);
+  }
+  actual.forEach((value, index) => {
+    if (Math.abs(value - expected[index]) > epsilon) {
+      throw new Error(
+        `Transparent-edge fixture mismatch: ${description} `
+          + `at channel ${index} (expected ${expected[index]}, received ${value})`,
+      );
+    }
+  });
+}
+
+function premultiply(rgba) {
+  return [rgba[0] * rgba[3], rgba[1] * rgba[3], rgba[2] * rgba[3], rgba[3]];
+}
+
+function over(source, destination) {
+  const inverseAlpha = 1 - source[3];
+  return [
+    source[0] + destination[0] * inverseAlpha,
+    source[1] + destination[1] * inverseAlpha,
+    source[2] + destination[2] * inverseAlpha,
+    source[3] + destination[3] * inverseAlpha,
+  ];
+}
+
+function sampleClamped(edge, interior, coordinate) {
+  if (coordinate < 0) return edge;
+  if (coordinate > 1) return interior;
+  return coordinate < 0.5 ? edge : interior;
+}
+
+function sampleRepeated(edge, interior, coordinate) {
+  if (coordinate < 0) return interior;
+  if (coordinate > 1) return edge;
+  return coordinate < 0.5 ? edge : interior;
+}
+
+function validateTransparentEdgeFixture() {
+  const fixture = transparentEdgeFixture;
+  const expectedLayerNames = ['background', 'middle', 'foreground'];
+  const layerNames = fixture.layers.map((layer) => layer.name);
+  if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {
+    throw new Error(
+      `Transparent-edge fixture must use Background -> Middle -> Foreground order; `
+        + `received ${layerNames.join(' -> ')}`,
+    );
+  }
+
+  const composition = fixture.layers
+    .map((layer) => layer.center)
+    .reduce((destination, source) => over(source, destination));
+  assertClose(
+    composition,
+    fixture.expectedComposition,
+    'Background -> Middle -> Foreground premultiplied composition',
+  );
+
+  const reversedComposition = fixture.layers
+    .slice()
+    .reverse()
+    .map((layer) => layer.center)
+    .reduce((destination, source) => over(source, destination));
+  if (
+    reversedComposition.every(
+      (value, index) => Math.abs(value - fixture.expectedComposition[index]) <= 1e-6,
+    )
+  ) {
+    throw new Error('Transparent-edge fixture does not distinguish draw order');
+  }
+
+  fixture.layers.forEach((layer) => {
+    const expectedEdge = premultiply(layer.transparentEdgeSource);
+    if (layer.transparentEdgeSource[3] !== 0) {
+      throw new Error(`Transparent-edge fixture edge must be transparent: ${layer.name}`);
+    }
+    assertClose(expectedEdge, [0, 0, 0, 0], `${layer.name} premultiplied transparent edge`);
+
+    const leftSample = sampleClamped(
+      expectedEdge,
+      layer.edgeInterior,
+      fixture.outsideTextureCoordinates[0],
+    );
+    const rightSample = sampleClamped(
+      expectedEdge,
+      layer.edgeInterior,
+      fixture.outsideTextureCoordinates[1],
+    );
+    assertClose(leftSample, expectedEdge, `${layer.name} GL_CLAMP_TO_EDGE left sample`);
+    assertClose(rightSample, layer.edgeInterior, `${layer.name} GL_CLAMP_TO_EDGE right sample`);
+
+    const repeatedLeftSample = sampleRepeated(
+      expectedEdge,
+      layer.edgeInterior,
+      fixture.outsideTextureCoordinates[0],
+    );
+    if (
+      repeatedLeftSample.every(
+        (value, index) => Math.abs(value - leftSample[index]) <= 1e-6,
+      )
+    ) {
+      throw new Error(`Transparent-edge fixture does not distinguish clamping: ${layer.name}`);
+    }
+  });
+
+  const transparentStack = fixture.layers
+    .map((layer) => premultiply(layer.transparentEdgeSource))
+    .reduce((destination, source) => over(source, destination), fixture.clearColor);
+  assertClose(
+    transparentStack,
+    fixture.clearColor,
+    'transparent edge preserves the clear color without a black halo',
+  );
 }
 
 for (const state of ['STOPPED', 'STARTING', 'RUNNING', 'STOPPING']) {
@@ -153,7 +276,16 @@ assertContains(textureManager, /GLES20\.glGenTextures\(1, mTextureIds, index\)/,
 assertContains(textureManager, /public int\[\] loadTextures/, 'multi-texture loading is exposed');
 assertContains(textureManager, /GLUtils\.texImage2D/, 'bitmaps upload through GLUtils');
 assertContains(textureManager, /GLES20\.GL_LINEAR/, 'linear texture filtering is configured');
-assertContains(textureManager, /GLES20\.GL_CLAMP_TO_EDGE/, 'edge wrapping is configured');
+assertContains(
+  textureManager,
+  /GLES20\.glTexParameteri\(\s*GLES20\.GL_TEXTURE_2D,\s*GLES20\.GL_TEXTURE_WRAP_S,\s*GLES20\.GL_CLAMP_TO_EDGE\s*\)/s,
+  'horizontal texture coordinates clamp to the edge',
+);
+assertContains(
+  textureManager,
+  /GLES20\.glTexParameteri\(\s*GLES20\.GL_TEXTURE_2D,\s*GLES20\.GL_TEXTURE_WRAP_T,\s*GLES20\.GL_CLAMP_TO_EDGE\s*\)/s,
+  'vertical texture coordinates clamp to the edge',
+);
 assertContains(textureManager, /public void releaseTextures\(\)/, 'all textures have a release method');
 assertContains(textureManager, /GLES20\.glDeleteTextures\(1, mTextureIds, index\)/, 'all texture IDs are deleted');
 assertContains(textureManager, /if \(texturesLoaded\) return mTextureIds/, 'texture upload is guarded per context');
@@ -191,6 +323,11 @@ assertContains(
   /GLES20\.glBlendFunc\(GLES20\.GL_ONE, GLES20\.GL_ONE_MINUS_SRC_ALPHA\)/,
   'premultiplied alpha blending is configured',
 );
+assertContains(
+  glRenderer,
+  /gl_FragColor = texture2D\(u_Texture, v_TexCoord\)/,
+  'sampled RGB and alpha reach the fragment output',
+);
 const glFrameBody = methodBody(glRenderer, 'public void renderFrame()', 'public void release()');
 assertOrder(
   glFrameBody,
@@ -201,4 +338,6 @@ if (/BitmapFactory|new\s+/.test(glFrameBody)) {
   throw new Error('GL renderFrame must not decode bitmaps or allocate objects');
 }
 
+validateTransparentEdgeFixture();
 console.log('EGL lifecycle static regression checks passed');
+console.log('Transparent-edge composition fixture passed');
