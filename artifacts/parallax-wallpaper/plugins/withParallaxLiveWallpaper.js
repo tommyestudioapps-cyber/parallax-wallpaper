@@ -9,7 +9,7 @@ const path = require('path');
 const PACKAGE_NAME = 'com.parallaxwallpaper.app';
 const JAVA_PACKAGE_PATH = PACKAGE_NAME.replace(/\./g, '/');
 
-const CANONICAL_SERVICE_PATH = path.resolve(
+const CANONICAL_JAVA_DIRECTORY = path.resolve(
   __dirname,
   '..',
   'android',
@@ -18,8 +18,14 @@ const CANONICAL_SERVICE_PATH = path.resolve(
   'main',
   'java',
   JAVA_PACKAGE_PATH,
-  'ParallaxWallpaperService.java',
 );
+const CANONICAL_JAVA_FILES = [
+  'ParallaxWallpaperService.java',
+  'WallpaperRenderer.java',
+  'CanvasWallpaperRenderer.java',
+  'ParallaxComposition.java',
+  'ParallaxSensorState.java',
+];
 
 function withParallaxWallpaperManifest(config) {
   return withAndroidManifest(config, (modConfig) => {
@@ -113,29 +119,25 @@ function withParallaxWallpaperFiles(config) {
       fs.mkdirSync(javaDirectory, { recursive: true });
       fs.mkdirSync(xmlDirectory, { recursive: true });
 
-      if (!fs.existsSync(CANONICAL_SERVICE_PATH)) {
-        throw new Error(
-          `Canonical ParallaxWallpaperService.java was not found at ${CANONICAL_SERVICE_PATH}`,
-        );
-      }
+      for (const fileName of CANONICAL_JAVA_FILES) {
+        const canonicalPath = path.join(CANONICAL_JAVA_DIRECTORY, fileName);
+        if (!fs.existsSync(canonicalPath)) {
+          throw new Error(`Canonical ${fileName} was not found at ${canonicalPath}`);
+        }
 
-      let canonicalServiceJava;
-      try {
-        canonicalServiceJava = fs.readFileSync(CANONICAL_SERVICE_PATH, 'utf8');
-      } catch (error) {
-        throw new Error(
-          `Failed to read canonical ParallaxWallpaperService.java at ${CANONICAL_SERVICE_PATH}`,
-          { cause: error },
-        );
+        let canonicalJava;
+        try {
+          canonicalJava = fs.readFileSync(canonicalPath, 'utf8');
+        } catch (error) {
+          throw new Error(`Failed to read canonical ${fileName} at ${canonicalPath}`, {
+            cause: error,
+          });
+        }
+        fs.writeFileSync(path.join(javaDirectory, fileName), canonicalJava, 'utf8');
       }
 
       fs.writeFileSync(path.join(javaDirectory, 'ParallaxWallpaperPackage.java'), PARALLAX_PACKAGE_JAVA);
       fs.writeFileSync(path.join(javaDirectory, 'ParallaxWallpaperModule.java'), PARALLAX_MODULE_JAVA);
-      fs.writeFileSync(
-        path.join(javaDirectory, 'ParallaxWallpaperService.java'),
-        canonicalServiceJava,
-        'utf8',
-      );
       fs.writeFileSync(path.join(xmlDirectory, 'parallax_wallpaper.xml'), PARALLAX_XML);
       return modConfig;
     },
