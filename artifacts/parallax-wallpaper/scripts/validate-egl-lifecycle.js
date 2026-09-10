@@ -1348,6 +1348,102 @@ if (/loadTextures|releaseTextures/.test(glFrameBody)) {
   throw new Error('GL renderFrame must not reload or release textures');
 }
 
+function assertFiniteValues(values, description) {
+  values.forEach((value) => {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Viewport resize regression produced a non-finite value: ${description}`);
+    }
+  });
+}
+
+function validateViewportResizeRegression() {
+  const resizeCases = [
+    { width: 1920, height: 1080, sensorX: 24, sensorY: -18 },
+    { width: 0, height: 720, sensorX: 24, sensorY: -18 },
+    { width: -640, height: 0, sensorX: 24, sensorY: -18 },
+    { width: -1, height: -1, sensorX: 24, sensorY: -18 },
+  ];
+  const textureIds = [101, 202, 303];
+  const initialTextureIds = textureIds.slice();
+  const composition = {
+    layers: ['background', 'middle', 'foreground'],
+    textureIds,
+  };
+  let texturesLoaded = false;
+  let textureLoadCount = 0;
+
+  const loadTextures = () => {
+    if (texturesLoaded) return textureIds;
+    texturesLoaded = true;
+    textureLoadCount += 1;
+    return textureIds;
+  };
+
+  resizeCases.forEach(({ width, height, sensorX, sensorY }) => {
+    const normalizedWidth = Math.max(1, width);
+    const normalizedHeight = Math.max(1, height);
+    const viewport = [0, 0, normalizedWidth, normalizedHeight];
+    const motion = [
+      sensorX * 2 / normalizedWidth,
+      sensorY * 2 / normalizedHeight,
+    ];
+    const textureWidth = 1600;
+    const textureHeight = 900;
+    const fitScale = Math.max(
+      normalizedWidth / textureWidth,
+      normalizedHeight / textureHeight,
+    );
+    const compositionScale = [
+      textureWidth * fitScale / normalizedWidth,
+      textureHeight * fitScale / normalizedHeight,
+    ];
+
+    assertFiniteValues(viewport, `${width}x${height} viewport`);
+    assertFiniteValues(motion, `${width}x${height} motion`);
+    assertFiniteValues(compositionScale, `${width}x${height} composition scale`);
+    if (viewport[2] < 1 || viewport[3] < 1) {
+      throw new Error(`Viewport resize regression kept an invalid size for ${width}x${height}`);
+    }
+    if (loadTextures() !== textureIds) {
+      throw new Error('Viewport resize regression replaced the texture ID array');
+    }
+    if (composition.textureIds !== textureIds) {
+      throw new Error('Viewport resize regression recreated the composition');
+    }
+  });
+
+  if (textureLoadCount !== 1) {
+    throw new Error(
+      `Viewport resize regression reloaded textures ${textureLoadCount} times instead of once`,
+    );
+  }
+  if (textureIds.some((id, index) => id !== initialTextureIds[index])) {
+    throw new Error('Viewport resize regression changed a texture ID');
+  }
+}
+
+assertContains(
+  glRenderer,
+  /this\.surfaceWidth = Math\.max\(1, surfaceWidth\)[\s\S]*this\.surfaceHeight = Math\.max\(1, surfaceHeight\)[\s\S]*GLES20\.glViewport\(0, 0, this\.surfaceWidth, this\.surfaceHeight\)[\s\S]*textureManager\.loadTextures\(this\.surfaceWidth, this\.surfaceHeight\)/,
+  'normalized surface dimensions drive the viewport and initial texture loading',
+);
+assertContains(
+  glRenderer,
+  /float fitScale = Math\.max\([\s\S]*surfaceWidth \/ \(float\) textureWidth[\s\S]*surfaceHeight \/ \(float\) textureHeight[\s\S]*float scaleX = scaledWidth \/ surfaceWidth[\s\S]*float scaleY = scaledHeight \/ surfaceHeight/,
+  'normalized surface dimensions drive finite cover scaling',
+);
+assertContains(
+  glRenderer,
+  /if \(surfaceWidth <= 0 \|\| surfaceHeight <= 0\)[\s\S]*motionX = 0f[\s\S]*motionY = 0f[\s\S]*sensorMotionX \* 2f \/ surfaceWidth[\s\S]*sensorMotionY \* 2f \/ surfaceHeight/,
+  'sensor motion is guarded against invalid surface dimensions',
+);
+assertContains(
+  textureManager,
+  /if \(texturesLoaded\) return mTextureIds;/,
+  'texture loading returns existing IDs after the composition is loaded',
+);
+validateViewportResizeRegression();
+
 function expectFixtureFailure(name, mutate, expectedMessage) {
   const candidate = JSON.parse(JSON.stringify(transparentEdgeFixture));
   mutate(candidate);
@@ -1390,5 +1486,6 @@ expectFixtureFailure(
   /four-sampled-alpha-layers clear transparent .* at alpha/,
 );
 console.log('EGL lifecycle static regression checks passed');
+console.log('Viewport resize regression cases passed');
 console.log('Transparent-edge composition fixture passed');
 console.log('Transparent-edge alpha tolerance negative cases passed');
