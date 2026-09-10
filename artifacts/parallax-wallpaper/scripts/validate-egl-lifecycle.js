@@ -385,6 +385,107 @@ function validateTransparentEdgeFixture() {
     });
     transparentPositionNames.add(position.name);
   });
+  const bilinearTransparentSample = sampledComposition.bilinearTransparentSample;
+  const bilinearTransparentTexture = bilinearTransparentSample?.texture;
+  if (
+    !bilinearTransparentSample
+    || !bilinearTransparentSample.name
+    || !bilinearTransparentTexture
+    || bilinearTransparentTexture.width !== 2
+    || bilinearTransparentTexture.height !== 2
+    || bilinearTransparentTexture.texels.length !== bilinearTransparentTexture.height
+    || bilinearTransparentTexture.texels.some(
+      (row) => row.length !== bilinearTransparentTexture.width,
+    )
+    || !Array.isArray(bilinearTransparentSample.coordinate)
+    || bilinearTransparentSample.coordinate.length !== 2
+    || !Array.isArray(bilinearTransparentSample.expectedPremultiplied)
+    || bilinearTransparentSample.expectedPremultiplied.length !== 4
+    || !Number.isFinite(bilinearTransparentSample.tolerance)
+    || bilinearTransparentSample.tolerance <= 0
+  ) {
+    throw new Error(
+      `Transparent-edge bilinear transparent sample is invalid: ${sampledComposition.name}`,
+    );
+  }
+  const bilinearTransparentTexels = bilinearTransparentTexture.texels.flat();
+  if (
+    !bilinearTransparentTexels.every((rgba) => rgba[3] === 0)
+    || !bilinearTransparentTexels.some((rgba) => rgba.slice(0, 3).some((channel) => channel !== 0))
+  ) {
+    throw new Error(
+      `Transparent-edge bilinear sample needs alpha-zero texels with RGB residual: `
+        + `${sampledComposition.name} ${bilinearTransparentSample.name}`,
+    );
+  }
+  const bilinearSampleDescription =
+    `${sampledComposition.name} ${bilinearTransparentSample.name} `
+      + `coordinate ${bilinearTransparentSample.coordinate.join(',')}`;
+  const premultipliedBilinearColor = sampleBilinear(
+    bilinearTransparentTexture,
+    bilinearTransparentSample.coordinate,
+    true,
+  );
+  assertClose(
+    premultipliedBilinearColor,
+    bilinearTransparentSample.expectedPremultiplied,
+    `${bilinearSampleDescription} premultiplied sample`,
+    bilinearTransparentSample.tolerance,
+  );
+  const straightBilinearColor = sampleBilinear(
+    bilinearTransparentTexture,
+    bilinearTransparentSample.coordinate,
+    false,
+  );
+  let straightDifferenceChannel = -1;
+  for (let channel = 0; channel < 3; channel += 1) {
+    if (
+      Math.abs(straightBilinearColor[channel] - premultipliedBilinearColor[channel])
+        > bilinearTransparentSample.tolerance
+    ) {
+      straightDifferenceChannel = channel;
+      break;
+    }
+  }
+  if (straightDifferenceChannel < 0) {
+    throw new Error(
+      `Transparent-edge bilinear sample does not expose RGB residual: `
+        + `${bilinearSampleDescription} channel ${straightDifferenceChannel}`,
+    );
+  }
+  transparentLayerSample.positions.forEach((position) => {
+    const referenceLayerName = position.insertBefore || position.insertAfter;
+    const referenceIndex = sampledLayers.findIndex(
+      (layer) => layer.name === referenceLayerName,
+    );
+    const insertionIndex = position.insertBefore ? referenceIndex : referenceIndex + 1;
+    const sampledLayersWithBilinearTransparent = sampledLayers.slice();
+    sampledLayersWithBilinearTransparent.splice(
+      insertionIndex,
+      0,
+      {
+        name: bilinearTransparentSample.name,
+        color: premultipliedBilinearColor,
+      },
+    );
+    const sampledLayerOrderWithBilinearTransparent = sampledLayersWithBilinearTransparent
+      .map((layer) => layer.name)
+      .join(' -> ');
+    sampledComposition.clearColorVariants.forEach((variant) => {
+      const withoutSample = composeSampledLayers(sampledLayers, variant.clearColor);
+      const withSample = composeSampledLayers(
+        sampledLayersWithBilinearTransparent,
+        variant.clearColor,
+      );
+      assertClose(
+        withSample,
+        withoutSample,
+        `${bilinearSampleDescription} position ${position.name} clear ${variant.name} `
+          + `before vs after composition layers ${sampledLayerOrderWithBilinearTransparent}`,
+        variant.tolerance,
+      );
+    });
+  });
   const expectedLayerNames = ['background', 'middle', 'foreground'];
   const layerNames = fixture.layers.map((layer) => layer.name);
   if (JSON.stringify(layerNames) !== JSON.stringify(expectedLayerNames)) {
