@@ -61,6 +61,8 @@ assertContains(controller, /threadHadEglReady && state == State\.STOPPING/, 'res
 assertContains(controller, /state != State\.STOPPED/, 'new threads only start from STOPPED');
 assertContains(controller, /isSurfaceValid\(requestedSurface\)/, 'surface validity is checked before start');
 assertContains(controller, /released = true/, 'release marks the controller as released');
+assertContains(controller, /volatile ParallaxSensorState sensorState/, 'sensor snapshots are retained safely');
+assertContains(controller, /thread\.updateSensorState\(nextState\)/, 'sensor snapshots reach the EGL thread');
 
 if (/Thread\.join|Thread\.sleep|sleep\s*\(/.test(controller)) {
   throw new Error('EGL controller must not block callbacks with join or sleep');
@@ -70,6 +72,8 @@ assertContains(eglThread, /if \(!EGL14\.eglSwapBuffers/, 'swap failure is checke
 assertContains(eglThread, /running = false/, 'swap failure stops the loop');
 assertContains(eglThread, /new ParallaxGlRenderer/, 'EGL thread owns the GL renderer');
 assertContains(eglThread, /initializeGlRenderer\(\)/, 'GL renderer initializes after EGL');
+assertContains(eglThread, /volatile ParallaxSensorState sensorState/, 'EGL thread reads a volatile sensor snapshot');
+assertContains(eglThread, /glRenderer\.updateSensorState\(snapshot\.getX\(\), snapshot\.getY\(\)\)/, 'latest sensor values reach the GL renderer');
 assertContains(eglThread, /glRenderer\.renderFrame\(\)/, 'EGL loop delegates frame rendering');
 assertContains(eglThread, /glRenderer\.release\(\)/, 'GL resources release before EGL teardown');
 assertOrder(
@@ -132,14 +136,26 @@ assertContains(glRenderer, /glBufferData/, 'quad data uploads once to the VBO');
 assertContains(glRenderer, /glDrawArrays/, 'fullscreen quad is rendered');
 assertContains(glRenderer, /texture2D/, 'fragment shader samples the texture');
 assertContains(glRenderer, /uniform mat4 u_MVPMatrix/, 'vertex shader accepts an MVP matrix');
-assertContains(glRenderer, /u_MVPMatrix \* vec4/, 'vertex shader applies the MVP matrix');
+assertContains(
+  glRenderer,
+  /gl_Position = u_MVPMatrix \* displacedPosition/,
+  'vertex shader applies the MVP matrix after sensor displacement',
+);
 assertContains(glRenderer, /Matrix\.orthoM/, 'projection matrix is initialized');
 assertContains(glRenderer, /Matrix\.scaleM/, 'layer aspect scale is calculated');
 assertContains(glRenderer, /glUniformMatrix4fv/, 'MVP matrix is sent before drawing');
 assertContains(glRenderer, /private final float\[\] mMVPMatrix = new float\[16\]/, 'MVP matrix is reused');
 assertContains(textureManager, /mTextureWidths/, 'decoded texture widths are retained');
 assertContains(textureManager, /mTextureHeights/, 'decoded texture heights are retained');
+assertContains(textureManager, /mDepthFactors/, 'layer depth factors are retained');
+assertContains(textureManager, /parallaxMultiplier/, 'layer depth factors come from composition');
 assertContains(glRenderer, /fitScale = Math\.max/, 'fit scale matches Canvas cover behavior');
+assertContains(glRenderer, /uniform vec2 u_Offset/, 'vertex shader accepts sensor offset');
+assertContains(glRenderer, /uniform float u_DepthFactor/, 'vertex shader accepts layer depth');
+assertContains(glRenderer, /u_Offset \* u_DepthFactor/, 'vertex shader displaces by depth');
+assertContains(glRenderer, /glUniform2f\(offsetLocation, motionX, motionY\)/, 'sensor offset is sent per layer');
+assertContains(glRenderer, /glUniform1f\(depthFactorLocation, textureManager\.getDepthFactor\(index\)\)/, 'layer depth is sent per layer');
+assertContains(glRenderer, /public void updateSensorState\(float sensorMotionX, float sensorMotionY\)/, 'GL renderer receives sensor values without objects');
 assertContains(glRenderer, /GLES20\.glEnable\(GLES20\.GL_BLEND\)/, 'alpha blending is enabled');
 assertContains(
   glRenderer,
