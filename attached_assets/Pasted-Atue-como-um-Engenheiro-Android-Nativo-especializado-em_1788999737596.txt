@@ -1,0 +1,34 @@
+Atue como um Engenheiro Android Nativo especializado em Telemetria de Desempenho e Profiling de Renderização.
+
+OBJETIVO:
+Adicionar métricas estendidas de telemetria em `ParallaxWallpaperService.java` para medir o desempenho real do renderer Canvas otimizado.
+
+ARQUIVO ALVO:
+artifacts/parallax-wallpaper/android/app/src/main/java/com/parallaxwallpaper/app/ParallaxWallpaperService.java
+
+ALTERAÇÕES SOLICITADAS:
+
+1. Contadores e Métricas de Renderização:
+   - Adicione contadores de instância para rastrear durante uma sessão ativa:
+     * `totalSensorEvents`: total de eventos recebidos em `onSensorChanged()`.
+     * `skippedSensorFrames`: total de eventos ignorados pela Dead Zone.
+     * `requestedFrames`: total de frames solicitados via `requestFrame()`.
+     * `drawnFrames`: total de frames efetivamente desenhados em `drawFrame()`.
+
+2. Telemetria Periodica via Logcat (Janela de Exibição / Summary Log):
+   - A cada N frames desenhados (ex: a cada 60 frames ou 5 segundos de renderização contínua), emita um log estruturado com a tag `PARALLAX_CANVAS_METRICS`:
+     * Taxa de retenção da Dead Zone: `(skippedSensorFrames * 100.0 / totalSensorEvents)%`
+     * Tempo médio de renderização por frame (ms).
+     * Percentil aproximado ou tempo máximo de renderização observado na janela (ms).
+     * Total de frames desenhados vs. solicitados.
+
+3. Preservação dos Logs de Timing Existentes:
+   - Mantenha as tags de log existentes (`PARALLAX_FRAME_TIMING`, `PARALLAX_LOCK_CANVAS`, etc.), mas garanta que os novos contadores sejam incrementados de forma thread-safe sem impactos de performance (use tipos primitivos leves ou atômicos).
+
+O QUE NÃO ALTERAR:
+- Não altere a lógica de desenho (`drawFrame`, `drawLayer`).
+- Não altere a gestão do sensor nem os limites da Dead Zone criados na Etapa 1.
+- Não altere as rotinas de reciclagem e carregamento de Bitmaps.
+
+CRITÉRIO DE ACEITE / VALIDAÇÃO:
+Verifique se a aplicação compila corretamente e se, ao mover o dispositivo, o Logcat exibe os relatórios agregados sob a tag `PARALLAX_CANVAS_METRICS`, confirmando a redução de chamadas de frame e o tempo gasto no Canvas.
