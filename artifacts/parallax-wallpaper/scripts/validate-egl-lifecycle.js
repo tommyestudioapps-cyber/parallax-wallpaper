@@ -1180,7 +1180,56 @@ assertContains(
   /gl_FragColor = texture2D\(u_Texture, v_TexCoord\)/,
   'sampled RGB and alpha reach the fragment output',
 );
-const glFrameBody = methodBody(glRenderer, 'public void renderFrame()', 'public void release()');
+assertContains(
+  glRenderer,
+  /public boolean validateAlphaPrecision\(\)/,
+  'OpenGL alpha precision has an instrumented validation path',
+);
+assertContains(
+  glRenderer,
+  /ALPHA_PRECISION_CASES[\s\S]*alpha-lsb-over-transparent[\s\S]*half-alpha-over-quarter-alpha/,
+  'alpha precision validation covers cases around the reduced-precision boundary',
+);
+assertContains(
+  glRenderer,
+  /FRAMEBUFFER_ALPHA_HALF_LSB[\s\S]*Math\.max\(ALPHA_TOLERANCE, FRAMEBUFFER_ALPHA_HALF_LSB\)/,
+  'alpha precision validation accounts for RGBA8 readback quantization',
+);
+assertContains(
+  glRenderer,
+  /GLES20\.glFramebufferTexture2D\(/,
+  'alpha precision validation renders into an offscreen framebuffer',
+);
+assertContains(
+  glRenderer,
+  /GLES20\.glReadPixels\([\s\S]*GLES20\.GL_RGBA[\s\S]*GLES20\.GL_UNSIGNED_BYTE/,
+  'alpha precision validation observes the RGBA framebuffer',
+);
+assertContains(
+  glRenderer,
+  /int alphaByte = observedPixels\.get\(3\) & 0xff/,
+  'alpha precision validation reads the alpha channel independently',
+);
+assertContains(
+  glRenderer,
+  /float alphaError = Math\.abs\(observedAlpha - expectedAlpha\)/,
+  'alpha precision validation compares observed alpha with expected alpha',
+);
+assertContains(
+  glRenderer,
+  /case=" \+ testCase\.name[\s\S]*position=" \+ testCase\.position[\s\S]*clearColor=" \+ testCase\.clearColorDescription\(\)[\s\S]*alpha=" \+ observedAlpha[\s\S]*policyAlphaTolerance=" \+ ALPHA_TOLERANCE/,
+  'alpha precision failures include case, position, clear color, and alpha',
+);
+assertContains(
+  eglThread,
+  /boolean alphaPrecisionPassed = glRenderer\.validateAlphaPrecision\(\)/,
+  'EGL thread runs alpha precision validation after renderer initialization',
+);
+const glFrameBody = methodBody(
+  glRenderer,
+  'public void renderFrame()',
+  'public boolean validateAlphaPrecision()',
+);
 assertOrder(
   glFrameBody,
   [/glClear\(/, /for \(int index = 0/, /glBindTexture\(/, /glDrawArrays\(/],
