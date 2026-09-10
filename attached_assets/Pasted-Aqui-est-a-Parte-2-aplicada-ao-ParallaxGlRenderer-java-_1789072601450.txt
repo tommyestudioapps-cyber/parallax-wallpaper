@@ -1,0 +1,158 @@
+Aqui está a Parte 2 aplicada ao ParallaxGlRenderer.java.
+
+Escopo desta parte
+updateSensorState passa a normalizar por compositionWidth em vez de surfaceWidth/surfaceHeight, com tratamento correto do eixo Y para coincidir com o Canvas.
+
+updateLayerMvp reescrito para usar LayerData (fitScale, scale, x, y, sourceCrop, canvasWidth) — mesma matemática do drawLayer do Canvas.
+
+Constante DEFAULT_CANVAS_WIDTH adicionada.
+
+Nada mais muda. Nada em renderFrame, validateAlphaPrecision, shader ou AlphaPrecisionGlState.
+
+Trecho 1 — Constante no topo da classe
+Substitua o bloco atual de constantes:
+
+java
+  private static final String TAG = "ParallaxWallpaper";
+  private static final float ALPHA_TOLERANCE = 0.0000005f;
+  private static final float FRAMEBUFFER_ALPHA_HALF_LSB = 0.5f / 255f;
+por:
+
+java
+  private static final String TAG = "ParallaxWallpaper";
+  private static final float ALPHA_TOLERANCE = 0.0000005f;
+  private static final float FRAMEBUFFER_ALPHA_HALF_LSB = 0.5f / 255f;
+  private static final float DEFAULT_CANVAS_WIDTH = 280f;
+Trecho 2 — Substituir updateSensorState
+Substitua o método atual:
+
+java
+  public void updateSensorState(float sensorMotionX, float sensorMotionY) {
+    if (surfaceWidth <= 0 || surfaceHeight <= 0) {
+      motionX = 0f;
+      motionY = 0f;
+      return;
+    }
+    motionX = sensorMotionX * 2f / surfaceWidth;
+    motionY = sensorMotionY * 2f / surfaceHeight;
+  }
+por:
+
+java
+  public void updateSensorState(float sensorMotionX, float sensorMotionY) {
+    if (surfaceWidth <= 0 || surfaceHeight <= 0) {
+      motionX = 0f;
+      motionY = 0f;
+      return;
+    }
+    float compositionWidth = textureManager.getCompositionCanvasWidth();
+    if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
+    // Mesma normalização do Canvas: motionPixels = sensorX * multiplier * (W / compositionWidth).
+    // Convertendo pixels -> NDC e deixando o `u_DepthFactor` multiplicar em runtime:
+    //   offsetX = sensorX * 2 / compositionWidth
+    //   offsetY = sensorY * 2 * surfaceWidth / (compositionWidth * surfaceHeight)
+    // O Y precisa do aspect ratio porque o Canvas desloca em pixels do eixo X
+    // e converte para NDC-Y usando a altura real da superfície.
+    motionX = sensorMotionX * 2f / compositionWidth;
+    motionY = sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
+  }
+Trecho 3 — Substituir updateLayerMvp
+Substitua o método atual:
+
+java
+  private void updateLayerMvp(int index) {
+    int textureWidth = textureManager.getTextureWidth(index);
+    int textureHeight = textureManager.getTextureHeight(index);
+    if (textureWidth <= 0 || textureHeight <= 0) {
+      Matrix.setIdentityM(mMVPMatrix, 0);
+      return;
+    }
+
+    float fitScale = Math.max(
+        surfaceWidth / (float) textureWidth,
+        surfaceHeight / (float) textureHeight);
+    float scaledWidth = textureWidth * fitScale;
+    float scaledHeight = textureHeight * fitScale;
+    float scaleX = scaledWidth / surfaceWidth;
+    float scaleY = scaledHeight / surfaceHeight;
+
+    Matrix.setIdentityM(mModelMatrix, 0);
+    Matrix.scaleM(mModelMatrix, 0, scaleX, scaleY, 1f);
+    Matrix.multiplyMM(mMVPMatrix, 0, mProjMatrix, 0, mModelMatrix, 0);
+  }
+por:
+
+java
+  private void updateLayerMvp(int index) {
+    ParallaxTextureManager.LayerData layer = textureManager.getLayerData(index);
+    if (layer == null || layer.imageWidth <= 0f || layer.imageHeight <= 0f) {
+      Matrix.setIdentityM(mMVPMatrix, 0);
+      return;
+    }
+
+    float canvasWidth = surfaceWidth;
+    float canvasHeight = surfaceHeight;
+    float compositionWidth = textureManager.getCompositionCanvasWidth();
+    if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
+    float coordinateScale = canvasWidth / compositionWidth;
+
+    // Espelha exatamente o cálculo do drawLayer() do Canvas.
+    float fitScale = Math.max(canvasWidth / layer.imageWidth, canvasHeight / layer.imageHeight);
+    float drawScale = fitScale * layer.scale;
+
+    float left;
+    float top;
+    float width;
+    float height;
+
+    if (layer.hasSourceCrop) {
+      width = layer.cropWidth * drawScale;
+      height = layer.cropHeight * drawScale;
+      left = (canvasWidth - layer.imageWidth * drawScale) / 2f
+          + layer.cropOriginX * drawScale
+          + layer.x * coordinateScale;
+      top = (canvasHeight - layer.imageHeight * drawScale) / 2f
+          + layer.cropOriginY * drawScale
+          + layer.y * coordinateScale;
+    } else {
+      float sourceWidth = layer.sourceWidth > 0f ? layer.sourceWidth : layer.textureWidth;
+      float sourceHeight = layer.sourceHeight > 0f ? layer.sourceHeight : layer.textureHeight;
+      width = sourceWidth * drawScale;
+      height = sourceHeight * drawScale;
+      left = (canvasWidth - width) / 2f + layer.x * coordinateScale;
+      top = (canvasHeight - height) / 2f + layer.y * coordinateScale;
+    }
+
+    // Centro do destino em pixels -> NDC.
+    float centerPixelX = left + width / 2f;
+    float centerPixelY = top + height / 2f;
+    float centerNdcX = (centerPixelX / canvasWidth) * 2f - 1f;
+    float centerNdcY = 1f - (centerPixelY / canvasHeight) * 2f;
+
+    // Meia-extensão em NDC. O quad base vai de -1 a 1 (largura 2 em NDC).
+    float scaleNdcX = width / canvasWidth;
+    float scaleNdcY = height / canvasHeight;
+
+    Matrix.setIdentityM(mModelMatrix, 0);
+    Matrix.translateM(mModelMatrix, 0, centerNdcX, centerNdcY, 0f);
+    Matrix.scaleM(mModelMatrix, 0, scaleNdcX, scaleNdcY, 1f);
+    Matrix.multiplyMM(mMVPMatrix, 0, mProjMatrix, 0, mModelMatrix, 0);
+  }
+Checklist de verificação da Parte 2
+☑ updateSensorState divide por compositionWidth (não por surfaceWidth).
+☑ updateSensorState converte Y usando aspect ratio (surfaceWidth / surfaceHeight) para igualar o Canvas.
+☑ updateLayerMvp lê LayerData e reproduz o mesmo cálculo do drawLayer.
+☑ fitScale baseado em imageWidth/imageHeight da camada (não no tamanho decodificado).
+☑ drawScale = fitScale * layer.scale.
+☑ layerX = layer.x * coordinateScale e layerY = layer.y * coordinateScale.
+☑ Crop aplicado corretamente: cropOriginX * drawScale + cropWidth * drawScale.
+☑ Fallback sem crop usa sourceWidth/sourceHeight com fallback para textureWidth/textureHeight.
+☑ Conversão pixel → NDC com Y invertido (1 - ...), consistente com QUAD_DATA.
+O que muda na prática
+Parallax do OpenGL agora tem a mesma amplitude do Canvas (antes ficava ~10×–100× menor por causa da normalização errada).
+
+Crop passa a ser renderizado geometricamente com a extensão correta (as UVs já estavam certas desde a Parte 1).
+
+scale, x, y das camadas agora são aplicados no OpenGL exatamente como no Canvas.
+
+canvasWidth da composição é respeitado em ambos os renderizadores.
