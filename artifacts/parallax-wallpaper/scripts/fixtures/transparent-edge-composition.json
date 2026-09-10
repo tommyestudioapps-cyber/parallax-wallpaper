@@ -234,8 +234,23 @@
           [[1, 1, 0, 0], [0, 1, 1, 0], [1, 0, 1, 0]]
         ]
       },
-      "coordinate": [0.5833333333333334, 0.375],
-      "expectedPremultiplied": [0, 0, 0, 0],
+      "samples": [
+        {
+          "name": "near-top-left",
+          "coordinate": [0.25, 0.375],
+          "expectedPremultiplied": [0, 0, 0, 0]
+        },
+        {
+          "name": "center",
+          "coordinate": [0.5, 0.5],
+          "expectedPremultiplied": [0, 0, 0, 0]
+        },
+        {
+          "name": "near-bottom-right",
+          "coordinate": [0.75, 0.625],
+          "expectedPremultiplied": [0, 0, 0, 0]
+        }
+      ],
       "tolerance": 0.000001
     }
   },
