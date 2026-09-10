@@ -1,0 +1,41 @@
+Atue como um Engenheiro Android Nativo e Arquiteto de Software React Native especializado em Resiliência de Sistemas Gráficos e Fallback Gracioso.
+
+OBJETIVO:
+Finalizar a arquitetura do Live Wallpaper permitindo a seleção dinâmica do backend de renderização (GPU/OpenGL ou Canvas) via React Native, implementando um mecanismo automático de Fallback para Canvas caso a GPU encontre falhas de inicialização ou suporte nativo.
+
+ARQUIVOS ALVO:
+1. `ParallaxWallpaperService.java`
+2. `ParallaxEglController.java`
+3. `ParallaxWallpaperModule.java`
+4. `withParallaxLiveWallpaper.js`
+5. `app/index.tsx` (ou arquivo equivalente do React Native)
+
+ALTERAÇÕES SOLICITADAS:
+
+1. Fallback Automático e Gracioso na GPU:
+   - No `ParallaxEglController`, se a inicialização do EGL (`EGL14.eglInitialize`), a criação do contexto ou a alocação da superfície falhar (retornando erro nativo), registre o erro com a tag `PARALLAX_RENDERER_FALLBACK`.
+   - Notifique imediatamente o `ParallaxEngine` sobre a falha.
+   - O `ParallaxEngine` deve automaticamente instanciar e alternar para o `CanvasWallpaperRenderer`, garantindo que o usuário continue vendo o papel de parede sem crash ou tela preta.
+
+2. Seleção Dinâmica de Backend via SharedPreferences / React Native:
+   - No `ParallaxWallpaperModule.java` (ponte Native Module), adicione um método exportado (ex: `setRendererType(String rendererType)`) que armazena a preferência ("OPENGL" ou "CANVAS") nas SharedPreferences do Android.
+   - No `ParallaxEngine` do `ParallaxWallpaperService.java`, leia essa preferência ao iniciar o serviço:
+     * Se "OPENGL" (padrão): Tenta utilizar o `ParallaxEglController`. Em caso de erro, executa o Fallback para Canvas.
+     * Se "CANVAS": Utiliza diretamente o `CanvasWallpaperRenderer`.
+
+3. Integração na Interface TypeScript / React Native (`app/index.tsx`):
+   - Atualize a UI do aplicativo para oferecer um seletor/toggle leve permitindo ao usuário alternar entre o modo "GPU (OpenGL)" e "CPU (Canvas)".
+   - Ao alterar o modo, salve a configuração e reinicie suavemente a prévia do wallpaper.
+
+4. Limpeza e Organização Final:
+   - Certifique-se de que todos os novos arquivos Java (`WallpaperRenderer.java`, `CanvasWallpaperRenderer.java`, `ParallaxComposition.java`, `ParallaxSensorState.java`, `ParallaxEglThread.java`, `ParallaxEglController.java`, `ParallaxGlRenderer.java`, `ParallaxTextureManager.java`) estão mapeados corretamente no plugin Expo `withParallaxLiveWallpaper.js`.
+
+O QUE NÃO ALTERAR:
+- Não altere as fórmulas matemáticas do Parallax nem as estratégias de alocação zero no loop de renderização.
+- Mantenha os logs de métricas de ambos os motores para facilitar diagnósticos futuros.
+
+CRITÉRIO DE ACEITE / VALIDAÇÃO:
+Ao rodar um `npx expo prebuild` e compilar o app:
+1. O aplicativo deve abrir normalmente com a GPU ativada por padrão.
+2. Alterar o modo na tela React Native deve trocar instantaneamente o motor de renderização entre OpenGL e Canvas.
+3. Se o OpenGL for forçado a falhar em simulação de teste, o wallpaper deve reverter para o Canvas silenciosamente e sem fechar a aplicação.
