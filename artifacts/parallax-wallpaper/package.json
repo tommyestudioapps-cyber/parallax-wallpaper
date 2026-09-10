@@ -9,7 +9,9 @@
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:egl": "node scripts/validate-egl-lifecycle.js",
-    "android": "expo run:android",
+    "android:preflight": "node scripts/android-preflight.js",
+    "android": "node scripts/android-preflight.js && expo run:android",
+    "android:instrumented": "node scripts/android-preflight.js && cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon",
     "ios": "expo run:ios"
   },
   "devDependencies": {
