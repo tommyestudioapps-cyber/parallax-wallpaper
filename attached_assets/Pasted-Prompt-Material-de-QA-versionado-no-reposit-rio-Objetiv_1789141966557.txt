@@ -1,0 +1,309 @@
+Prompt — Material de QA versionado no repositório
+Objetivo: criar no repositório um conjunto de artefatos de QA que permitem a qualquer desenvolvedor (ou você, em duas semanas) reproduzir o ciclo de validação do wallpaper sem depender de memória ou de conversas.
+
+Escopo: 1 arquivo novo de documentação + 1 script de captura de Logcat + 1 arquivo de texto com roteiro fotográfico.
+
+Não altera nenhum arquivo Java. Não afeta o build.
+
+Etapa 1 — Documento principal de QA
+Arquivo novo: docs/QA-VALIDATION.md
+
+Criar com o conteúdo:
+
+markdown
+# QA — Validação do Parallax Wallpaper
+
+Documento vivo. Atualizar sempre que um comportamento documentado mudar.
+
+## Pré-requisitos
+
+- Build de release instalada nos dois OPPO A78 (mesma APK, mesmo artefato).
+- `adb` disponível na máquina do testador.
+- Pelo menos 4 fotos preparadas (ver `docs/QA-PHOTO-TESTS.md`).
+- Modo de desenvolvedor ativo no aparelho (para Logcat via USB).
+
+## Captura de Logcat
+
+Antes de cada rodada, limpar e iniciar captura:
+
+```bash
+./scripts/qa/capture-logcat.sh start
+```
+
+Após cada cenário, parar a captura:
+
+```bash
+./scripts/qa/capture-logcat.sh stop
+```
+
+O script salva o Logcat em `scripts/qa/logs/<timestamp>.log`.
+
+## Checklist de validação
+
+Cada item abaixo é binário: passa ou falha. Registrar o resultado em `scripts/qa/logs/<timestamp>.md` (o script de captura cria esse arquivo).
+
+### 1. Instalação
+
+- [ ] Wallpaper aparece no seletor do Android em ambos os aparelhos.
+- [ ] Aplicar o wallpaper funciona em ambos.
+
+### 2. Visual — sem distorção
+
+Testar com as 4 fotos de `docs/QA-PHOTO-TESTS.md`:
+
+- [ ] Foto retrato sem EXIF — sem alongamento.
+- [ ] Foto paisagem sem EXIF — sem alongamento.
+- [ ] Foto com crop retangular — enquadramento correto.
+- [ ] Foto com EXIF orientation 6 ou 8 — sem alongamento.
+
+Repetir em ambos os aparelhos.
+
+### 3. Movimento
+
+- [ ] Girar aparelho no eixo Y (roll) desloca camadas horizontalmente.
+- [ ] Girar aparelho no eixo X (pitch) desloca camadas verticalmente.
+- [ ] Direção do deslocamento é a mesma nos dois aparelhos.
+- [ ] Amplitude do deslocamento respeita a intensidade configurada.
+
+### 4. Rotação de tela
+
+- [ ] Girar 90° com wallpaper visível redesenha imediatamente.
+- [ ] Parallax volta a funcionar em menos de 1 segundo após rotação.
+
+### 5. Modo economia de bateria
+
+- [ ] Ativar economia de bateria e bloquear/desbloquear tela.
+- [ ] Parallax continua funcionando (resposta mais "digital" é esperada).
+
+### 6. Mudança dinâmica de composição
+
+- [ ] Com wallpaper ativo, alterar composição no app.
+- [ ] Wallpaper atualiza automaticamente ao voltar para a home.
+
+### 7. Trim de memória
+
+- [ ] Rodar app pesado por 2–3 min com wallpaper em background.
+- [ ] Voltar para home — wallpaper redesenha corretamente.
+
+### 8. Bateria
+
+- [ ] Deixar wallpaper aplicado por 30 min sem interação.
+- [ ] Consumo do app abaixo de 3% em 30 min com tela apagada.
+
+### 9. Mipmaps
+
+- [ ] Camada de fundo com `scale` muito abaixo de 1 (zoom out acentuado).
+- [ ] Sem "serrilhado" ou "cintilação" durante movimento.
+
+### 10. Logcat em release
+
+- [ ] Nenhuma linha `PARALLAX_ENGINE_CREATED` ou `PARALLAX_GL_RENDERER_READY` (gate de logs funcionando).
+- [ ] Nenhum `PARALLAX_GL_RENDER_ERROR` em uso normal.
+- [ ] Nenhum `PARALLAX_RENDERER_FALLBACK` em uso normal.
+
+## Interpretação de logs de erro
+
+Se aparecer em release, é diagnóstico real:
+
+| Log | Significado | Ação |
+|---|---|---|
+| `PARALLAX_RENDERER_FALLBACK reason=egl_initialization` | Thread EGL não inicializou | Verificar se é transitório. Retry automático deve resolver. |
+| `PARALLAX_RENDERER_FALLBACK reason=egl_swap_buffers` | Falha no swap | Driver em estado ruim. Se persistir, capturar `PARALLAX_EGL_EXTENSIONS` da build de debug. |
+| `PARALLAX_GPU_FAILURE reason=...` | Notificação de falha chegou ao serviço | Wallpaper fica preto até retry. Anotar frequência. |
+| `PARALLAX_GL_RENDER_ERROR error=0x...` | Erro silencioso do driver GL | Correlacionar com cenário. Se recorrente, é bug de driver. |
+| `PARALLAX_COMPOSITION_FAILED` | JSON de composição inválido | Verificar a fonte do JSON no lado JS. |
+
+## Comparação entre os dois OPPO A78
+
+Preencher ao final de cada rodada:
+
+| Item | Aparelho 1 | Aparelho 2 |
+|---|---|---|
+| Wallpaper aparece no seletor | | |
+| Sem distorção nas 4 fotos | | |
+| Direção do parallax | | |
+| Rotação de tela OK | | |
+| Modo economia OK | | |
+| Consumo em 30 min | | |
+| Logcat limpo | | |
+
+Divergência entre aparelhos em qualquer item indica causa hardware/firmware, não código. Capturar Logcat completo de ambos no mesmo cenário para análise.
+Etapa 2 — Script de captura de Logcat
+Arquivo novo: scripts/qa/capture-logcat.sh
+
+Criar com o conteúdo:
+
+bash
+#!/usr/bin/env bash
+#
+# Captura de Logcat filtrada para diagnóstico do Parallax Wallpaper.
+# Uso:
+#   ./scripts/qa/capture-logcat.sh start
+#   ./scripts/qa/capture-logcat.sh stop
+#
+# Requer: adb disponível no PATH, aparelho conectado por USB com debug ativo.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs"
+PID_FILE="${LOG_DIR}/.capture.pid"
+LOG_FILE=""
+
+mkdir -p "${LOG_DIR}"
+
+usage() {
+  echo "Uso: $0 {start|stop}"
+  exit 1
+}
+
+check_adb() {
+  if ! command -v adb >/dev/null 2>&1; then
+    echo "Erro: adb não encontrado no PATH." >&2
+    exit 1
+  fi
+  if ! adb get-state >/dev/null 2>&1; then
+    echo "Erro: nenhum dispositivo conectado ou adb não autorizado." >&2
+    exit 1
+  fi
+}
+
+start_capture() {
+  check_adb
+  if [[ -f "${PID_FILE}" ]]; then
+    echo "Captura já em andamento. Execute 'stop' antes de iniciar outra." >&2
+    exit 1
+  fi
+
+  local timestamp
+  timestamp="$(date +%Y%m%d-%H%M%S)"
+  LOG_FILE="${LOG_DIR}/${timestamp}.log"
+
+  adb logcat -c
+  adb logcat -v threadtime > "${LOG_FILE}" &
+  echo "$!" > "${PID_FILE}"
+
+  echo "Captura iniciada:"
+  echo "  PID:  $(cat "${PID_FILE}")"
+  echo "  Log:  ${LOG_FILE}"
+  echo
+  echo "Para parar: $0 stop"
+}
+
+stop_capture() {
+  if [[ ! -f "${PID_FILE}" ]]; then
+    echo "Nenhuma captura em andamento." >&2
+    exit 1
+  fi
+
+  local pid
+  pid="$(cat "${PID_FILE}")"
+  if kill -0 "${pid}" 2>/dev/null; then
+    kill "${pid}"
+    wait "${pid}" 2>/dev/null || true
+  fi
+  rm -f "${PID_FILE}"
+
+  echo "Captura encerrada."
+  echo "Log salvo em: ${LOG_DIR}"
+  ls -1t "${LOG_DIR}"/*.log 2>/dev/null | head -n 1 || true
+}
+
+case "${1:-}" in
+  start) start_capture ;;
+  stop) stop_capture ;;
+  *) usage ;;
+esac
+Tornar executável: após criar o arquivo, executar chmod +x scripts/qa/capture-logcat.sh.
+
+Etapa 3 — Roteiro de teste fotográfico
+Arquivo novo: docs/QA-PHOTO-TESTS.md
+
+Criar com o conteúdo:
+
+markdown
+# Roteiro de teste fotográfico
+
+Quatro fotos cobrem todos os cenários de distorção conhecidos. Preparar antes da rodada de QA.
+
+## Foto 1 — Retrato sem EXIF
+
+- Origem: qualquer screenshot de celular, ou foto exportada sem metadados.
+- Dimensão: pelo menos 1080×1920.
+- Objetivo: validar o caso mais simples. Nenhum mecanismo de correção precisa entrar em ação.
+
+## Foto 2 — Paisagem sem EXIF
+
+- Origem: qualquer imagem exportada horizontalmente, sem metadados.
+- Dimensão: pelo menos 1920×1080.
+- Objetivo: validar que a camada cobre a tela em orientação retrato sem distorção.
+
+## Foto 3 — Com crop retangular
+
+- Origem: usar uma das duas fotos acima.
+- Aplicar no editor um crop com proporção bem diferente da original (ex.: crop quadrado em foto retrato).
+- Objetivo: validar que a blindagem UV preserva a proporção do crop.
+
+## Foto 4 — EXIF orientation 6 ou 8
+
+- Origem: foto tirada por um celular que grava orientação no EXIF (a maioria dos Androids atuais).
+- Verificar no PC que o EXIF tem `Orientation = 6` ou `8` (via `exiftool` ou similar).
+- Se não tiver, aplicar EXIF manualmente com `exiftool -Orientation=6 <arquivo>`.
+- Objetivo: validar o `ExifOrientationHelper` e a blindagem UV.
+
+## Como usar cada foto
+
+Para cada uma das 4:
+
+1. Configurar composição no app usando a foto como camada de fundo.
+2. Aplicar o wallpaper.
+3. Observar durante 10 segundos de movimento suave.
+4. Registrar em `scripts/qa/logs/<timestamp>.md`:
+   - Alongou horizontalmente? (sim / não)
+   - Alongou verticalmente? (sim / não)
+   - Enquadramento condiz com o esperado? (sim / não)
+
+## Fotos de referência
+
+Salvar as 4 fotos em `scripts/qa/photos/` para que a mesma amostra seja usada em cada rodada. Nomes sugeridos:
+
+- `01-portrait-no-exif.jpg`
+- `02-landscape-no-exif.jpg`
+- `03-crop-rectangular.jpg`
+- `04-exif-orientation-6.jpg`
+E criar também a pasta scripts/qa/photos/ com um .gitkeep vazio (para o diretório existir no git).
+
+Verificação após o patch
+Estrutura de arquivos esperada:
+
+text
+docs/
+  QA-VALIDATION.md
+  QA-PHOTO-TESTS.md
+scripts/
+  qa/
+    capture-logcat.sh   (executável)
+    photos/
+      .gitkeep
+Busca por ParallaxWallpaperService no repositório: deve continuar aparecendo apenas em código Java, no AndroidManifest.xml e em proguard-rules.pro — este prompt não toca esses arquivos.
+
+Teste manual do script:
+
+bash
+./scripts/qa/capture-logcat.sh start
+# (mover o aparelho por alguns segundos)
+./scripts/qa/capture-logcat.sh stop
+Deve criar scripts/qa/logs/<timestamp>.log com conteúdo de Logcat do aparelho. Sem aparelho conectado, o script sai com erro claro.
+
+Notas de escopo
+Nenhuma alteração no código Android.
+
+Nenhuma alteração no build.
+
+Os artefatos são independentes do app — podem ser removidos sem impacto.
+
+scripts/qa/logs/ deve ser ignorado no git. Adicionar em .gitignore (raiz do repositório):
+
+text
+scripts/qa/logs/
+Se o .gitignore já existe, adicionar apenas a linha. Se não existe, criar com essa linha.

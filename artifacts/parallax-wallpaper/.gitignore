@@ -39,3 +39,4 @@ yarn-error.*
 .vercel
 
 .env
+scripts/qa/logs/
