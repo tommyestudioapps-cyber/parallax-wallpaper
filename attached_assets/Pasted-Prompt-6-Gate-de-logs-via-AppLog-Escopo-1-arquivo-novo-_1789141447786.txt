@@ -1,0 +1,230 @@
+Prompt 6 — Gate de logs via AppLog
+Escopo: 1 arquivo novo + 7 arquivos migrados.
+
+Este é o prompt mais extenso da série, mas cada parte é mecânica. Leia tudo antes de começar — a ordem importa.
+
+Etapa 1 — Criar AppLog.java
+Arquivo novo: android/app/src/main/java/com/parallaxwallpaper/app/AppLog.java
+
+java
+package com.parallaxwallpaper.app;
+
+import android.util.Log;
+
+final class AppLog {
+  private static final String TAG = "ParallaxWallpaper";
+
+  private AppLog() {}
+
+  static void d(String message) {
+    if (BuildConfig.DEBUG) Log.d(TAG, message);
+  }
+
+  static void i(String message) {
+    if (BuildConfig.DEBUG) Log.i(TAG, message);
+  }
+
+  static void w(String message) {
+    if (BuildConfig.DEBUG) Log.w(TAG, message);
+  }
+
+  static void e(String message) {
+    Log.e(TAG, message);
+  }
+
+  static void e(String message, Throwable error) {
+    Log.e(TAG, message, error);
+  }
+}
+Decisões de design:
+
+Classe package-private — só o módulo com.parallaxwallpaper.app a usa.
+
+d, i, w são silenciados em release.
+
+e é sempre ativo — erros são relevantes em produção para diagnóstico de campo.
+
+BuildConfig é gerado automaticamente pelo Gradle no pacote do app; acessível sem import adicional.
+
+Etapa 2 — Substituição mecânica nos 7 arquivos
+Nos seguintes arquivos, substitua toda chamada de log conforme a tabela:
+
+Antes	Depois
+Log.d(TAG, X)	AppLog.d(X)
+Log.i(TAG, X)	AppLog.i(X)
+Log.w(TAG, X)	AppLog.w(X)
+Log.e(TAG, X)	AppLog.e(X)
+Log.e(TAG, X, error)	AppLog.e(X, error)
+Arquivos a migrar:
+
+ExifOrientationHelper.java
+
+ParallaxEglController.java
+
+ParallaxEglThread.java
+
+ParallaxGlRenderer.java
+
+ParallaxTextureManager.java
+
+ParallaxWallpaperService.java
+
+Não migrar (não contêm logs):
+
+ParallaxComposition.java
+
+ParallaxSensorState.java
+
+WallpaperRenderer.java
+
+ParallaxWallpaperModule.java
+
+ParallaxWallpaperPackage.java
+
+MainActivity.kt, MainApplication.kt
+
+Etapa 3 — Gate externo nos logs com concatenação pesada
+O AppLog faz o gate internamente — mas a string passada como argumento é construída antes da chamada, mesmo em release. Para logs com pouca concatenação, o custo é desprezível. Para logs com muitas concatenações de inteiros/floats (que envolvem StringBuilder e boxing), o custo é real.
+
+Nos trechos abaixo, envolver a chamada em if (BuildConfig.DEBUG) { ... } externo, para que a string nunca seja construída em release.
+
+3.1 — ParallaxEglThread.emitGlMetricsIfNeeded (bloco PARALLAX_GPU_METRICS)
+Localize o bloco:
+
+java
+    double averageRenderMs =
+        metricsWindowDrawTimeNs / (double) metricsWindowFrames / 1000000.0;
+    double averageFps = metricsWindowFrames * 1000000000.0 / windowDurationNs;
+    String swapStatus = metricsWindowLastSwapSucceeded ? "OK" : "FAILED";
+    AppLog.i(
+        "PARALLAX_GPU_METRICS"
+            + " averageFps=" + averageFps
+            + ...);
+Envolva todo o cálculo + log (do double averageRenderMs = até o final do AppLog.i(...)) em if (BuildConfig.DEBUG) { ... }. Após o bloco, o código de reset (metricsWindowStartedAtNs = nowNs; em diante) continua fora — o reset não é log e precisa rodar sempre.
+
+3.2 — ParallaxEglThread.emitGlMetricsIfNeeded (bloco PARALLAX_GPU_METRICS_EMPTY)
+Localize:
+
+java
+    if (metricsWindowFrames == 0L) {
+      if (force) {
+        AppLog.i("PARALLAX_GPU_METRICS_EMPTY reason=no_frames_drawn"
+            + " totalGlFrames=" + totalGlFrames
+            + " vsyncMisses=" + vsyncMisses
+            + " swapFailures=" + metricsWindowSwapFailures);
+      }
+      return;
+    }
+Substitua por:
+
+java
+    if (metricsWindowFrames == 0L) {
+      if (force && BuildConfig.DEBUG) {
+        AppLog.i("PARALLAX_GPU_METRICS_EMPTY reason=no_frames_drawn"
+            + " totalGlFrames=" + totalGlFrames
+            + " vsyncMisses=" + vsyncMisses
+            + " swapFailures=" + metricsWindowSwapFailures);
+      }
+      return;
+    }
+3.3 — ParallaxTextureManager.loadLayerBitmap (bloco PARALLAX_GL_BITMAP_READY)
+Localize:
+
+java
+        AppLog.i(
+            "PARALLAX_GL_BITMAP_READY index=" + index
+                + " width=" + bitmap.getWidth()
+                + " height=" + bitmap.getHeight()
+                + " sampleSize=" + sampleSize);
+Substitua por:
+
+java
+        if (BuildConfig.DEBUG) {
+          AppLog.i(
+              "PARALLAX_GL_BITMAP_READY index=" + index
+                  + " width=" + bitmap.getWidth()
+                  + " height=" + bitmap.getHeight()
+                  + " sampleSize=" + sampleSize);
+        }
+3.4 — ParallaxEglThread — PARALLAX_EGL_EXTENSIONS
+Localize em initializeEgl:
+
+java
+    String extensions = EGL14.eglQueryString(currentDisplay, EGL14.EGL_EXTENSIONS);
+    AppLog.i("PARALLAX_EGL_EXTENSIONS " + (extensions == null ? "(none)" : extensions));
+Substitua por:
+
+java
+    if (BuildConfig.DEBUG) {
+      String extensions = EGL14.eglQueryString(currentDisplay, EGL14.EGL_EXTENSIONS);
+      AppLog.i("PARALLAX_EGL_EXTENSIONS " + (extensions == null ? "(none)" : extensions));
+    }
+Motivo extra: eglQueryString com EGL_EXTENSIONS retorna uma string longa. Em release, nem vale computá-la.
+
+Etapa 4 — Remover imports não usados
+Após as etapas 2 e 3, o import android.util.Log; deixa de ser necessário em todos os 6 arquivos migrados. Remova o import de cada um.
+
+Exceção: se algum arquivo ainda usar Log diretamente (fora do AppLog), mantenha o import. Após a migração completa, nenhum dos 6 arquivos deve ter referência direta a Log.* — todas passam por AppLog.
+
+Para verificar: busca em cada arquivo por Log. (com ponto). Deve retornar zero ocorrências.
+
+Verificação após o patch
+Busca global no projeto:
+
+Log.d(TAG → zero ocorrências.
+
+Log.i(TAG → zero ocorrências.
+
+Log.w(TAG → zero ocorrências.
+
+Log.e(TAG → zero ocorrências.
+
+import android.util.Log; → aparece apenas em AppLog.java.
+
+AppLog. → aparece em todos os 6 arquivos migrados.
+
+BuildConfig.DEBUG → aparece em AppLog.java e nos 4 blocos com gate externo (etapa 3).
+
+Comportamento esperado em debug:
+
+Logcat idêntico ao atual.
+
+Comportamento esperado em release:
+
+Logcat contém apenas logs Log.e — vindos de AppLog.e quando há erro (falhas de composição, falhas de EGL, fallback de GPU, PARALLAX_GL_RENDER_ERROR).
+
+Logs informativos (PARALLAX_ENGINE_CREATED, PARALLAX_GL_RENDERER_READY, PARALLAX_GPU_METRICS, etc.) somem completamente.
+
+Nenhuma string de log com concatenação é construída — o gate externo nos 4 pontos pesados garante isso.
+
+Ordem de aplicação recomendada
+Etapa 1 (criar AppLog).
+
+Etapa 2 nos 6 arquivos, um por um.
+
+Etapa 3 nos 4 pontos identificados.
+
+Etapa 4 (remover imports).
+
+Verificação.
+
+Se preferir minimizar risco de regressão, compile após cada arquivo da Etapa 2.
+
+Custo e ganho
+Antes (em release):
+
+Logcat poluído com dezenas de linhas por minuto durante uso normal.
+
+Strings de log construídas mesmo sem Log ser útil — CPU e alocação desnecessárias.
+
+Informação interna exposta no Logcat, potencialmente sensível em análise forense do usuário.
+
+Depois:
+
+Logcat limpo — só erros reais.
+
+Zero construção de string em release para logs silenciados.
+
+Diagnóstico de campo preservado via AppLog.e.
+
+Sem regressão em debug — a experiência de desenvolvimento continua idêntica.

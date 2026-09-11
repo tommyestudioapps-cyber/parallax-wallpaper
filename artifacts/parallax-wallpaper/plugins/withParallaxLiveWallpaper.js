@@ -17,6 +17,7 @@ const CANONICAL_JAVA_DIRECTORY = path.resolve(
   JAVA_PACKAGE_PATH,
 );
 const CANONICAL_JAVA_FILES = [
+  'AppLog.java',
   'ParallaxWallpaperService.java',
   'ParallaxWallpaperModule.java',
   'WallpaperRenderer.java',
