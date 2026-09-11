@@ -1,0 +1,102 @@
+Prompt 3 — Remover matriz de projeção identidade + viewport redundante
+Escopo: 1 arquivo — ParallaxGlRenderer.java.
+
+Aplicar as quatro alterações abaixo.
+
+3.1 — Remover o campo mProjMatrix
+Localize o bloco de matrizes:
+
+java
+  private final float[] mMVPMatrix = new float[16];
+  private final float[] mProjMatrix = new float[16];
+  private final float[] mModelMatrix = new float[16];
+Substitua por:
+
+java
+  private final float[] mMVPMatrix = new float[16];
+  private final float[] mModelMatrix = new float[16];
+3.2 — Remover orthoM em initialize
+Localize no início de initialize:
+
+java
+    this.surfaceWidth = Math.max(1, surfaceWidth);
+    this.surfaceHeight = Math.max(1, surfaceHeight);
+    surfaceAvailable = false;
+    Matrix.orthoM(mProjMatrix, 0, -1f, 1f, -1f, 1f, -1f, 1f);
+    GLES20.glViewport(0, 0, this.surfaceWidth, this.surfaceHeight);
+Substitua por:
+
+java
+    this.surfaceWidth = Math.max(1, surfaceWidth);
+    this.surfaceHeight = Math.max(1, surfaceHeight);
+    surfaceAvailable = false;
+    GLES20.glViewport(0, 0, this.surfaceWidth, this.surfaceHeight);
+O glViewport permanece — ele é necessário uma vez na criação do renderer.
+
+3.3 — Remover glViewport em renderFrame
+Localize o início de renderFrame:
+
+java
+    GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
+    GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+    GLES20.glUseProgram(program);
+Substitua por:
+
+java
+    GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+    GLES20.glUseProgram(program);
+Justificativa: o renderer é recriado a cada mudança de surface (o ParallaxEglController reinicia a thread EGL em onSurfaceChanged com tamanho diferente). O viewport definido em initialize permanece válido durante toda a vida do renderer. Reafirmá-lo a cada frame é no-op.
+
+3.4 — Substituir multiplyMM por cópia direta em updateLayerMvp
+Localize o final de updateLayerMvp:
+
+java
+    Matrix.setIdentityM(mModelMatrix, 0);
+    Matrix.translateM(mModelMatrix, 0, centerNdcX, centerNdcY, 0f);
+    Matrix.scaleM(mModelMatrix, 0, scaleNdcX, scaleNdcY, 1f);
+    Matrix.multiplyMM(mMVPMatrix, 0, mProjMatrix, 0, mModelMatrix, 0);
+Substitua por:
+
+java
+    Matrix.setIdentityM(mModelMatrix, 0);
+    Matrix.translateM(mModelMatrix, 0, centerNdcX, centerNdcY, 0f);
+    Matrix.scaleM(mModelMatrix, 0, scaleNdcX, scaleNdcY, 1f);
+    System.arraycopy(mModelMatrix, 0, mMVPMatrix, 0, 16);
+Justificativa: com a matriz de projeção sendo identidade, multiplyMM apenas copia mModelMatrix para mMVPMatrix. System.arraycopy faz o mesmo em um passo, sem multiplicação 4×4.
+
+Verificação após o patch
+Busca em ParallaxGlRenderer.java:
+
+mProjMatrix → deve retornar zero ocorrências.
+
+Matrix.orthoM → deve retornar zero ocorrências.
+
+Matrix.multiplyMM → deve retornar zero ocorrências.
+
+glViewport → deve continuar aparecendo uma vez (dentro de initialize).
+
+Busca no projeto inteiro:
+
+mProjMatrix → deve retornar zero ocorrências (era campo privado, não vazava para fora).
+
+Nenhum outro arquivo foi alterado.
+
+Comportamento resultante
+Antes:
+
+Duas multiplicações de matriz 4×4 por camada por frame (uma implícita em orthoM, uma em multiplyMM) — sendo que a matriz de projeção era identidade, então ambas eram desperdício.
+
+Uma chamada glViewport por frame, redundante.
+
+Depois:
+
+Uma cópia de 16 floats por camada (System.arraycopy).
+
+glViewport chamado uma única vez por instância de renderer.
+
+O ganho é marginal em números absolutos (algumas dezenas de microssegundos por frame no total), mas elimina código que existia só por herança do Canvas (que usava coordenadas de pixel em vez de NDC) e que agora é apenas ruído arquitetural.
+
+Observação sobre risco
+Zero risco de regressão visual. A identidade matemática de orthoM com esses parâmetros é garantida (left=-1, right=1, bottom=-1, top=1, near=-1, far=1), e multiplyMM(I, M) == M é propriedade fundamental. A remoção do glViewport é segura porque a única situação em que ele mudaria seria uma mudança de tamanho de surface — que já recria o renderer.
+
+Se houver qualquer dúvida empírica, o teste é simples: comparar visualmente antes/depois. Se aparecer diferença, é sinal de que algum pressuposto está errado e a investigação deve começar pela matriz de projeção.

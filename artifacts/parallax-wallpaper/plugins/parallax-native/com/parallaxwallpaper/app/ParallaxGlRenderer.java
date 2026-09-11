@@ -69,7 +69,6 @@ public final class ParallaxGlRenderer {
   private final ParallaxTextureManager textureManager;
   private final FloatBuffer quadBuffer;
   private final float[] mMVPMatrix = new float[16];
-  private final float[] mProjMatrix = new float[16];
   private final float[] mModelMatrix = new float[16];
   private final float[] mUvTransform = new float[4];
   private int[] textureIds;
@@ -101,7 +100,6 @@ public final class ParallaxGlRenderer {
     this.surfaceWidth = Math.max(1, surfaceWidth);
     this.surfaceHeight = Math.max(1, surfaceHeight);
     surfaceAvailable = false;
-    Matrix.orthoM(mProjMatrix, 0, -1f, 1f, -1f, 1f, -1f, 1f);
     GLES20.glViewport(0, 0, this.surfaceWidth, this.surfaceHeight);
     int vertexShader = compileShader(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER);
     int fragmentShader = compileShader(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER);
@@ -193,7 +191,6 @@ public final class ParallaxGlRenderer {
       return;
     }
 
-    GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
     GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
     GLES20.glUseProgram(program);
 
@@ -930,7 +927,7 @@ public final class ParallaxGlRenderer {
     Matrix.setIdentityM(mModelMatrix, 0);
     Matrix.translateM(mModelMatrix, 0, centerNdcX, centerNdcY, 0f);
     Matrix.scaleM(mModelMatrix, 0, scaleNdcX, scaleNdcY, 1f);
-    Matrix.multiplyMM(mMVPMatrix, 0, mProjMatrix, 0, mModelMatrix, 0);
+    System.arraycopy(mModelMatrix, 0, mMVPMatrix, 0, 16);
   }
 
   private int compileShader(int type, String source) {
