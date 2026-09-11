@@ -2,6 +2,8 @@ package com.parallaxwallpaper.app;
 
 import android.content.ComponentCallbacks2;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import org.json.JSONObject;
@@ -21,10 +23,14 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
   private static final String TAG = "ParallaxWallpaper";
   private static final String PREFS_NAME = ParallaxWallpaperService.PREFS_NAME;
   private static final String PREF_COMPOSITION = "composition";
+  private static final long RETRY_BASE_DELAY_MS = 3000L;
+  private static final long RETRY_MAX_DELAY_MS = 30000L;
+  private static final int RETRY_MAX_SHIFT = 4;
 
   private final Context context;
   private final FailureListener failureListener;
   private final Object stateLock = new Object();
+  private final Handler retryHandler = new Handler(Looper.getMainLooper());
   private State state = State.STOPPED;
   private SurfaceHolder requestedSurface;
   private ParallaxEglThread eglThread;
@@ -35,8 +41,22 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
   private boolean threadHadEglReady;
   private boolean failureReported;
   private boolean pendingReload;
+  private int retryAttempt;
   private int lastSurfaceWidth;
   private int lastSurfaceHeight;
+
+  private final Runnable retryRunnable = new Runnable() {
+    @Override
+    public void run() {
+      synchronized (stateLock) {
+        if (released || !visible) return;
+        if (state != State.STOPPED) return;
+        failureReported = false;
+      }
+      Log.i(TAG, "PARALLAX_EGL_RETRY attempt=" + retryAttempt);
+      startIfPossible();
+    }
+  };
 
   public ParallaxEglController(Context context, FailureListener failureListener) {
     this.context = context.getApplicationContext();
@@ -91,7 +111,9 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
   @Override
   public void setVisible(boolean visible) {
     ParallaxEglThread threadToStop = null;
+    boolean becameVisible;
     synchronized (stateLock) {
+      becameVisible = visible && !this.visible;
       this.visible = visible;
       if (!visible && eglThread != null && state != State.STOPPING) {
         state = State.STOPPING;
@@ -99,7 +121,16 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       }
     }
     requestStop(threadToStop);
-    if (visible) startIfPossible();
+    if (visible) {
+      if (becameVisible) {
+        synchronized (stateLock) {
+          retryAttempt = 0;
+        }
+      }
+      startIfPossible();
+    } else {
+      retryHandler.removeCallbacks(retryRunnable);
+    }
   }
 
   @Override
@@ -124,6 +155,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
         threadToStop = eglThread;
       }
     }
+    retryHandler.removeCallbacks(retryRunnable);
     requestStop(threadToStop);
   }
 
@@ -177,6 +209,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
     synchronized (stateLock) {
       if (eglThread != thread) return;
       threadHadEglReady = true;
+      retryAttempt = 0;
       if (state == State.STARTING) {
         state = State.RUNNING;
         Log.i(TAG, "PARALLAX_EGL_CONTROLLER_RUNNING");
@@ -187,16 +220,24 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
   @Override
   public void onEglFailure(ParallaxEglThread thread, String reason) {
     FailureListener callback;
+    long retryDelayMs;
     synchronized (stateLock) {
       if (eglThread != thread || released || failureReported) return;
       failureReported = true;
       pendingReload = false;
       state = State.STOPPING;
       callback = failureListener;
+      int shift = Math.min(retryAttempt, RETRY_MAX_SHIFT);
+      retryDelayMs = Math.min(RETRY_BASE_DELAY_MS * (1L << shift), RETRY_MAX_DELAY_MS);
+      retryAttempt += 1;
     }
-    Log.e(TAG, "PARALLAX_RENDERER_FALLBACK reason=" + reason);
+    Log.e(TAG, "PARALLAX_RENDERER_FALLBACK reason=" + reason
+        + " retryIn=" + retryDelayMs + "ms"
+        + " attempt=" + retryAttempt);
     if (callback != null) callback.onGpuFailure(this, reason);
     thread.requestStop();
+    retryHandler.removeCallbacks(retryRunnable);
+    retryHandler.postDelayed(retryRunnable, retryDelayMs);
   }
 
   @Override
