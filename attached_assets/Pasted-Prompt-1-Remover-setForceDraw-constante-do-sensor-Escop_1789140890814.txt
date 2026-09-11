@@ -1,0 +1,127 @@
+Prompt 1 — Remover setForceDraw + constante do sensor
+Escopo: 3 arquivos. Aplicar nesta ordem.
+
+Arquivo 1 — WallpaperRenderer.java
+Substitua o conteúdo integral por:
+
+java
+package com.parallaxwallpaper.app;
+
+import android.view.SurfaceHolder;
+
+public interface WallpaperRenderer {
+  void onSurfaceCreated(SurfaceHolder holder);
+
+  void onSurfaceChanged(SurfaceHolder holder, int format, int width, int height);
+
+  void onSurfaceDestroyed(SurfaceHolder holder);
+
+  void updateSensorState(ParallaxSensorState sensorState);
+
+  void setVisible(boolean visible);
+
+  void renderFrame();
+
+  void release();
+
+  void invalidateComposition();
+
+  void onTrimMemory(int level);
+
+  float getIntensity();
+}
+Diferença: removida a linha void setForceDraw(boolean force);.
+
+Arquivo 2 — ParallaxEglController.java
+Remova integralmente o método abaixo (está localizado entre release() e invalidateComposition()):
+
+java
+  @Override
+  public void setForceDraw(boolean force) {
+    if (!force) return;
+    ParallaxEglThread thread;
+    synchronized (stateLock) {
+      thread = eglThread;
+    }
+    if (thread != null) thread.requestFrame();
+  }
+Nenhuma outra alteração neste arquivo. Os imports permanecem como estão.
+
+Arquivo 3 — ParallaxWallpaperService.java
+Quatro alterações pontuais.
+
+3.1 — Adicionar constante do intervalo do sensor
+Localize:
+
+java
+    private static final float MOTION_DEAD_ZONE = 0.12f;
+Substitua por:
+
+java
+    private static final float MOTION_DEAD_ZONE = 0.12f;
+    private static final int SENSOR_INTERVAL_US = 33000;
+3.2 — Usar a constante em registerSensor
+Localize:
+
+java
+        sensorManager.registerListener(this, rotationSensor, 33000);
+Substitua por:
+
+java
+        sensorManager.registerListener(this, rotationSensor, SENSOR_INTERVAL_US);
+3.3 — Simplificar requestFrame
+Localize o método inteiro:
+
+java
+    private void requestFrame(boolean force) {
+      if (destroyed) return;
+      WallpaperRenderer currentRenderer = renderer;
+      if (currentRenderer != null) {
+        currentRenderer.setForceDraw(force);
+        currentRenderer.renderFrame();
+      }
+    }
+Substitua por:
+
+java
+    private void requestFrame() {
+      if (destroyed) return;
+      WallpaperRenderer currentRenderer = renderer;
+      if (currentRenderer != null) {
+        currentRenderer.renderFrame();
+      }
+    }
+3.4 — Atualizar todas as chamadas a requestFrame
+Substitua todas as ocorrências de requestFrame(true) e requestFrame(false) por requestFrame(). São 7 chamadas:
+
+Localização	Antes	Depois
+Construtor ParallaxEngine()	requestFrame(true);	requestFrame();
+onVisibilityChanged	requestFrame(true);	requestFrame();
+onSurfaceCreated	requestFrame(true);	requestFrame();
+onSurfaceChanged	requestFrame(true);	requestFrame();
+onCompositionChangedExternally	requestFrame(true);	requestFrame();
+onTrimMemory	requestFrame(true);	requestFrame();
+onSensorChanged	requestFrame(false);	requestFrame();
+Verificação após o patch
+Busca global no projeto (nos 3 arquivos alterados) pelos termos abaixo. Todos devem retornar zero ocorrências:
+
+setForceDraw
+
+requestFrame(true)
+
+requestFrame(false)
+
+Busca por requestFrame() deve retornar exatamente 8 ocorrências em ParallaxWallpaperService.java:
+
+1 na declaração do método
+
+7 nos pontos de chamada
+
+Nenhum outro arquivo deve ter sido tocado.
+
+O que muda no comportamento
+Antes: cada requestFrame(true) do serviço disparava setForceDraw(true) no controller (que chamava thread.requestFrame()) e renderFrame() (que chamava thread.requestFrame() novamente). Eram duas chamadas notifyAll por evento, a segunda sem efeito prático porque framePending já estava true.
+
+Depois: requestFrame() chama apenas renderFrame(), que chama thread.requestFrame(). Um único wake por evento.
+
+Semântica preservada: requestFrame(true) e requestFrame(false) faziam a mesma coisa no EGL — não havia cache no renderer, então "forçar" redraw não tinha efeito diferente. O flag force era resquício do Canvas, já removido.

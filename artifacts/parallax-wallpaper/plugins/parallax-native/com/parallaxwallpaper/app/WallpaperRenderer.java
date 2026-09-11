@@ -17,8 +17,6 @@ public interface WallpaperRenderer {
 
   void release();
 
-  void setForceDraw(boolean force);
-
   void invalidateComposition();
 
   void onTrimMemory(int level);

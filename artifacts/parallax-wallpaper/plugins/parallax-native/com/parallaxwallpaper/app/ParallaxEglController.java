@@ -160,16 +160,6 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
   }
 
   @Override
-  public void setForceDraw(boolean force) {
-    if (!force) return;
-    ParallaxEglThread thread;
-    synchronized (stateLock) {
-      thread = eglThread;
-    }
-    if (thread != null) thread.requestFrame();
-  }
-
-  @Override
   public void invalidateComposition() {
     ParallaxEglThread threadToStop = null;
     synchronized (stateLock) {
