@@ -1,0 +1,69 @@
+Prompt D — Remoção do seletor de renderizador na UI JS
+Natureza desta etapa: como o código JavaScript/TypeScript do app não está visível aqui, este prompt é uma instrução de varredura. Ele diz exatamente o que procurar e remover. Se depois de aplicar você quiser, cole o arquivo JS/TS principal (o que renderiza a tela de configurações / preview do wallpaper) e eu preparo um patch específico.
+
+O que procurar no código JS/TS
+Faça uma busca global (Ctrl+Shift+F / Cmd+Shift+F) pelo projeto por cada um destes termos:
+
+setRendererType
+
+getRendererType
+
+"OPENGL" e "CANVAS" (usados como valores de seleção)
+
+OPENGL e CANVAS isolados
+
+rendererType
+
+renderer
+
+O que remover
+1. Componente visual do seletor
+Qualquer trecho JSX/TSX que renderize a escolha entre "GPU - OpenGL" e "CPU - Canvas". Tipicamente:
+
+<Picker ...>, <SegmentedControl ...>, <RadioButton ...>, <ButtonGroup ...>, <Selector ...> ou similar.
+
+Um bloco de <TouchableOpacity> / <Pressable> alternando entre duas opções.
+
+Textos contendo "GPU", "OpenGL", "CPU", "Canvas", "GPU ativa", "CPU ativa".
+
+Remova o componente inteiro, incluindo estilos exclusivos dele.
+
+2. Estado local
+Remova qualquer useState, useReducer ou variável de estado que armazene o tipo de renderizador. Exemplos:
+
+jsx
+const [rendererType, setRendererType] = useState('OPENGL');
+Remova a declaração inteira. Remova também qualquer useEffect que sincronize esse estado com o módulo nativo (ParallaxWallpaper.getRendererType() ou ParallaxWallpaper.setRendererType()).
+
+3. Chamadas ao módulo nativo
+Remova todas as chamadas a:
+
+ParallaxWallpaper.setRendererType(...)
+
+ParallaxWallpaper.getRendererType()
+
+Incluindo dentro de handlers de onPress, onChange, useEffect, componentDidMount, etc.
+
+4. Persistência local
+Se houver gravação do tipo de renderizador em AsyncStorage, MMKV, SecureStore, localStorage ou similar, remova a chave. Não é obrigatório — o módulo nativo não lê mais essa chave — mas evita lixo no armazenamento. Basta deixar de gravar/lar; a chave antiga pode ficar órfã sem causar efeito.
+
+5. Textos de UI relacionados
+Remova rótulos, títulos, subtítulos ou descrições que mencionem "renderizador", "motor gráfico", "GPU", "CPU", "OpenGL" ou "Canvas" no contexto de escolha de renderizador.
+
+O que não remover
+Chamada a configureLiveWallpaper(...) — continua existindo e é o mecanismo de configuração do wallpaper.
+
+Chamada a openLiveWallpaperChooser(...) — continua existindo para abrir o seletor de wallpaper do Android.
+
+Chamada a isWallpaperActive(...) — continua existindo para saber se o serviço está ativo.
+
+Preview/renderização do parallax na tela do app — permanece intacto.
+
+Sliders, botões de crop, intensidade, seleção de fotos e qualquer outra coisa que não seja o seletor de motor.
+
+Verificação após a remoção
+Buscar novamente pelos termos do início. Nenhum deles deve retornar ocorrências relacionadas a seletor de renderizador. É aceitável que apareçam em outros contextos (por exemplo, renderer dentro de um nome de arquivo ou comentário), mas as chamadas setRendererType e getRendererType devem estar todas removidas.
+
+A tela de configurações deve continuar funcional, apenas sem o seletor.
+
+O app deve continuar conseguindo configurar o wallpaper via configureLiveWallpaper.
