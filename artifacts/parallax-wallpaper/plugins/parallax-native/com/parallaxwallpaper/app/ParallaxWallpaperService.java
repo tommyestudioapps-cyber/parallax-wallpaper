@@ -46,6 +46,7 @@ public class ParallaxWallpaperService extends WallpaperService {
 
   private class ParallaxEngine extends Engine implements SensorEventListener {
     private static final float MOTION_DEAD_ZONE = 0.12f;
+    private static final int SENSOR_INTERVAL_US = 33000;
 
     private final SensorManager sensorManager;
     private final Sensor rotationSensor;
@@ -85,7 +86,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       refreshCachedRotation();
       renderer = createRenderer();
       Log.i(TAG, "PARALLAX_ENGINE_CREATED");
-      requestFrame(true);
+      requestFrame();
     }
 
     @Override
@@ -109,7 +110,7 @@ public class ParallaxWallpaperService extends WallpaperService {
         lastTimestamp = 0;
         refreshCachedRotation();
         registerSensor();
-        requestFrame(true);
+        requestFrame();
       } else {
         unregisterSensor();
       }
@@ -125,7 +126,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       if (currentRenderer != null) currentRenderer.onSurfaceCreated(holder);
       Log.i(TAG, "PARALLAX_SURFACE_CREATED valid=" + holder.getSurface().isValid());
       if (visible) registerSensor();
-      requestFrame(true);
+      requestFrame();
     }
 
     @Override
@@ -137,7 +138,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) currentRenderer.onSurfaceChanged(holder, format, width, height);
       Log.i(TAG, "PARALLAX_SURFACE_CHANGED width=" + width + " height=" + height + " valid=" + holder.getSurface().isValid());
-      requestFrame(true);
+      requestFrame();
     }
 
     @Override
@@ -182,7 +183,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       if (currentRenderer != null) {
         currentRenderer.invalidateComposition();
         Log.i(TAG, "PARALLAX_COMPOSITION_INVALIDATED_EXTERNAL");
-        requestFrame(true);
+        requestFrame();
       }
     }
 
@@ -191,7 +192,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) {
         currentRenderer.onTrimMemory(level);
-        requestFrame(true);
+        requestFrame();
       }
     }
 
@@ -234,7 +235,7 @@ public class ParallaxWallpaperService extends WallpaperService {
 
     private void registerSensor() {
       if (!sensorRegistered && sensorManager != null && rotationSensor != null) {
-        sensorManager.registerListener(this, rotationSensor, 33000);
+        sensorManager.registerListener(this, rotationSensor, SENSOR_INTERVAL_US);
         sensorRegistered = true;
         Log.i(TAG, "PARALLAX_SENSOR_REGISTERED");
       }
@@ -317,7 +318,7 @@ public class ParallaxWallpaperService extends WallpaperService {
         }
       }
       if (!publishMotion) return;
-      requestFrame(false);
+      requestFrame();
     }
 
     @Override
@@ -334,11 +335,10 @@ public class ParallaxWallpaperService extends WallpaperService {
       return limit * (float) Math.tanh(value / limit);
     }
 
-    private void requestFrame(boolean force) {
+    private void requestFrame() {
       if (destroyed) return;
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) {
-        currentRenderer.setForceDraw(force);
         currentRenderer.renderFrame();
       }
     }
