@@ -34,7 +34,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Instalar dependências do monorepo
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --config.strict-dep-builds=false
 
       - name: Dar permissão ao gradlew
         working-directory: artifacts/parallax-wallpaper/android
