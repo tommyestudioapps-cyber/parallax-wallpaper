@@ -1,0 +1,108 @@
+Prompt — Observação 1: remover setComposition morto
+Objetivo: eliminar o método setComposition do ParallaxEglController, o campo composition, e a declaração correspondente em WallpaperRenderer. Nada consome mais esse caminho.
+
+Escopo: 2 arquivos.
+
+Arquivo 1 — WallpaperRenderer.java
+Substitua o conteúdo integral por:
+
+java
+package com.parallaxwallpaper.app;
+
+import android.view.SurfaceHolder;
+
+public interface WallpaperRenderer {
+  void onSurfaceCreated(SurfaceHolder holder);
+
+  void onSurfaceChanged(SurfaceHolder holder, int format, int width, int height);
+
+  void onSurfaceDestroyed(SurfaceHolder holder);
+
+  void updateSensorState(ParallaxSensorState sensorState);
+
+  void setVisible(boolean visible);
+
+  void renderFrame();
+
+  void release();
+
+  void setForceDraw(boolean force);
+
+  void invalidateComposition();
+
+  void onTrimMemory(int level);
+
+  float getIntensity();
+}
+Diferença: removida a linha void setComposition(ParallaxComposition composition);.
+
+Arquivo 2 — ParallaxEglController.java
+Alteração 2.1 — Remover o campo composition
+Localize:
+
+java
+  private volatile ParallaxSensorState sensorState = ParallaxSensorState.ZERO;
+  private volatile ParallaxComposition composition;
+  private volatile float intensity = 1f;
+Substituir por:
+
+java
+  private volatile ParallaxSensorState sensorState = ParallaxSensorState.ZERO;
+  private volatile float intensity = 1f;
+Alteração 2.2 — Remover o método setComposition
+Localize e remova integralmente:
+
+java
+  @Override
+  public void setComposition(ParallaxComposition composition) {
+    ParallaxEglThread threadToStop = null;
+    synchronized (stateLock) {
+      this.composition = composition;
+      if (composition != null) {
+        this.intensity = composition.getIntensity();
+      }
+      if (composition != null && eglThread != null && state != State.STOPPING) {
+        pendingReload = true;
+        state = State.STOPPING;
+        threadToStop = eglThread;
+      }
+    }
+    requestStop(threadToStop);
+  }
+Alteração 2.3 — Remover a linha em release()
+Localize no método release():
+
+java
+    synchronized (stateLock) {
+      released = true;
+      visible = false;
+      requestedSurface = null;
+      composition = null;
+      pendingReload = false;
+Substituir por:
+
+java
+    synchronized (stateLock) {
+      released = true;
+      visible = false;
+      requestedSurface = null;
+      pendingReload = false;
+Restrições
+Não alterar mais nada em nenhum dos dois arquivos.
+
+Não alterar renderFrame, setForceDraw, invalidateComposition, onTrimMemory, onEglReady, onEglFailure, onEglThreadTerminated, updateRequestedSurface, startIfPossible, refreshIntensityFromPrefs, nem qualquer outro método.
+
+Não remover o import org.json.JSONObject — continua sendo usado por refreshIntensityFromPrefs.
+
+Não remover o campo intensity — continua sendo usado por getIntensity e refreshIntensityFromPrefs.
+
+Verificação
+Após o patch, uma busca no projeto pelos termos abaixo deve retornar zero ocorrências:
+
+setComposition
+
+private volatile ParallaxComposition composition;
+
+composition = null; (dentro de ParallaxEglController)
+
+Os demais arquivos (ParallaxWallpaperService, ParallaxEglThread, ParallaxGlRenderer, ParallaxTextureManager, etc.) não devem ter sido tocados. Em particular, ParallaxWallpaperService continua sem chamar setComposition — nunca chamou.

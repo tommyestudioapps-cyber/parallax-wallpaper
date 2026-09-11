@@ -29,7 +29,6 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
   private SurfaceHolder requestedSurface;
   private ParallaxEglThread eglThread;
   private volatile ParallaxSensorState sensorState = ParallaxSensorState.ZERO;
-  private volatile ParallaxComposition composition;
   private volatile float intensity = 1f;
   private boolean visible;
   private boolean released;
@@ -104,23 +103,6 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
   }
 
   @Override
-  public void setComposition(ParallaxComposition composition) {
-    ParallaxEglThread threadToStop = null;
-    synchronized (stateLock) {
-      this.composition = composition;
-      if (composition != null) {
-        this.intensity = composition.getIntensity();
-      }
-      if (composition != null && eglThread != null && state != State.STOPPING) {
-        pendingReload = true;
-        state = State.STOPPING;
-        threadToStop = eglThread;
-      }
-    }
-    requestStop(threadToStop);
-  }
-
-  @Override
   public void renderFrame() {
     ParallaxEglThread thread;
     synchronized (stateLock) {
@@ -136,7 +118,6 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       released = true;
       visible = false;
       requestedSurface = null;
-      composition = null;
       pendingReload = false;
       if (eglThread != null && state != State.STOPPING) {
         state = State.STOPPING;

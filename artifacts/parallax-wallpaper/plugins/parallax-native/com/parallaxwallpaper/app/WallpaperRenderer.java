@@ -13,8 +13,6 @@ public interface WallpaperRenderer {
 
   void setVisible(boolean visible);
 
-  void setComposition(ParallaxComposition composition);
-
   void renderFrame();
 
   void release();
