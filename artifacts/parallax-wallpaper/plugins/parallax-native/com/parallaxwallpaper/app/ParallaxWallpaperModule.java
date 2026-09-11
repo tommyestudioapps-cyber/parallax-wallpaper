@@ -41,41 +41,6 @@ public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
-  public void setRendererType(String rendererType, Promise promise) {
-    if (!ParallaxWallpaperService.RENDERER_OPENGL.equals(rendererType)
-        && !ParallaxWallpaperService.RENDERER_CANVAS.equals(rendererType)) {
-      promise.reject("INVALID_RENDERER_TYPE", "Renderer must be OPENGL or CANVAS");
-      return;
-    }
-    String normalizedType = ParallaxWallpaperService.normalizeRendererType(rendererType);
-    try {
-      reactContext
-          .getSharedPreferences(ParallaxWallpaperService.PREFS_NAME, Context.MODE_PRIVATE)
-          .edit()
-          .putString(ParallaxWallpaperService.PREF_RENDERER_TYPE, normalizedType)
-          .apply();
-      ParallaxWallpaperService.requestRendererType(normalizedType);
-      promise.resolve(normalizedType);
-    } catch (Exception error) {
-      promise.reject("SET_RENDERER_TYPE_FAILED", error);
-    }
-  }
-
-  @ReactMethod
-  public void getRendererType(Promise promise) {
-    try {
-      String rendererType = reactContext
-          .getSharedPreferences(ParallaxWallpaperService.PREFS_NAME, Context.MODE_PRIVATE)
-          .getString(
-              ParallaxWallpaperService.PREF_RENDERER_TYPE,
-              ParallaxWallpaperService.RENDERER_OPENGL);
-      promise.resolve(ParallaxWallpaperService.normalizeRendererType(rendererType));
-    } catch (Exception error) {
-      promise.reject("GET_RENDERER_TYPE_FAILED", error);
-    }
-  }
-
-  @ReactMethod
   public void openLiveWallpaperChooser(Promise promise) {
     try {
       Intent intent = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);

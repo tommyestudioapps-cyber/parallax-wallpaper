@@ -113,7 +113,6 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     this.visible = visible;
   }
 
-  @Override
   public void setComposition(ParallaxComposition composition) {
     this.composition = composition;
     if (composition == null) {
@@ -126,7 +125,6 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     reloadCompositionRequested = false;
   }
 
-  @Override
   public void setForceDraw(boolean force) {
     forceDrawRequested = force;
   }
