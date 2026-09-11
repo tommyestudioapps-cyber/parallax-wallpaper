@@ -4,7 +4,6 @@ import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 import android.view.SurfaceHolder;
 import org.json.JSONObject;
 
@@ -53,7 +52,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
         if (state != State.STOPPED) return;
         failureReported = false;
       }
-      Log.i(TAG, "PARALLAX_EGL_RETRY attempt=" + retryAttempt);
+      AppLog.i("PARALLAX_EGL_RETRY attempt=" + retryAttempt);
       startIfPossible();
     }
   };
@@ -186,7 +185,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       }
     }
     if (threadToStop != null) threadToStop.requestStop();
-    Log.i(TAG, "PARALLAX_EGL_TRIM_MEMORY level=" + level);
+    AppLog.i("PARALLAX_EGL_TRIM_MEMORY level=" + level);
   }
 
   @Override
@@ -202,7 +201,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       retryAttempt = 0;
       if (state == State.STARTING) {
         state = State.RUNNING;
-        Log.i(TAG, "PARALLAX_EGL_CONTROLLER_RUNNING");
+        AppLog.i("PARALLAX_EGL_CONTROLLER_RUNNING");
       }
     }
   }
@@ -221,7 +220,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       retryDelayMs = Math.min(RETRY_BASE_DELAY_MS * (1L << shift), RETRY_MAX_DELAY_MS);
       retryAttempt += 1;
     }
-    Log.e(TAG, "PARALLAX_RENDERER_FALLBACK reason=" + reason
+    AppLog.e("PARALLAX_RENDERER_FALLBACK reason=" + reason
         + " retryIn=" + retryDelayMs + "ms"
         + " attempt=" + retryAttempt);
     if (callback != null) callback.onGpuFailure(this, reason);
@@ -244,7 +243,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       threadHadEglReady = false;
       pendingReload = false;
       state = State.STOPPED;
-      Log.i(TAG, "PARALLAX_EGL_CONTROLLER_STOPPED");
+      AppLog.i("PARALLAX_EGL_CONTROLLER_STOPPED");
     }
     if (restartAfterStop) startIfPossible();
   }
@@ -278,7 +277,7 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       threadHadEglReady = false;
       failureReported = false;
       state = State.STARTING;
-      Log.i(TAG, "PARALLAX_EGL_CONTROLLER_STARTING");
+      AppLog.i("PARALLAX_EGL_CONTROLLER_STARTING");
       eglThread.start();
     }
   }

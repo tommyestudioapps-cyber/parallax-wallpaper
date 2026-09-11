@@ -8,7 +8,6 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.PowerManager;
 import android.service.wallpaper.WallpaperService;
-import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
@@ -89,7 +88,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
       refreshCachedRotation();
       renderer = createRenderer();
-      Log.i(TAG, "PARALLAX_ENGINE_CREATED");
+      AppLog.i("PARALLAX_ENGINE_CREATED");
       requestFrame();
     }
 
@@ -98,7 +97,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       visible = isVisible;
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) currentRenderer.setVisible(isVisible);
-      Log.i(TAG, "PARALLAX_VISIBILITY_CHANGED visible=" + isVisible);
+      AppLog.i("PARALLAX_VISIBILITY_CHANGED visible=" + isVisible);
       if (isVisible) {
         if (currentRenderer != null) currentRenderer.invalidateComposition();
         calibrated = false;
@@ -129,7 +128,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       surfaceHeight = holder.getSurfaceFrame().height();
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) currentRenderer.onSurfaceCreated(holder);
-      Log.i(TAG, "PARALLAX_SURFACE_CREATED valid=" + holder.getSurface().isValid());
+      AppLog.i("PARALLAX_SURFACE_CREATED valid=" + holder.getSurface().isValid());
       if (visible) registerSensor();
       requestFrame();
     }
@@ -142,7 +141,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       surfaceHeight = height;
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) currentRenderer.onSurfaceChanged(holder, format, width, height);
-      Log.i(TAG, "PARALLAX_SURFACE_CHANGED width=" + width + " height=" + height + " valid=" + holder.getSurface().isValid());
+      AppLog.i("PARALLAX_SURFACE_CHANGED width=" + width + " height=" + height + " valid=" + holder.getSurface().isValid());
       requestFrame();
     }
 
@@ -156,7 +155,7 @@ public class ParallaxWallpaperService extends WallpaperService {
         surfaceHeight = 0;
       }
       unregisterSensor();
-      Log.i(TAG, "PARALLAX_SURFACE_DESTROYED");
+      AppLog.i("PARALLAX_SURFACE_DESTROYED");
       super.onSurfaceDestroyed(holder);
     }
 
@@ -170,7 +169,7 @@ public class ParallaxWallpaperService extends WallpaperService {
         currentRenderer.release();
       }
       unregisterSensor();
-      Log.i(TAG, "PARALLAX_ENGINE_DESTROYED");
+      AppLog.i("PARALLAX_ENGINE_DESTROYED");
       super.onDestroy();
     }
 
@@ -178,7 +177,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       boolean rotationChanged = refreshCachedRotation();
       if (rotationChanged) {
         invalidateSensorCalibration();
-        Log.i(TAG, "PARALLAX_SENSOR_CALIBRATION_INVALIDATED reason=rotation_changed");
+        AppLog.i("PARALLAX_SENSOR_CALIBRATION_INVALIDATED reason=rotation_changed");
         requestFrame();
       }
     }
@@ -188,7 +187,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) {
         currentRenderer.invalidateComposition();
-        Log.i(TAG, "PARALLAX_COMPOSITION_INVALIDATED_EXTERNAL");
+        AppLog.i("PARALLAX_COMPOSITION_INVALIDATED_EXTERNAL");
         requestFrame();
       }
     }
@@ -245,14 +244,14 @@ public class ParallaxWallpaperService extends WallpaperService {
       int intervalUs = powerSave ? SENSOR_INTERVAL_POWER_SAVE_US : SENSOR_INTERVAL_US;
       sensorManager.registerListener(this, rotationSensor, intervalUs);
       sensorRegistered = true;
-      Log.i(TAG, "PARALLAX_SENSOR_REGISTERED intervalUs=" + intervalUs + " powerSave=" + powerSave);
+      AppLog.i("PARALLAX_SENSOR_REGISTERED intervalUs=" + intervalUs + " powerSave=" + powerSave);
     }
 
     private void unregisterSensor() {
       if (sensorRegistered && sensorManager != null) {
         sensorManager.unregisterListener(this);
         sensorRegistered = false;
-        Log.i(TAG, "PARALLAX_SENSOR_UNREGISTERED");
+        AppLog.i("PARALLAX_SENSOR_UNREGISTERED");
       }
     }
 
@@ -277,7 +276,7 @@ public class ParallaxWallpaperService extends WallpaperService {
           baselinePitch = pitchSum / calibrationSamples;
           baselineRoll = rollSum / calibrationSamples;
           calibrated = true;
-          Log.i(TAG, "PARALLAX_SENSOR_CALIBRATED");
+          AppLog.i("PARALLAX_SENSOR_CALIBRATED");
         }
         lastTimestamp = event.timestamp;
         return;
@@ -356,7 +355,7 @@ public class ParallaxWallpaperService extends WallpaperService {
           new ParallaxEglController.FailureListener() {
             @Override
             public void onGpuFailure(ParallaxEglController controller, String reason) {
-              Log.e(TAG, "PARALLAX_GPU_FAILURE reason=" + reason);
+              AppLog.e("PARALLAX_GPU_FAILURE reason=" + reason);
             }
           });
     }

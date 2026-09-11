@@ -10,7 +10,6 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.net.Uri;
 import android.os.SystemClock;
-import android.util.Log;
 import android.view.SurfaceHolder;
 import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicLong;
@@ -166,7 +165,7 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     compositionJson = null;
     compositionLayerKey = null;
     reloadCompositionRequested = true;
-    Log.i(TAG, "PARALLAX_CANVAS_TRIM_MEMORY level=" + level);
+    AppLog.i("PARALLAX_CANVAS_TRIM_MEMORY level=" + level);
   }
 
   private void prepareComposition(int targetWidth, int targetHeight) {
@@ -181,7 +180,7 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
       compositionJson = null;
       compositionLayerKey = null;
       recycleBitmaps();
-      Log.w(TAG, "PARALLAX_COMPOSITION_MISSING");
+      AppLog.w("PARALLAX_COMPOSITION_MISSING");
       return;
     }
     if (json.equals(compositionJson) && composition != null) {
@@ -205,7 +204,7 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
         compositionJson = json;
         composition = composition.withIntensity(json, nextIntensity);
         reloadCompositionRequested = false;
-        Log.i(TAG, "PARALLAX_COMPOSITION_INTENSITY_ONLY");
+        AppLog.i("PARALLAX_COMPOSITION_INTENSITY_ONLY");
         return;
       }
 
@@ -226,13 +225,13 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
           nextIntensity,
           layersJson != null,
           nextLayers));
-      Log.i(TAG, "PARALLAX_COMPOSITION_READY");
+      AppLog.i("PARALLAX_COMPOSITION_READY");
     } catch (Exception error) {
       composition = null;
       compositionJson = null;
       compositionLayerKey = null;
       recycleBitmaps();
-      Log.e(TAG, "PARALLAX_COMPOSITION_FAILED", error);
+      AppLog.e("PARALLAX_COMPOSITION_FAILED", error);
     }
   }
 
@@ -282,7 +281,7 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     if (layer == null || !layer.optBoolean("enabled", true)) return null;
     String uriString = layer.optString("uri", "");
     if (uriString.length() == 0) return null;
-    Log.i(TAG, "PARALLAX_BITMAP_LOAD index=" + index);
+    AppLog.i("PARALLAX_BITMAP_LOAD index=" + index);
     try {
       Uri uri = Uri.parse(uriString);
       String path = "file".equals(uri.getScheme()) ? uri.getPath() : uriString;
@@ -311,18 +310,18 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
         bitmap = BitmapFactory.decodeFile(path, decodeOptions);
       }
       if (bitmap == null) {
-        Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+        AppLog.w("PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
       } else {
         bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
         bitmapSourceWidths[index] = bitmap.getWidth();
         bitmapSourceHeights[index] = bitmap.getHeight();
         boolean prewarmed = index == 0;
         if (prewarmed) bitmap.prepareToDraw();
-        Log.i(TAG, "PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight() + " sampleSize=" + sampleSize + " prewarmed=" + prewarmed);
+        AppLog.i("PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight() + " sampleSize=" + sampleSize + " prewarmed=" + prewarmed);
       }
       return bitmap;
     } catch (Exception error) {
-      Log.e(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index, error);
+      AppLog.e("PARALLAX_BITMAP_LOAD_FAILED index=" + index, error);
       return null;
     }
   }
@@ -377,17 +376,17 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
   private void drawFrame(boolean force) {
     boolean logFrame = shouldLogFrame(force);
     if (!visible) {
-      if (logFrame) Log.d(TAG, "PARALLAX_DRAW_SKIP_NOT_VISIBLE");
+      if (logFrame) AppLog.d("PARALLAX_DRAW_SKIP_NOT_VISIBLE");
       return;
     }
     SurfaceState snapshot = surfaceState;
     if (!snapshot.ready) {
-      if (logFrame) Log.d(TAG, "PARALLAX_DRAW_SKIP_NO_SURFACE");
+      if (logFrame) AppLog.d("PARALLAX_DRAW_SKIP_NO_SURFACE");
       return;
     }
     SurfaceHolder holder = snapshot.holder;
     if (holder == null || holder.getSurface() == null || !holder.getSurface().isValid()) {
-      if (logFrame) Log.w(TAG, "PARALLAX_DRAW_SKIP_NO_SURFACE");
+      if (logFrame) AppLog.w("PARALLAX_DRAW_SKIP_NO_SURFACE");
       return;
     }
     int surfaceWidth = snapshot.width;
@@ -396,10 +395,10 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     prepareComposition(surfaceWidth, surfaceHeight);
     long prepareEndNanos = SystemClock.elapsedRealtimeNanos();
     if (logFrame) {
-      Log.d(TAG, "PARALLAX_COMPOSITION_TIMING prepare=" + durationMs(prepareStartNanos, prepareEndNanos) + "ms");
+      AppLog.d("PARALLAX_COMPOSITION_TIMING prepare=" + durationMs(prepareStartNanos, prepareEndNanos) + "ms");
     }
     if (composition == null) {
-      Log.w(TAG, "PARALLAX_DRAW_SKIP_NO_COMPOSITION");
+      AppLog.w("PARALLAX_DRAW_SKIP_NO_COMPOSITION");
       return;
     }
 
@@ -423,17 +422,17 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     try {
       if (logFrame) {
         drawStartNanos = SystemClock.elapsedRealtimeNanos();
-        Log.d(TAG, "PARALLAX_DRAW_START force=" + force);
+        AppLog.d("PARALLAX_DRAW_START force=" + force);
       }
-      if (logFrame) Log.d(TAG, "PARALLAX_LOCK_CANVAS");
+      if (logFrame) AppLog.d("PARALLAX_LOCK_CANVAS");
       if (logFrame) lockStartNanos = SystemClock.elapsedRealtimeNanos();
       canvas = holder.lockCanvas();
       if (logFrame) lockEndNanos = SystemClock.elapsedRealtimeNanos();
       if (canvas == null) {
-        Log.w(TAG, "PARALLAX_LOCK_CANVAS_FAILED reason=null_canvas");
+        AppLog.w("PARALLAX_LOCK_CANVAS_FAILED reason=null_canvas");
         return;
       }
-      if (logFrame) Log.d(TAG, "PARALLAX_LOCK_CANVAS_SUCCESS");
+      if (logFrame) AppLog.d("PARALLAX_LOCK_CANVAS_SUCCESS");
       if (logFrame) clearStartNanos = SystemClock.elapsedRealtimeNanos();
       canvas.drawColor(Color.BLACK);
       if (logFrame) clearEndNanos = SystemClock.elapsedRealtimeNanos();
@@ -452,24 +451,24 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
       if (logFrame) foregroundEndNanos = SystemClock.elapsedRealtimeNanos();
       posted = true;
     } catch (Exception error) {
-      Log.e(TAG, "PARALLAX_DRAW_FAILED", error);
+      AppLog.e("PARALLAX_DRAW_FAILED", error);
     } finally {
       if (canvas != null) {
         if (logFrame) {
           unlockStartNanos = SystemClock.elapsedRealtimeNanos();
-          Log.d(TAG, "PARALLAX_BEFORE_UNLOCK");
+          AppLog.d("PARALLAX_BEFORE_UNLOCK");
         }
         try {
           holder.unlockCanvasAndPost(canvas);
           if (logFrame) unlockEndNanos = SystemClock.elapsedRealtimeNanos();
         } catch (Exception error) {
           posted = false;
-          Log.e(TAG, "PARALLAX_UNLOCK_CANVAS_FAILED", error);
+          AppLog.e("PARALLAX_UNLOCK_CANVAS_FAILED", error);
         }
       }
       renderEndNanos = SystemClock.elapsedRealtimeNanos();
       if (logFrame) {
-        Log.d(TAG,
+        AppLog.d(
             "PARALLAX_FRAME_TIMING"
                 + " total=" + durationMs(drawStartNanos, renderEndNanos) + "ms"
                 + " lock=" + durationMs(lockStartNanos, lockEndNanos) + "ms"
@@ -485,7 +484,7 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     if (posted) {
       firstFrameDrawn = true;
       recordDrawnFrame(renderEndNanos - renderStartNanos);
-      if (logFrame) Log.d(TAG, "PARALLAX_DRAW_COMPLETE");
+      if (logFrame) AppLog.d("PARALLAX_DRAW_COMPLETE");
     }
   }
 
@@ -509,7 +508,7 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
     double averageRenderMs =
         metricsWindowRenderNanos / (double) metricsWindowDrawnFrames / 1000000.0;
     double maxRenderMs = metricsWindowMaxRenderNanos / 1000000.0;
-    Log.i(TAG,
+    AppLog.i(
         "PARALLAX_CANVAS_METRICS"
             + " deadZoneRetention=" + deadZoneRetention + "%"
             + " averageRenderMs=" + averageRenderMs

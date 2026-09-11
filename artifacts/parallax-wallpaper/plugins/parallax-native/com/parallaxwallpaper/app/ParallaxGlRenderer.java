@@ -2,7 +2,6 @@ package com.parallaxwallpaper.app;
 
 import android.opengl.GLES20;
 import android.opengl.Matrix;
-import android.util.Log;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -113,7 +112,7 @@ public final class ParallaxGlRenderer {
     if (program == 0) {
       GLES20.glDeleteShader(vertexShader);
       GLES20.glDeleteShader(fragmentShader);
-      Log.e(TAG, "PARALLAX_GL_PROGRAM_CREATE_FAILED");
+      AppLog.e("PARALLAX_GL_PROGRAM_CREATE_FAILED");
       return false;
     }
     GLES20.glAttachShader(program, vertexShader);
@@ -124,7 +123,7 @@ public final class ParallaxGlRenderer {
     GLES20.glDeleteShader(vertexShader);
     GLES20.glDeleteShader(fragmentShader);
     if (linkStatus[0] == 0) {
-      Log.e(TAG, "PARALLAX_GL_PROGRAM_LINK_FAILED " + GLES20.glGetProgramInfoLog(program));
+      AppLog.e("PARALLAX_GL_PROGRAM_LINK_FAILED " + GLES20.glGetProgramInfoLog(program));
       release();
       return false;
     }
@@ -143,7 +142,7 @@ public final class ParallaxGlRenderer {
         || offsetLocation < 0
         || depthFactorLocation < 0
         || uvTransformLocation < 0) {
-      Log.e(TAG, "PARALLAX_GL_SHADER_LOCATION_FAILED");
+      AppLog.e("PARALLAX_GL_SHADER_LOCATION_FAILED");
       release();
       return false;
     }
@@ -152,7 +151,7 @@ public final class ParallaxGlRenderer {
     GLES20.glGenBuffers(1, buffers, 0);
     vertexBuffer = buffers[0];
     if (vertexBuffer == 0) {
-      Log.e(TAG, "PARALLAX_GL_VBO_CREATE_FAILED");
+      AppLog.e("PARALLAX_GL_VBO_CREATE_FAILED");
       release();
       return false;
     }
@@ -167,13 +166,13 @@ public final class ParallaxGlRenderer {
 
     textureIds = textureManager.loadTextures(this.surfaceWidth, this.surfaceHeight);
     if (textureIds[0] == 0) {
-      Log.w(TAG, "PARALLAX_GL_BACKGROUND_TEXTURE_UNAVAILABLE");
+      AppLog.w("PARALLAX_GL_BACKGROUND_TEXTURE_UNAVAILABLE");
     }
     GLES20.glEnable(GLES20.GL_BLEND);
     GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
     GLES20.glClearColor(0f, 0f, 0f, 1f);
     surfaceAvailable = true;
-    Log.i(TAG,
+    AppLog.i(
         "PARALLAX_GL_RENDERER_READY"
             + " background=" + textureIds[0]
             + " middle=" + textureIds[1]
@@ -237,7 +236,7 @@ public final class ParallaxGlRenderer {
 
   public boolean validateAlphaPrecision() {
     if (!surfaceAvailable || program == 0 || vertexBuffer == 0) {
-      Log.e(TAG, "PARALLAX_GL_ALPHA_PRECISION_FAILED"
+      AppLog.e("PARALLAX_GL_ALPHA_PRECISION_FAILED"
           + " case=renderer-not-ready position=none clearColor=none alpha=unavailable");
       return false;
     }
@@ -258,7 +257,7 @@ public final class ParallaxGlRenderer {
     GLES20.glGenTextures(1, framebufferTexture, 0);
     GLES20.glGenTextures(1, sourceTexture, 0);
     if (framebuffer[0] == 0 || framebufferTexture[0] == 0 || sourceTexture[0] == 0) {
-      Log.e(TAG, "PARALLAX_GL_ALPHA_PRECISION_FAILED"
+      AppLog.e("PARALLAX_GL_ALPHA_PRECISION_FAILED"
           + " case=resource-allocation position=none clearColor=none alpha=unavailable");
       deleteAlphaPrecisionResources(framebuffer, framebufferTexture, sourceTexture);
       return false;
@@ -287,7 +286,7 @@ public final class ParallaxGlRenderer {
           0);
       if (GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)
           != GLES20.GL_FRAMEBUFFER_COMPLETE) {
-        Log.e(TAG, "PARALLAX_GL_ALPHA_PRECISION_FAILED"
+        AppLog.e("PARALLAX_GL_ALPHA_PRECISION_FAILED"
             + " case=framebuffer-incomplete position=none clearColor=none alpha=unavailable");
         return false;
       }
@@ -371,7 +370,7 @@ public final class ParallaxGlRenderer {
         float alphaError = Math.abs(observedAlpha - expectedAlpha);
         float alphaTolerance = Math.max(ALPHA_TOLERANCE, FRAMEBUFFER_ALPHA_HALF_LSB);
         if (alphaError > alphaTolerance) {
-          Log.e(TAG, "PARALLAX_GL_ALPHA_PRECISION_FAILED"
+          AppLog.e("PARALLAX_GL_ALPHA_PRECISION_FAILED"
               + " case=" + testCase.name
               + " position=" + testCase.position
               + " clearColor=" + testCase.clearColorDescription()
@@ -933,7 +932,7 @@ public final class ParallaxGlRenderer {
   private int compileShader(int type, String source) {
     int shader = GLES20.glCreateShader(type);
     if (shader == 0) {
-      Log.e(TAG, "PARALLAX_GL_SHADER_CREATE_FAILED type=" + type);
+      AppLog.e("PARALLAX_GL_SHADER_CREATE_FAILED type=" + type);
       return 0;
     }
     GLES20.glShaderSource(shader, source);
@@ -941,7 +940,7 @@ public final class ParallaxGlRenderer {
     int[] compileStatus = new int[1];
     GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, compileStatus, 0);
     if (compileStatus[0] == 0) {
-      Log.e(TAG, "PARALLAX_GL_SHADER_COMPILE_FAILED " + GLES20.glGetShaderInfoLog(shader));
+      AppLog.e("PARALLAX_GL_SHADER_COMPILE_FAILED " + GLES20.glGetShaderInfoLog(shader));
       GLES20.glDeleteShader(shader);
       return 0;
     }

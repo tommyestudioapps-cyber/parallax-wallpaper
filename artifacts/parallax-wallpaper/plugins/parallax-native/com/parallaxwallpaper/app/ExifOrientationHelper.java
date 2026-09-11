@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.net.Uri;
-import android.util.Log;
 import androidx.exifinterface.media.ExifInterface;
 import java.io.InputStream;
 
@@ -56,14 +55,14 @@ final class ExifOrientationHelper {
       if (rotated != bitmap) {
         bitmap.recycle();
       }
-      Log.i(TAG,
+      AppLog.i(
           "PARALLAX_EXIF_APPLIED index=" + layerIndex
               + " orientation=" + orientation
               + " width=" + rotated.getWidth()
               + " height=" + rotated.getHeight());
       return rotated;
     } catch (Exception error) {
-      Log.e(TAG, "PARALLAX_EXIF_APPLY_FAILED index=" + layerIndex, error);
+      AppLog.e("PARALLAX_EXIF_APPLY_FAILED index=" + layerIndex, error);
       return bitmap;
     }
   }

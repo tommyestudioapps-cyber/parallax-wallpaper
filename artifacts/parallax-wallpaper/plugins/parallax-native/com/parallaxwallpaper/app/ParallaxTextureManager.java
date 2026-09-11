@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.opengl.GLES20;
 import android.opengl.GLUtils;
-import android.util.Log;
 import java.io.InputStream;
 import org.json.JSONObject;
 
@@ -60,7 +59,7 @@ public final class ParallaxTextureManager {
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         .getString(PREF_COMPOSITION, null);
     if (json == null) {
-      Log.w(TAG, "PARALLAX_GL_COMPOSITION_MISSING");
+      AppLog.w("PARALLAX_GL_COMPOSITION_MISSING");
       return mTextureIds;
     }
 
@@ -80,11 +79,11 @@ public final class ParallaxTextureManager {
           uploadTexture(bitmap, index);
           mLayerData[index].textureId = mTextureIds[index];
         } else {
-          Log.w(TAG, "PARALLAX_GL_TEXTURE_MISSING index=" + index);
+          AppLog.w("PARALLAX_GL_TEXTURE_MISSING index=" + index);
         }
       }
     } catch (Exception error) {
-      Log.e(TAG, "PARALLAX_GL_COMPOSITION_FAILED", error);
+      AppLog.e("PARALLAX_GL_COMPOSITION_FAILED", error);
     }
     return mTextureIds;
   }
@@ -126,7 +125,7 @@ public final class ParallaxTextureManager {
     for (int index = 0; index < LAYER_COUNT; index += 1) {
       if (mTextureIds[index] != 0) {
         GLES20.glDeleteTextures(1, mTextureIds, index);
-        Log.i(TAG, "PARALLAX_GL_TEXTURE_RELEASED index=" + index + " id=" + mTextureIds[index]);
+        AppLog.i("PARALLAX_GL_TEXTURE_RELEASED index=" + index + " id=" + mTextureIds[index]);
         mTextureIds[index] = 0;
       }
       if (mLayerData[index] != null) {
@@ -147,7 +146,7 @@ public final class ParallaxTextureManager {
     GLES20.glGenTextures(1, mTextureIds, index);
     if (mTextureIds[index] == 0) {
       bitmap.recycle();
-      Log.e(TAG, "PARALLAX_GL_TEXTURE_CREATE_FAILED index=" + index);
+      AppLog.e("PARALLAX_GL_TEXTURE_CREATE_FAILED index=" + index);
       return;
     }
 
@@ -178,7 +177,7 @@ public final class ParallaxTextureManager {
 
     int error = GLES20.glGetError();
     if (error != GLES20.GL_NO_ERROR) {
-      Log.e(TAG,
+      AppLog.e(
           "PARALLAX_GL_TEXTURE_UPLOAD_FAILED index=" + index
               + " error=0x" + Integer.toHexString(error));
       GLES20.glDeleteTextures(1, mTextureIds, index);
@@ -190,7 +189,7 @@ public final class ParallaxTextureManager {
       }
       return;
     }
-    Log.i(TAG, "PARALLAX_GL_TEXTURE_CREATED index=" + index + " id=" + mTextureIds[index]);
+    AppLog.i("PARALLAX_GL_TEXTURE_CREATED index=" + index + " id=" + mTextureIds[index]);
   }
 
   public float getDepthFactor(int index) {
@@ -219,7 +218,7 @@ public final class ParallaxTextureManager {
     if (layer == null || !layer.optBoolean("enabled", true)) return null;
     String uriString = layer.optString("uri", "");
     if (uriString.length() == 0) return null;
-    Log.i(TAG, "PARALLAX_GL_BITMAP_LOAD index=" + index);
+    AppLog.i("PARALLAX_GL_BITMAP_LOAD index=" + index);
 
     try {
       Uri uri = Uri.parse(uriString);
@@ -254,7 +253,7 @@ public final class ParallaxTextureManager {
         bitmap = BitmapFactory.decodeFile(path, decodeOptions);
       }
       if (bitmap == null) {
-        Log.w(TAG, "PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+        AppLog.w("PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
       } else {
         bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
         bitmap.prepareToDraw();
@@ -263,15 +262,17 @@ public final class ParallaxTextureManager {
         data.sourceHeight = bitmap.getHeight();
         if (data.imageWidth <= 0) data.imageWidth = data.sourceWidth;
         if (data.imageHeight <= 0) data.imageHeight = data.sourceHeight;
-        Log.i(TAG,
-            "PARALLAX_GL_BITMAP_READY index=" + index
-                + " width=" + bitmap.getWidth()
-                + " height=" + bitmap.getHeight()
-                + " sampleSize=" + sampleSize);
+        if (BuildConfig.DEBUG) {
+          AppLog.i(
+              "PARALLAX_GL_BITMAP_READY index=" + index
+                  + " width=" + bitmap.getWidth()
+                  + " height=" + bitmap.getHeight()
+                  + " sampleSize=" + sampleSize);
+        }
       }
       return bitmap;
     } catch (Exception error) {
-      Log.e(TAG, "PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index, error);
+      AppLog.e("PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index, error);
       return null;
     }
   }

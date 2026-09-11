@@ -8,7 +8,6 @@ import android.opengl.EGLContext;
 import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
 import android.opengl.GLES20;
-import android.util.Log;
 import android.view.SurfaceHolder;
 
 public final class ParallaxEglThread extends Thread {
@@ -87,7 +86,7 @@ public final class ParallaxEglThread extends Thread {
       }
 
       boolean alphaPrecisionPassed = glRenderer.validateAlphaPrecision();
-      Log.i(TAG,
+      AppLog.i(
           "PARALLAX_GL_ALPHA_PRECISION_VALIDATION "
               + (alphaPrecisionPassed ? "PASSED" : "FAILED"));
       listener.onEglReady(this);
@@ -114,7 +113,7 @@ public final class ParallaxEglThread extends Thread {
         glRenderer.renderFrame();
         int glError = GLES20.glGetError();
         if (glError != GLES20.GL_NO_ERROR) {
-          Log.e(TAG, "PARALLAX_GL_RENDER_ERROR error=0x"
+          AppLog.e("PARALLAX_GL_RENDER_ERROR error=0x"
               + Integer.toHexString(glError)
               + " frame=" + totalGlFrames);
         }
@@ -124,13 +123,13 @@ public final class ParallaxEglThread extends Thread {
         long frameDurationNs = System.nanoTime() - frameStartNs;
         recordGlFrame(frameDurationNs, swapDurationNs, swapSucceeded);
         if (!swapSucceeded) {
-          Log.e(TAG, "PARALLAX_EGL_SWAP_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+          AppLog.e("PARALLAX_EGL_SWAP_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
           reportFailure("egl_swap_buffers");
           break;
         }
       }
     } catch (Throwable error) {
-      Log.e(TAG, "PARALLAX_EGL_THREAD_FAILED", error);
+      AppLog.e("PARALLAX_EGL_THREAD_FAILED", error);
       reportFailure("egl_thread_exception");
     } finally {
       if (glRenderer != null) {
@@ -139,7 +138,7 @@ public final class ParallaxEglThread extends Thread {
       }
       emitGlMetricsIfNeeded(true);
       cleanupEgl(currentDisplay, currentContext, currentSurface);
-      Log.i(TAG, "PARALLAX_EGL_THREAD_CLEANUP_COMPLETE");
+       AppLog.i("PARALLAX_EGL_THREAD_CLEANUP_COMPLETE");
       listener.onEglThreadTerminated(this);
     }
   }
@@ -151,7 +150,7 @@ public final class ParallaxEglThread extends Thread {
       running = false;
       frameLock.notifyAll();
     }
-    Log.e(TAG, "PARALLAX_RENDERER_FALLBACK reason=" + reason);
+    AppLog.e("PARALLAX_RENDERER_FALLBACK reason=" + reason);
     listener.onEglFailure(this, reason);
   }
 
@@ -183,8 +182,8 @@ public final class ParallaxEglThread extends Thread {
 
   private void emitGlMetricsIfNeeded(boolean force) {
     if (metricsWindowFrames == 0L) {
-      if (force) {
-        Log.i(TAG, "PARALLAX_GPU_METRICS_EMPTY reason=no_frames_drawn"
+      if (force && BuildConfig.DEBUG) {
+        AppLog.i("PARALLAX_GPU_METRICS_EMPTY reason=no_frames_drawn"
             + " totalGlFrames=" + totalGlFrames
             + " vsyncMisses=" + vsyncMisses
             + " swapFailures=" + metricsWindowSwapFailures);
@@ -199,23 +198,25 @@ public final class ParallaxEglThread extends Thread {
       return;
     }
 
-    double averageRenderMs =
-        metricsWindowDrawTimeNs / (double) metricsWindowFrames / 1000000.0;
-    double averageFps = metricsWindowFrames * 1000000000.0 / windowDurationNs;
-    String swapStatus = metricsWindowLastSwapSucceeded ? "OK" : "FAILED";
-    Log.i(TAG,
-        "PARALLAX_GPU_METRICS"
-            + " averageFps=" + averageFps
-            + " averageRenderMs=" + averageRenderMs
-            + " maxRenderMs=" + metricsWindowMaxFrameTimeMs
-            + " totalGlFrames=" + totalGlFrames
-            + " droppedGlFrames=" + droppedGlFrames
-            + " vsyncMisses=" + vsyncMisses
-            + " swapStatus=" + swapStatus
-            + " lastSwapMs=" + metricsWindowLastSwapMs
-            + " swapFailures=" + metricsWindowSwapFailures
-            + " accumulatedDrawTimeNs=" + accumulatedDrawTimeNs
-            + " windowDrawnFrames=" + metricsWindowFrames);
+    if (BuildConfig.DEBUG) {
+      double averageRenderMs =
+          metricsWindowDrawTimeNs / (double) metricsWindowFrames / 1000000.0;
+      double averageFps = metricsWindowFrames * 1000000000.0 / windowDurationNs;
+      String swapStatus = metricsWindowLastSwapSucceeded ? "OK" : "FAILED";
+      AppLog.i(
+          "PARALLAX_GPU_METRICS"
+              + " averageFps=" + averageFps
+              + " averageRenderMs=" + averageRenderMs
+              + " maxRenderMs=" + metricsWindowMaxFrameTimeMs
+              + " totalGlFrames=" + totalGlFrames
+              + " droppedGlFrames=" + droppedGlFrames
+              + " vsyncMisses=" + vsyncMisses
+              + " swapStatus=" + swapStatus
+              + " lastSwapMs=" + metricsWindowLastSwapMs
+              + " swapFailures=" + metricsWindowSwapFailures
+              + " accumulatedDrawTimeNs=" + accumulatedDrawTimeNs
+              + " windowDrawnFrames=" + metricsWindowFrames);
+    }
 
     metricsWindowStartedAtNs = nowNs;
     metricsWindowFrames = 0L;
@@ -235,19 +236,19 @@ public final class ParallaxEglThread extends Thread {
 
   private boolean initializeEgl() {
     if (surfaceHolder.getSurface() == null || !surfaceHolder.getSurface().isValid()) {
-      Log.w(TAG, "PARALLAX_EGL_INIT_SKIPPED_INVALID_SURFACE");
+      AppLog.w("PARALLAX_EGL_INIT_SKIPPED_INVALID_SURFACE");
       return false;
     }
 
     currentDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
     if (currentDisplay == EGL14.EGL_NO_DISPLAY) {
-      Log.e(TAG, "PARALLAX_EGL_GET_DISPLAY_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+      AppLog.e("PARALLAX_EGL_GET_DISPLAY_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
       return false;
     }
 
     int[] version = new int[2];
     if (!EGL14.eglInitialize(currentDisplay, version, 0, version, 1)) {
-      Log.e(TAG, "PARALLAX_EGL_INITIALIZE_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+      AppLog.e("PARALLAX_EGL_INITIALIZE_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
       return false;
     }
 
@@ -272,7 +273,7 @@ public final class ParallaxEglThread extends Thread {
         configCount,
         0)
         || configCount[0] == 0) {
-      Log.e(TAG, "PARALLAX_EGL_CHOOSE_CONFIG_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+      AppLog.e("PARALLAX_EGL_CHOOSE_CONFIG_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
       return false;
     }
 
@@ -287,7 +288,7 @@ public final class ParallaxEglThread extends Thread {
         contextAttributes,
         0);
     if (currentContext == EGL14.EGL_NO_CONTEXT) {
-      Log.e(TAG, "PARALLAX_EGL_CREATE_CONTEXT_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+      AppLog.e("PARALLAX_EGL_CREATE_CONTEXT_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
       return false;
     }
 
@@ -299,21 +300,23 @@ public final class ParallaxEglThread extends Thread {
         surfaceAttributes,
         0);
     if (currentSurface == EGL14.EGL_NO_SURFACE) {
-      Log.e(TAG, "PARALLAX_EGL_CREATE_SURFACE_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+      AppLog.e("PARALLAX_EGL_CREATE_SURFACE_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
       return false;
     }
 
     if (!EGL14.eglMakeCurrent(currentDisplay, currentSurface, currentSurface, currentContext)) {
-      Log.e(TAG, "PARALLAX_EGL_MAKE_CURRENT_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+      AppLog.e("PARALLAX_EGL_MAKE_CURRENT_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
       return false;
     }
     if (!EGL14.eglSwapInterval(currentDisplay, 1)) {
-      Log.e(TAG, "PARALLAX_EGL_SWAP_INTERVAL_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
+      AppLog.e("PARALLAX_EGL_SWAP_INTERVAL_FAILED error=0x" + Integer.toHexString(EGL14.eglGetError()));
       return false;
     }
-    Log.i(TAG, "PARALLAX_EGL_READY");
-    String extensions = EGL14.eglQueryString(currentDisplay, EGL14.EGL_EXTENSIONS);
-    Log.i(TAG, "PARALLAX_EGL_EXTENSIONS " + (extensions == null ? "(none)" : extensions));
+    AppLog.i("PARALLAX_EGL_READY");
+    if (BuildConfig.DEBUG) {
+      String extensions = EGL14.eglQueryString(currentDisplay, EGL14.EGL_EXTENSIONS);
+      AppLog.i("PARALLAX_EGL_EXTENSIONS " + (extensions == null ? "(none)" : extensions));
+    }
     return true;
   }
 
@@ -323,7 +326,7 @@ public final class ParallaxEglThread extends Thread {
     int height = surfaceFrame == null ? 1 : Math.max(1, surfaceFrame.height());
     glRenderer = new ParallaxGlRenderer(new ParallaxTextureManager(context));
     if (!glRenderer.initialize(width, height)) {
-      Log.e(TAG, "PARALLAX_GL_RENDERER_INIT_FAILED");
+      AppLog.e("PARALLAX_GL_RENDERER_INIT_FAILED");
       return false;
     }
     return true;
@@ -351,6 +354,6 @@ public final class ParallaxEglThread extends Thread {
     currentDisplay = EGL14.EGL_NO_DISPLAY;
     currentContext = EGL14.EGL_NO_CONTEXT;
     currentSurface = EGL14.EGL_NO_SURFACE;
-    Log.i(TAG, "PARALLAX_EGL_TERMINATED");
+    AppLog.i("PARALLAX_EGL_TERMINATED");
   }
 }
