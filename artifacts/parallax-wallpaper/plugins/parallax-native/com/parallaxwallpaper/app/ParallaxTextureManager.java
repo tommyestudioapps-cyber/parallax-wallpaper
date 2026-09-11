@@ -155,7 +155,7 @@ public final class ParallaxTextureManager {
     GLES20.glTexParameteri(
         GLES20.GL_TEXTURE_2D,
         GLES20.GL_TEXTURE_MIN_FILTER,
-        GLES20.GL_LINEAR);
+        GLES20.GL_LINEAR_MIPMAP_LINEAR);
     GLES20.glTexParameteri(
         GLES20.GL_TEXTURE_2D,
         GLES20.GL_TEXTURE_MAG_FILTER,
@@ -173,6 +173,8 @@ public final class ParallaxTextureManager {
     } finally {
       bitmap.recycle();
     }
+
+    GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D);
 
     int error = GLES20.glGetError();
     if (error != GLES20.GL_NO_ERROR) {
