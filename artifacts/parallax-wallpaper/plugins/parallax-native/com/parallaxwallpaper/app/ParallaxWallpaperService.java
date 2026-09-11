@@ -6,6 +6,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.PowerManager;
 import android.service.wallpaper.WallpaperService;
 import android.util.Log;
 import android.view.Display;
@@ -47,9 +48,11 @@ public class ParallaxWallpaperService extends WallpaperService {
   private class ParallaxEngine extends Engine implements SensorEventListener {
     private static final float MOTION_DEAD_ZONE = 0.12f;
     private static final int SENSOR_INTERVAL_US = 33000;
+    private static final int SENSOR_INTERVAL_POWER_SAVE_US = 100000;
 
     private final SensorManager sensorManager;
     private final Sensor rotationSensor;
+    private final PowerManager powerManager;
     private final Object motionLock = new Object();
     private volatile WallpaperRenderer renderer;
 
@@ -83,6 +86,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       rotationSensor = sensorManager == null
           ? null
           : sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+      powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
       refreshCachedRotation();
       renderer = createRenderer();
       Log.i(TAG, "PARALLAX_ENGINE_CREATED");
@@ -109,6 +113,7 @@ public class ParallaxWallpaperService extends WallpaperService {
         }
         lastTimestamp = 0;
         refreshCachedRotation();
+        unregisterSensor();
         registerSensor();
         requestFrame();
       } else {
@@ -174,6 +179,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       if (rotationChanged) {
         invalidateSensorCalibration();
         Log.i(TAG, "PARALLAX_SENSOR_CALIBRATION_INVALIDATED reason=rotation_changed");
+        requestFrame();
       }
     }
 
@@ -234,11 +240,12 @@ public class ParallaxWallpaperService extends WallpaperService {
     }
 
     private void registerSensor() {
-      if (!sensorRegistered && sensorManager != null && rotationSensor != null) {
-        sensorManager.registerListener(this, rotationSensor, SENSOR_INTERVAL_US);
-        sensorRegistered = true;
-        Log.i(TAG, "PARALLAX_SENSOR_REGISTERED");
-      }
+      if (sensorRegistered || sensorManager == null || rotationSensor == null) return;
+      boolean powerSave = powerManager != null && powerManager.isPowerSaveMode();
+      int intervalUs = powerSave ? SENSOR_INTERVAL_POWER_SAVE_US : SENSOR_INTERVAL_US;
+      sensorManager.registerListener(this, rotationSensor, intervalUs);
+      sensorRegistered = true;
+      Log.i(TAG, "PARALLAX_SENSOR_REGISTERED intervalUs=" + intervalUs + " powerSave=" + powerSave);
     }
 
     private void unregisterSensor() {
