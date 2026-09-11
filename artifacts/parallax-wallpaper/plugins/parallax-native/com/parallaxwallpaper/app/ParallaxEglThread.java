@@ -112,6 +112,12 @@ public final class ParallaxEglThread extends Thread {
         glRenderer.updateSensorState(snapshot.getX(), snapshot.getY());
         long frameStartNs = System.nanoTime();
         glRenderer.renderFrame();
+        int glError = GLES20.glGetError();
+        if (glError != GLES20.GL_NO_ERROR) {
+          Log.e(TAG, "PARALLAX_GL_RENDER_ERROR error=0x"
+              + Integer.toHexString(glError)
+              + " frame=" + totalGlFrames);
+        }
         long swapStartNs = System.nanoTime();
         boolean swapSucceeded = EGL14.eglSwapBuffers(currentDisplay, currentSurface);
         long swapDurationNs = System.nanoTime() - swapStartNs;
@@ -176,7 +182,15 @@ public final class ParallaxEglThread extends Thread {
   }
 
   private void emitGlMetricsIfNeeded(boolean force) {
-    if (metricsWindowFrames == 0L) return;
+    if (metricsWindowFrames == 0L) {
+      if (force) {
+        Log.i(TAG, "PARALLAX_GPU_METRICS_EMPTY reason=no_frames_drawn"
+            + " totalGlFrames=" + totalGlFrames
+            + " vsyncMisses=" + vsyncMisses
+            + " swapFailures=" + metricsWindowSwapFailures);
+      }
+      return;
+    }
     long nowNs = System.nanoTime();
     long windowDurationNs = Math.max(1L, nowNs - metricsWindowStartedAtNs);
     if (!force
@@ -298,6 +312,8 @@ public final class ParallaxEglThread extends Thread {
       return false;
     }
     Log.i(TAG, "PARALLAX_EGL_READY");
+    String extensions = EGL14.eglQueryString(currentDisplay, EGL14.EGL_EXTENSIONS);
+    Log.i(TAG, "PARALLAX_EGL_EXTENSIONS " + (extensions == null ? "(none)" : extensions));
     return true;
   }
 
