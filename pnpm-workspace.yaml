@@ -4,7 +4,7 @@
 #
 # This setting requires that any npm package version must have been published
 # for at least 1 day (1440 minutes) before pnpm will allow installing it.
-# This is a critical defense against supply-chain attacks. In most cases,
+# This is a critical defense against supply-cha  in attacks. In most cases,
 # malicious npm releases are discovered and pulled within hours, so a 1-day
 # delay provides a strong safety buffer.
 #
@@ -158,6 +158,3 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
-
-onlyBuiltDependencies:
-  - esbuild
