@@ -1,0 +1,255 @@
+PROMPT 1 — Criar utilitário de EXIF
+Objetivo: criar uma classe utilitária que aplica a orientação EXIF a um bitmap. Será usada pelos dois renderizadores.
+
+Arquivo novo: android/app/src/main/java/com/parallaxwallpaper/app/ExifOrientationHelper.java
+
+Criar o arquivo com este conteúdo:
+
+java
+package com.parallaxwallpaper.app;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Matrix;
+import android.net.Uri;
+import android.util.Log;
+import androidx.exifinterface.media.ExifInterface;
+import java.io.InputStream;
+
+final class ExifOrientationHelper {
+  private static final String TAG = "ParallaxWallpaper";
+
+  private ExifOrientationHelper() {}
+
+  static Bitmap applyOrientation(Context context, Bitmap bitmap, String uriString, int layerIndex) {
+    if (bitmap == null || bitmap.isRecycled()) return bitmap;
+    int orientation = readOrientation(context, uriString);
+    if (orientation == ExifInterface.ORIENTATION_NORMAL
+        || orientation == ExifInterface.ORIENTATION_UNDEFINED) {
+      return bitmap;
+    }
+
+    Matrix matrix = new Matrix();
+    switch (orientation) {
+      case ExifInterface.ORIENTATION_ROTATE_90:
+        matrix.postRotate(90f);
+        break;
+      case ExifInterface.ORIENTATION_ROTATE_180:
+        matrix.postRotate(180f);
+        break;
+      case ExifInterface.ORIENTATION_ROTATE_270:
+        matrix.postRotate(270f);
+        break;
+      case ExifInterface.ORIENTATION_FLIP_HORIZONTAL:
+        matrix.postScale(-1f, 1f);
+        break;
+      case ExifInterface.ORIENTATION_FLIP_VERTICAL:
+        matrix.postScale(1f, -1f);
+        break;
+      case ExifInterface.ORIENTATION_TRANSPOSE:
+        matrix.postRotate(90f);
+        matrix.postScale(-1f, 1f);
+        break;
+      case ExifInterface.ORIENTATION_TRANSVERSE:
+        matrix.postRotate(270f);
+        matrix.postScale(-1f, 1f);
+        break;
+      default:
+        return bitmap;
+    }
+
+    try {
+      Bitmap rotated = Bitmap.createBitmap(
+          bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+      if (rotated != bitmap) {
+        bitmap.recycle();
+      }
+      Log.i(TAG,
+          "PARALLAX_EXIF_APPLIED index=" + layerIndex
+              + " orientation=" + orientation
+              + " width=" + rotated.getWidth()
+              + " height=" + rotated.getHeight());
+      return rotated;
+    } catch (Exception error) {
+      Log.e(TAG, "PARALLAX_EXIF_APPLY_FAILED index=" + layerIndex, error);
+      return bitmap;
+    }
+  }
+
+  private static int readOrientation(Context context, String uriString) {
+    try {
+      Uri uri = Uri.parse(uriString);
+      if ("content".equals(uri.getScheme())) {
+        try (InputStream stream = context.getContentResolver().openInputStream(uri)) {
+          if (stream == null) return ExifInterface.ORIENTATION_NORMAL;
+          ExifInterface exif = new ExifInterface(stream);
+          return exif.getAttributeInt(
+              ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+        }
+      }
+      ExifInterface exif = new ExifInterface(uriString);
+      return exif.getAttributeInt(
+          ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+    } catch (Exception error) {
+      return ExifInterface.ORIENTATION_NORMAL;
+    }
+  }
+}
+Dependência: se o build reclamar de androidx.exifinterface.media.ExifInterface não encontrado, adicionar em android/app/build.gradle dentro de dependencies:
+
+text
+implementation "androidx.exifinterface:exifinterface:1.3.7"
+Restrições:
+
+Não alterar nenhum outro arquivo.
+
+Não expor a classe publicamente (final class, sem public).
+
+Não alterar nada em ParallaxTextureManager ou CanvasWallpaperRenderer neste prompt.
+
+PROMPT 2 — Aplicar EXIF nos dois renderizadores
+Objetivo: aplicar a orientação EXIF logo após o decode, antes de prepareToDraw / uploadTexture.
+
+2.1 — ParallaxTextureManager.java
+No método loadLayerBitmap, localizar o bloco onde o bitmap é decodificado com sucesso:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmap.prepareToDraw();
+Substituir por:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
+        bitmap.prepareToDraw();
+Não alterar mais nada no arquivo. A variável bitmap pode ser reatribuída porque é uma local não-final (confirmar que continua sendo).
+
+2.2 — CanvasWallpaperRenderer.java
+Mesma correção, no método loadLayerBitmap:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
+Substituir por:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
+        bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
+Importante: o bitmapSourceWidths[index] / bitmapSourceHeights[index] devem ser preenchidos depois da rotação EXIF, para refletir as dimensões visuais.
+
+Restrições:
+
+Não alterar mais nada em nenhum dos dois arquivos.
+
+Não alterar calculateInSampleSize — o boundsOptions.outWidth/outHeight continua sendo pré-EXIF, e isso é intencional (o sampleSize é calculado sobre a resolução física).
+
+PROMPT 3 — Blindagem UV no ParallaxGlRenderer
+Objetivo: se, após o EXIF, ainda sobrar divergência entre a proporção do bitmap e a proporção declarada em imageWidth:imageHeight, ajustar o UV para cortar as bordas em vez de esticar o conteúdo. Nunca distorcer.
+
+Arquivo: ParallaxGlRenderer.java, método updateLayerUvTransform.
+
+Substituir o método inteiro atual:
+
+java
+  private void updateLayerUvTransform(int index) {
+    ParallaxTextureManager.LayerData layer = textureManager.getLayerData(index);
+    if (layer == null
+        || !layer.hasSourceCrop
+        || layer.imageWidth <= 0f
+        || layer.imageHeight <= 0f) {
+      mUvTransform[0] = 0f;
+      mUvTransform[1] = 0f;
+      mUvTransform[2] = 1f;
+      mUvTransform[3] = 1f;
+      return;
+    }
+    mUvTransform[0] = layer.cropOriginX / layer.imageWidth;
+    mUvTransform[1] = layer.cropOriginY / layer.imageHeight;
+    mUvTransform[2] = layer.cropWidth / layer.imageWidth;
+    mUvTransform[3] = layer.cropHeight / layer.imageHeight;
+  }
+por:
+
+java
+  private void updateLayerUvTransform(int index) {
+    ParallaxTextureManager.LayerData layer = textureManager.getLayerData(index);
+    if (layer == null
+        || !layer.hasSourceCrop
+        || layer.imageWidth <= 0f
+        || layer.imageHeight <= 0f) {
+      mUvTransform[0] = 0f;
+      mUvTransform[1] = 0f;
+      mUvTransform[2] = 1f;
+      mUvTransform[3] = 1f;
+      return;
+    }
+
+    float imageAspect = layer.imageWidth / layer.imageHeight;
+    float cropAspect = layer.cropWidth / layer.cropHeight;
+
+    // UV nominal em espaço da imagem.
+    float u0 = layer.cropOriginX / layer.imageWidth;
+    float v0 = layer.cropOriginY / layer.imageHeight;
+    float du = layer.cropWidth / layer.imageWidth;
+    float dv = layer.cropHeight / layer.imageHeight;
+
+    // Verificar se a proporção física da textura corresponde à proporção da imagem.
+    // Se corresponder (o caso saudável após EXIF), usamos o UV nominal.
+    // Caso contrário, ajustamos o UV para preservar a proporção do crop,
+    // cortando bordas em vez de esticar o conteúdo.
+    if (layer.textureWidth > 0 && layer.textureHeight > 0) {
+      float textureAspect = (float) layer.textureWidth / (float) layer.textureHeight;
+      if (Math.abs(textureAspect - imageAspect) > imageAspect * 0.01f) {
+        // Extensão que o crop ocuparia, em pixels físicos da textura.
+        float cropPixelsW = layer.cropWidth * ((float) layer.textureWidth / layer.imageWidth);
+        float cropPixelsH = layer.cropHeight * ((float) layer.textureHeight / layer.imageHeight);
+
+        if (cropPixelsW > 0f && cropPixelsH > 0f) {
+          float physicalAspect = cropPixelsW / cropPixelsH;
+          if (physicalAspect > cropAspect) {
+            // Textura "larga demais" para o crop — encolher em X, centrado.
+            float newPixelW = cropPixelsH * cropAspect;
+            float deltaPixels = (cropPixelsW - newPixelW) / 2f;
+            u0 += deltaPixels / (float) layer.textureWidth;
+            du = newPixelW / (float) layer.textureWidth;
+          } else if (physicalAspect < cropAspect) {
+            // Textura "alta demais" para o crop — encolher em Y, centrado.
+            float newPixelH = cropPixelsW / cropAspect;
+            float deltaPixels = (cropPixelsH - newPixelH) / 2f;
+            v0 += deltaPixels / (float) layer.textureHeight;
+            dv = newPixelH / (float) layer.textureHeight;
+          }
+        }
+      }
+    }
+
+    mUvTransform[0] = u0;
+    mUvTransform[1] = v0;
+    mUvTransform[2] = du;
+    mUvTransform[3] = dv;
+  }
+Restrições:
+
+Não alterar mais nada no arquivo.
+
+Não alterar updateLayerMvp — a geometria permanece como está.
+
+Não alterar o shader.
+
+A constante de tolerância (0.01f, ou seja, 1%) é intencional: evita micro-ajustes em diferenças numéricas irrelevantes.
+
+Resumo do que essas três mudanças fazem
+Prompt 1 cria a infraestrutura EXIF, sem tocar em nada existente.
+
+Prompt 2 faz o decode respeitar a orientação visual — a causa raiz da distorção.
+
+Prompt 3 blinda o cálculo de UV: se por qualquer razão a textura ainda divergir da proporção declarada, o crop é ajustado cortando bordas em vez de esticar o conteúdo. Nunca distorce, em nenhuma hipótese.

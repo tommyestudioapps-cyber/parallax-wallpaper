@@ -831,10 +831,50 @@ public final class ParallaxGlRenderer {
       mUvTransform[3] = 1f;
       return;
     }
-    mUvTransform[0] = layer.cropOriginX / layer.imageWidth;
-    mUvTransform[1] = layer.cropOriginY / layer.imageHeight;
-    mUvTransform[2] = layer.cropWidth / layer.imageWidth;
-    mUvTransform[3] = layer.cropHeight / layer.imageHeight;
+
+    float imageAspect = layer.imageWidth / layer.imageHeight;
+    float cropAspect = layer.cropWidth / layer.cropHeight;
+
+    // UV nominal em espaço da imagem.
+    float u0 = layer.cropOriginX / layer.imageWidth;
+    float v0 = layer.cropOriginY / layer.imageHeight;
+    float du = layer.cropWidth / layer.imageWidth;
+    float dv = layer.cropHeight / layer.imageHeight;
+
+    // Verificar se a proporção física da textura corresponde à proporção da imagem.
+    // Se corresponder (o caso saudável após EXIF), usamos o UV nominal.
+    // Caso contrário, ajustamos o UV para preservar a proporção do crop,
+    // cortando bordas em vez de esticar o conteúdo.
+    if (layer.textureWidth > 0 && layer.textureHeight > 0) {
+      float textureAspect = (float) layer.textureWidth / (float) layer.textureHeight;
+      if (Math.abs(textureAspect - imageAspect) > imageAspect * 0.01f) {
+        // Extensão que o crop ocuparia, em pixels físicos da textura.
+        float cropPixelsW = layer.cropWidth * ((float) layer.textureWidth / layer.imageWidth);
+        float cropPixelsH = layer.cropHeight * ((float) layer.textureHeight / layer.imageHeight);
+
+        if (cropPixelsW > 0f && cropPixelsH > 0f) {
+          float physicalAspect = cropPixelsW / cropPixelsH;
+          if (physicalAspect > cropAspect) {
+            // Textura "larga demais" para o crop — encolher em X, centrado.
+            float newPixelW = cropPixelsH * cropAspect;
+            float deltaPixels = (cropPixelsW - newPixelW) / 2f;
+            u0 += deltaPixels / (float) layer.textureWidth;
+            du = newPixelW / (float) layer.textureWidth;
+          } else if (physicalAspect < cropAspect) {
+            // Textura "alta demais" para o crop — encolher em Y, centrado.
+            float newPixelH = cropPixelsW / cropAspect;
+            float deltaPixels = (cropPixelsH - newPixelH) / 2f;
+            v0 += deltaPixels / (float) layer.textureHeight;
+            dv = newPixelH / (float) layer.textureHeight;
+          }
+        }
+      }
+    }
+
+    mUvTransform[0] = u0;
+    mUvTransform[1] = v0;
+    mUvTransform[2] = du;
+    mUvTransform[3] = dv;
   }
 
   private void updateLayerMvp(int index) {

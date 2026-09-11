@@ -254,6 +254,7 @@ public final class ParallaxTextureManager {
       if (bitmap == null) {
         Log.w(TAG, "PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
       } else {
+        bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
         bitmap.prepareToDraw();
         LayerData data = mLayerData[index];
         data.sourceWidth = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();

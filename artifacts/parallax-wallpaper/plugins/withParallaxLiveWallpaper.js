@@ -25,6 +25,7 @@ const CANONICAL_JAVA_FILES = [
   'ParallaxSensorState.java',
   'ParallaxEglThread.java',
   'ParallaxEglController.java',
+  'ExifOrientationHelper.java',
   'ParallaxTextureManager.java',
   'ParallaxGlRenderer.java',
 ];

@@ -313,6 +313,7 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
       if (bitmap == null) {
         Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
       } else {
+        bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
         bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
         bitmapSourceHeights[index] = sourceHeight > 0 ? sourceHeight : bitmap.getHeight();
         boolean prewarmed = index == 0;
