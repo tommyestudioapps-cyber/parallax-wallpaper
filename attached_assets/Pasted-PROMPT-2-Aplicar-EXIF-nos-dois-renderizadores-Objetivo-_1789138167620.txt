@@ -1,0 +1,68 @@
+PROMPT 2 — Aplicar EXIF nos dois renderizadores
+Objetivo: aplicar a orientação EXIF logo após o decode do bitmap, antes de prepareToDraw (GL) e antes de gravar as dimensões de origem (Canvas).
+
+Pré-requisito: Prompt 1 já aplicado (classe ExifOrientationHelper existe em android/app/src/main/java/com/parallaxwallpaper/app/ExifOrientationHelper.java).
+
+Alteração 1 — ParallaxTextureManager.java
+Localize o método loadLayerBitmap e, dentro dele, o bloco onde o bitmap é decodificado com sucesso.
+
+Bloco atual:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmap.prepareToDraw();
+Substituir por:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
+        bitmap.prepareToDraw();
+Nenhum outro ponto do arquivo deve ser alterado. Confirmar que a variável local bitmap continua sendo reatribuível (não marcada como final).
+
+Alteração 2 — CanvasWallpaperRenderer.java
+Localize o método loadLayerBitmap e, dentro dele, o bloco onde o bitmap é decodificado com sucesso.
+
+Bloco atual:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
+        bitmapSourceHeights[index] = sourceHeight > 0 ? sourceHeight : bitmap.getHeight();
+Substituir por:
+
+java
+      if (bitmap == null) {
+        Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+      } else {
+        bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
+        bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
+        bitmapSourceHeights[index] = sourceHeight > 0 ? sourceHeight : bitmap.getHeight();
+Ponto crítico: a chamada a applyOrientation precisa vir antes de bitmapSourceWidths/bitmapSourceHeights serem preenchidos, para que as dimensões de origem reflitam a orientação visual já corrigida.
+
+Restrições
+Não alterar mais nada em nenhum dos dois arquivos.
+
+Não alterar calculateInSampleSize. Os valores de boundsOptions.outWidth/outHeight (pré-EXIF) continuam sendo usados para o cálculo do inSampleSize — isso é intencional, pois o sampleSize é definido sobre a resolução física do arquivo, não sobre a orientação visual.
+
+Não alterar o shader, o ParallaxGlRenderer, o ParallaxEglController, o ParallaxEglThread nem o ParallaxWallpaperService.
+
+Não criar novos imports em ParallaxTextureManager ou CanvasWallpaperRenderer. A chamada a ExifOrientationHelper é resolvida dentro do mesmo pacote com.parallaxwallpaper.app e não exige import.
+
+Verificação esperada após o patch
+Compilação sem erros.
+
+No Logcat, ao carregar fotos com EXIF orientation diferente de 1:
+
+PARALLAX_EXIF_APPLIED index=N orientation=X width=W height=H — onde W×H refletem as dimensões visuais da imagem.
+
+PARALLAX_GL_BITMAP_READY deve continuar aparecendo com width e height que batem com as dimensões visuais da imagem.
+
+PARALLAX_BITMAP_READY (Canvas) igualmente com dimensões visuais.
+
+Nenhum novo log de erro introduzido por essa mudança.
