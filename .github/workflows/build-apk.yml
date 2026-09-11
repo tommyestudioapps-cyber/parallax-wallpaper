@@ -36,6 +36,10 @@ jobs:
       - name: Instalar dependências do monorepo
         run: pnpm install --no-frozen-lockfile --config.strict-dep-builds=false
 
+      - name: Gerar pasta android com Expo prebuild
+        working-directory: artifacts/parallax-wallpaper
+        run: pnpm exec expo prebuild --platform android --no-install
+
       - name: Dar permissão ao gradlew
         working-directory: artifacts/parallax-wallpaper/android
         run: chmod +x gradlew
