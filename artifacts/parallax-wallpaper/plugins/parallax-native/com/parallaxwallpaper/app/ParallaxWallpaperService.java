@@ -6,23 +6,16 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.os.Handler;
-import android.os.HandlerThread;
 import android.service.wallpaper.WallpaperService;
 import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.WindowManager;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class ParallaxWallpaperService extends WallpaperService {
   private static final String TAG = "ParallaxWallpaper";
   static final String PREFS_NAME = "parallax_wallpaper";
-  static final String PREF_RENDERER_TYPE = "renderer_type";
-  static final String RENDERER_OPENGL = "OPENGL";
-  static final String RENDERER_CANVAS = "CANVAS";
-  private static final String DEFAULT_RENDERER_TYPE = RENDERER_OPENGL;
   private static volatile ParallaxEngine activeEngine;
 
   @Override
@@ -32,24 +25,9 @@ public class ParallaxWallpaperService extends WallpaperService {
     return engine;
   }
 
-  static void requestRendererType(String rendererType) {
-    ParallaxEngine engine = activeEngine;
-    if (engine != null) engine.requestRendererType(rendererType);
-  }
-
   static void notifyCompositionChanged() {
     ParallaxEngine engine = activeEngine;
     if (engine != null) engine.onCompositionChangedExternally();
-  }
-
-  static String normalizeRendererType(String rendererType) {
-    return RENDERER_CANVAS.equals(rendererType) ? RENDERER_CANVAS : RENDERER_OPENGL;
-  }
-
-  private String getConfiguredRendererType() {
-    return normalizeRendererType(
-        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-            .getString(PREF_RENDERER_TYPE, DEFAULT_RENDERER_TYPE));
   }
 
   @Override
@@ -71,24 +49,14 @@ public class ParallaxWallpaperService extends WallpaperService {
 
     private final SensorManager sensorManager;
     private final Sensor rotationSensor;
-    private final HandlerThread renderThread;
-    private final Handler renderHandler;
-    private final Object frameLock = new Object();
     private final Object motionLock = new Object();
-    private final AtomicLong totalSensorEvents = new AtomicLong();
-    private final AtomicLong skippedSensorFrames = new AtomicLong();
-    private final AtomicLong requestedFrames = new AtomicLong();
     private volatile WallpaperRenderer renderer;
-    private volatile String rendererType;
 
     private volatile boolean visible;
     private volatile boolean destroyed;
     private volatile SurfaceHolder surfaceHolder;
     private volatile int surfaceWidth;
     private volatile int surfaceHeight;
-    private boolean frameQueued;
-    private boolean redrawRequested;
-    private boolean forceDrawRequested;
     private boolean sensorRegistered;
     private boolean calibrated;
     private float baselinePitch;
@@ -109,42 +77,13 @@ public class ParallaxWallpaperService extends WallpaperService {
     private final float[] remappedMatrix = new float[9];
     private final float[] orientation = new float[3];
 
-    private final Runnable renderRunnable = new Runnable() {
-      @Override
-      public void run() {
-        boolean force;
-        synchronized (frameLock) {
-          redrawRequested = false;
-          force = forceDrawRequested;
-          forceDrawRequested = false;
-        }
-
-        WallpaperRenderer currentRenderer = renderer;
-        if (currentRenderer != null) {
-          currentRenderer.setForceDraw(force);
-          currentRenderer.renderFrame();
-        }
-
-        boolean renderAgain;
-        synchronized (frameLock) {
-          renderAgain = redrawRequested && !destroyed;
-          if (!renderAgain) frameQueued = false;
-        }
-        if (renderAgain) renderHandler.post(this);
-      }
-    };
-
     ParallaxEngine() {
       sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
       rotationSensor = sensorManager == null
           ? null
           : sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
-      renderThread = new HandlerThread("ParallaxWallpaperRenderer");
-      renderThread.start();
-      renderHandler = new Handler(renderThread.getLooper());
       refreshCachedRotation();
-      rendererType = getConfiguredRendererType();
-      renderer = createRenderer(rendererType);
+      renderer = createRenderer();
       Log.i(TAG, "PARALLAX_ENGINE_CREATED");
       requestFrame(true);
     }
@@ -220,17 +159,11 @@ public class ParallaxWallpaperService extends WallpaperService {
       destroyed = true;
       if (activeEngine == this) activeEngine = null;
       WallpaperRenderer currentRenderer = renderer;
-      if (currentRenderer != null) currentRenderer.setVisible(false);
+      if (currentRenderer != null) {
+        currentRenderer.setVisible(false);
+        currentRenderer.release();
+      }
       unregisterSensor();
-      renderHandler.removeCallbacksAndMessages(null);
-      renderHandler.post(new Runnable() {
-        @Override
-        public void run() {
-          WallpaperRenderer rendererToRelease = renderer;
-          if (rendererToRelease != null) rendererToRelease.release();
-          renderThread.quitSafely();
-        }
-      });
       Log.i(TAG, "PARALLAX_ENGINE_DESTROYED");
       super.onDestroy();
     }
@@ -244,30 +177,22 @@ public class ParallaxWallpaperService extends WallpaperService {
     }
 
     void onCompositionChangedExternally() {
-      renderHandler.post(new Runnable() {
-        @Override
-        public void run() {
-          if (destroyed) return;
-          WallpaperRenderer currentRenderer = renderer;
-          if (currentRenderer != null) currentRenderer.invalidateComposition();
-          Log.i(TAG, "PARALLAX_COMPOSITION_INVALIDATED_EXTERNAL");
-          requestFrame(true);
-        }
-      });
+      if (destroyed) return;
+      WallpaperRenderer currentRenderer = renderer;
+      if (currentRenderer != null) {
+        currentRenderer.invalidateComposition();
+        Log.i(TAG, "PARALLAX_COMPOSITION_INVALIDATED_EXTERNAL");
+        requestFrame(true);
+      }
     }
 
     void onTrimMemory(final int level) {
-      renderHandler.post(new Runnable() {
-        @Override
-        public void run() {
-          if (destroyed) return;
-          WallpaperRenderer currentRenderer = renderer;
-          if (currentRenderer != null) {
-            currentRenderer.onTrimMemory(level);
-            requestFrame(true);
-          }
-        }
-      });
+      if (destroyed) return;
+      WallpaperRenderer currentRenderer = renderer;
+      if (currentRenderer != null) {
+        currentRenderer.onTrimMemory(level);
+        requestFrame(true);
+      }
     }
 
     private boolean refreshCachedRotation() {
@@ -325,7 +250,6 @@ public class ParallaxWallpaperService extends WallpaperService {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-      totalSensorEvents.incrementAndGet();
       if (!visible || event.sensor.getType() != Sensor.TYPE_ROTATION_VECTOR) return;
       SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values);
       SensorManager.remapCoordinateSystem(
@@ -390,8 +314,6 @@ public class ParallaxWallpaperService extends WallpaperService {
           if (currentRenderer != null) {
             currentRenderer.updateSensorState(nextSensorState);
           }
-        } else {
-          skippedSensorFrames.incrementAndGet();
         }
       }
       if (!publishMotion) return;
@@ -414,84 +336,22 @@ public class ParallaxWallpaperService extends WallpaperService {
 
     private void requestFrame(boolean force) {
       if (destroyed) return;
-      requestedFrames.incrementAndGet();
-      synchronized (frameLock) {
-        redrawRequested = true;
-        forceDrawRequested = forceDrawRequested || force;
-        if (frameQueued) return;
-        frameQueued = true;
+      WallpaperRenderer currentRenderer = renderer;
+      if (currentRenderer != null) {
+        currentRenderer.setForceDraw(force);
+        currentRenderer.renderFrame();
       }
-      renderHandler.post(renderRunnable);
     }
 
-    private WallpaperRenderer createRenderer(String type) {
-      if (RENDERER_CANVAS.equals(type)) {
-        return new CanvasWallpaperRenderer(
-            ParallaxWallpaperService.this,
-            totalSensorEvents,
-            skippedSensorFrames,
-            requestedFrames);
-      }
+    private WallpaperRenderer createRenderer() {
       return new ParallaxEglController(
           ParallaxWallpaperService.this,
           new ParallaxEglController.FailureListener() {
             @Override
             public void onGpuFailure(ParallaxEglController controller, String reason) {
-              onGpuFailureForEngine(controller, reason);
+              Log.e(TAG, "PARALLAX_GPU_FAILURE reason=" + reason);
             }
           });
-    }
-
-    private void requestRendererType(String requestedType) {
-      final String nextType = normalizeRendererType(requestedType);
-      renderHandler.post(new Runnable() {
-        @Override
-        public void run() {
-          switchRenderer(nextType, "user_selection");
-        }
-      });
-    }
-
-    private void onGpuFailureForEngine(
-        final ParallaxEglController failedController,
-        final String reason) {
-      Log.e(TAG, "PARALLAX_RENDERER_FALLBACK reason=" + reason);
-      renderHandler.post(new Runnable() {
-        @Override
-        public void run() {
-          if (renderer == failedController && !destroyed) {
-            switchRenderer(RENDERER_CANVAS, reason);
-          }
-        }
-      });
-    }
-
-    private void switchRenderer(String nextType, String reason) {
-      if (destroyed || nextType.equals(rendererType)) return;
-      WallpaperRenderer previousRenderer = renderer;
-      rendererType = nextType;
-      if (previousRenderer != null) {
-        previousRenderer.setVisible(false);
-        previousRenderer.release();
-      }
-
-      WallpaperRenderer nextRenderer = createRenderer(nextType);
-      renderer = nextRenderer;
-      nextRenderer.updateSensorState(motionSnapshot);
-      nextRenderer.setVisible(visible);
-      if (surfaceHolder != null && surfaceHolder.getSurface() != null
-          && surfaceHolder.getSurface().isValid()) {
-        nextRenderer.onSurfaceCreated(surfaceHolder);
-        if (surfaceWidth > 0 && surfaceHeight > 0) {
-          nextRenderer.onSurfaceChanged(
-              surfaceHolder,
-              0,
-              surfaceWidth,
-              surfaceHeight);
-        }
-      }
-      Log.i(TAG, "PARALLAX_RENDERER_SELECTED type=" + nextType + " reason=" + reason);
-      requestFrame(true);
     }
   }
 }
