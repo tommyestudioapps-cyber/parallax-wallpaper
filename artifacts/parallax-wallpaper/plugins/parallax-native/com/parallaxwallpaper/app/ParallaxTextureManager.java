@@ -257,8 +257,8 @@ public final class ParallaxTextureManager {
         bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
         bitmap.prepareToDraw();
         LayerData data = mLayerData[index];
-        data.sourceWidth = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
-        data.sourceHeight = sourceHeight > 0 ? sourceHeight : bitmap.getHeight();
+        data.sourceWidth = bitmap.getWidth();
+        data.sourceHeight = bitmap.getHeight();
         if (data.imageWidth <= 0) data.imageWidth = data.sourceWidth;
         if (data.imageHeight <= 0) data.imageHeight = data.sourceHeight;
         Log.i(TAG,

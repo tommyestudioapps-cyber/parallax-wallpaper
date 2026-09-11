@@ -314,8 +314,8 @@ public final class CanvasWallpaperRenderer implements WallpaperRenderer {
         Log.w(TAG, "PARALLAX_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
       } else {
         bitmap = ExifOrientationHelper.applyOrientation(context, bitmap, uriString, index);
-        bitmapSourceWidths[index] = sourceWidth > 0 ? sourceWidth : bitmap.getWidth();
-        bitmapSourceHeights[index] = sourceHeight > 0 ? sourceHeight : bitmap.getHeight();
+        bitmapSourceWidths[index] = bitmap.getWidth();
+        bitmapSourceHeights[index] = bitmap.getHeight();
         boolean prewarmed = index == 0;
         if (prewarmed) bitmap.prepareToDraw();
         Log.i(TAG, "PARALLAX_BITMAP_READY index=" + index + " width=" + bitmap.getWidth() + " height=" + bitmap.getHeight() + " sampleSize=" + sampleSize + " prewarmed=" + prewarmed);
