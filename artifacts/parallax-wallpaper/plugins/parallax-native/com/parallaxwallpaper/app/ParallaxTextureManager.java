@@ -90,6 +90,10 @@ public final class ParallaxTextureManager {
   }
 
   private void populateLayerData(LayerData data, JSONObject layer, int index) {
+    // ATENÇÃO: quando cutoutOutputCropped === true, o bitmap já está fisicamente
+    // recortado, mas imageWidth/imageHeight e sourceCrop descrevem a imagem ORIGINAL.
+    // O renderer deve usar textureIsCropped para amostrar UV [0,1]x[0,1] em vez
+    // de reaplicar sourceCrop. Ver ParallaxGlRenderer.updateLayerUvTransform.
     if (layer == null || !layer.optBoolean("enabled", true)) {
       data.parallaxMultiplier = DEFAULT_DEPTH_FACTORS[index];
       data.imageWidth = 0;
@@ -100,6 +104,7 @@ public final class ParallaxTextureManager {
       data.x = 0;
       data.y = 0;
       data.hasSourceCrop = false;
+      data.textureIsCropped = false;
       data.cropOriginX = 0;
       data.cropOriginY = 0;
       data.cropWidth = 0;
@@ -116,6 +121,7 @@ public final class ParallaxTextureManager {
         DEFAULT_DEPTH_FACTORS[index]);
     JSONObject crop = layer.optJSONObject("sourceCrop");
     data.hasSourceCrop = crop != null;
+    data.textureIsCropped = layer.optBoolean("cutoutOutputCropped", false);
     data.cropOriginX = crop == null ? 0 : (float) crop.optDouble("originX", 0);
     data.cropOriginY = crop == null ? 0 : (float) crop.optDouble("originY", 0);
     data.cropWidth = crop == null ? 0 : (float) crop.optDouble("width", 0);
