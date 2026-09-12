@@ -27,6 +27,9 @@ import Animated, {
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
+  withDelay,
+  withSequence,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -1027,6 +1030,22 @@ export default function HomeScreen() {
   const [applied, setApplied] = useState(false);
   const projectRef = useRef(project);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editScrollRef = useRef<ScrollView>(null);
+  const composeScrollRef = useRef<ScrollView>(null);
+  const editCropCardY = useRef<number | null>(null);
+  const composeLayerPickerY = useRef<number | null>(null);
+  const editAttentionPending = useRef(false);
+  const composeAttentionPending = useRef(false);
+  const editAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const composeAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [editAttentionRequest, setEditAttentionRequest] = useState(0);
+  const [composeAttentionRequest, setComposeAttentionRequest] = useState(0);
+  const [editCropCardLayoutVersion, setEditCropCardLayoutVersion] = useState(0);
+  const [composeLayerPickerLayoutVersion, setComposeLayerPickerLayoutVersion] = useState(0);
+  const cropAttention = useSharedValue(0);
+  const middlePickerAttention = useSharedValue(0);
+  const foregroundPickerAttention = useSharedValue(0);
+  const previewButtonAttention = useSharedValue(0);
   const gestureStart = useRef<{
     mode: CanvasGestureMode;
     x: number;
@@ -1210,6 +1229,10 @@ export default function HomeScreen() {
         });
         setEditingLayer(id);
         setMode('edit');
+         if (id !== 'background') {
+           editAttentionPending.current = true;
+           setEditAttentionRequest((current) => current + 1);
+         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch {
         Alert.alert('Não foi possível importar', 'Tente selecionar outra imagem da galeria.');
@@ -1242,8 +1265,104 @@ export default function HomeScreen() {
       return;
     }
     setMode('compose');
+    composeAttentionPending.current = true;
+    setComposeAttentionRequest((current) => current + 1);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
+
+  const cropAttentionStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: cropAttention.value * 2.5 },
+      { scale: 1 + Math.abs(cropAttention.value) * 0.025 },
+    ],
+  }));
+  const middlePickerAttentionStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: middlePickerAttention.value * 1.5 },
+      { scale: 1 + Math.abs(middlePickerAttention.value) * 0.035 },
+    ],
+  }));
+  const foregroundPickerAttentionStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: foregroundPickerAttention.value * 1.5 },
+      { scale: 1 + Math.abs(foregroundPickerAttention.value) * 0.035 },
+    ],
+  }));
+  const previewButtonAttentionStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: previewButtonAttention.value * 1.8 },
+      { scale: 1 + Math.abs(previewButtonAttention.value) * 0.045 },
+    ],
+  }));
+
+  useEffect(() => {
+    if (mode !== 'edit' || editingLayer === 'background' || !editAttentionPending.current) return;
+    const frame = requestAnimationFrame(() => {
+      const targetY = editCropCardY.current;
+      if (targetY === null) return;
+      editAttentionPending.current = false;
+      editScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 24), animated: true });
+      if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
+      editAttentionTimer.current = setTimeout(() => {
+        cropAttention.value = withDelay(
+          380,
+          withSequence(
+            withTiming(1, { duration: 120 }),
+            withTiming(-0.8, { duration: 90 }),
+            withTiming(0, { duration: 150 }),
+            withTiming(0.65, { duration: 110 }),
+            withTiming(0, { duration: 150 }),
+          ),
+        );
+      }, 90);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [cropAttention, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
+
+  useEffect(() => {
+    if (mode !== 'compose' || !composeAttentionPending.current) return;
+    const frame = requestAnimationFrame(() => {
+      const targetY = composeLayerPickerY.current;
+      if (targetY === null) return;
+      composeAttentionPending.current = false;
+      composeScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 24), animated: true });
+      if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
+      composeAttentionTimer.current = setTimeout(() => {
+        middlePickerAttention.value = withDelay(
+          360,
+          withSequence(
+            withTiming(1, { duration: 140 }),
+            withTiming(-0.45, { duration: 100 }),
+            withTiming(0, { duration: 170 }),
+          ),
+        );
+        foregroundPickerAttention.value = withDelay(
+          820,
+          withSequence(
+            withTiming(1, { duration: 140 }),
+            withTiming(-0.45, { duration: 100 }),
+            withTiming(0, { duration: 170 }),
+          ),
+        );
+        previewButtonAttention.value = withDelay(
+          1280,
+          withSequence(
+            withTiming(1.2, { duration: 150 }),
+            withTiming(-0.55, { duration: 105 }),
+            withTiming(0, { duration: 190 }),
+          ),
+        );
+      }, 120);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    composeAttentionRequest,
+    composeLayerPickerLayoutVersion,
+    foregroundPickerAttention,
+    middlePickerAttention,
+    mode,
+    previewButtonAttention,
+  ]);
 
   const applyWallpaper = async () => {
     if (Platform.OS === 'android') {
@@ -1445,7 +1564,7 @@ export default function HomeScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <Header title="Composição" subtitle="Ajuste a distância entre os planos" colors={colors} onBack={() => setMode('edit')} onReset={resetProject} />
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={composeScrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Progress mode={mode} colors={colors} />
           <Text style={[styles.sectionKicker, { color: colors.primary }]}>PRÉVIA DA CENA</Text>
           <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Selecione uma camada abaixo e use os gestos no quadro para ajustar o enquadramento.</Text>
@@ -1497,25 +1616,38 @@ export default function HomeScreen() {
               <Text style={[styles.canvasBadgeText, { color: colors.foreground }]}>TOQUE PARA EDITAR</Text>
             </View>
           </View>
-          <View style={styles.layerPicker}>
+          <View
+            style={styles.layerPicker}
+            onLayout={(event) => {
+              composeLayerPickerY.current = event.nativeEvent.layout.y;
+              setComposeLayerPickerLayoutVersion((current) => current + 1);
+            }}
+          >
             {LAYER_IDS.filter((id) => id !== 'background').map((id) => (
-              <Pressable
+              <Animated.View
                 key={id}
-                testID={`select-${id}`}
-                onPress={() => setProject((current) => ({ ...current, activeLayer: id }))}
                 style={[
-                  styles.layerPickerItem,
-                  {
-                    backgroundColor: project.activeLayer === id ? colors.primary : colors.secondary,
-                    borderColor: project.activeLayer === id ? colors.primary : colors.border,
-                  },
+                  styles.layerPickerItemWrap,
+                  id === 'middle' ? middlePickerAttentionStyle : foregroundPickerAttentionStyle,
                 ]}
               >
-                <View style={[styles.layerPickerDot, { backgroundColor: project.activeLayer === id ? colors.primaryForeground : colors.mutedForeground }]} />
-                <Text style={[styles.layerPickerText, { color: project.activeLayer === id ? colors.primaryForeground : colors.mutedForeground }]}>
-                  {layerMeta[id].label}
-                </Text>
-              </Pressable>
+                <Pressable
+                  testID={`select-${id}`}
+                  onPress={() => setProject((current) => ({ ...current, activeLayer: id }))}
+                  style={[
+                    styles.layerPickerItem,
+                    {
+                      backgroundColor: project.activeLayer === id ? colors.primary : colors.secondary,
+                      borderColor: project.activeLayer === id ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <View style={[styles.layerPickerDot, { backgroundColor: project.activeLayer === id ? colors.primaryForeground : colors.mutedForeground }]} />
+                  <Text style={[styles.layerPickerText, { color: project.activeLayer === id ? colors.primaryForeground : colors.mutedForeground }]}>
+                    {layerMeta[id].label}
+                  </Text>
+                </Pressable>
+              </Animated.View>
             ))}
           </View>
           <Text style={[styles.gestureHint, { color: colors.mutedForeground }]}>
@@ -1535,7 +1667,9 @@ export default function HomeScreen() {
               <Text style={[styles.sliderEndText, { color: colors.mutedForeground }]}>Imersivo</Text>
             </View>
           </View>
-          <PrimaryButton title="Visualizar movimento" onPress={() => setMode('preview')} colors={colors} icon="play" />
+          <Animated.View style={[styles.primaryButtonAttention, previewButtonAttentionStyle]}>
+            <PrimaryButton title="Visualizar movimento" onPress={() => setMode('preview')} colors={colors} icon="play" />
+          </Animated.View>
           <View style={{ height: insets.bottom + 24 }} />
         </ScrollView>
       </View>
@@ -1558,7 +1692,7 @@ export default function HomeScreen() {
           }}
           inHeader
         />
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={editScrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View
             {...canvasResponder.panHandlers}
             style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}
@@ -1620,7 +1754,16 @@ export default function HomeScreen() {
           {edit.uri ? (
             <>
               {editingLayer !== 'background' ? (
-                <View style={[styles.cropCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                <View
+                  onLayout={(event) => {
+                    editCropCardY.current = event.nativeEvent.layout.y;
+                    setEditCropCardLayoutVersion((current) => current + 1);
+                  }}
+                  style={[
+                    styles.cropCard,
+                    { backgroundColor: colors.secondary, borderColor: colors.border },
+                  ]}
+                >
                   <View style={styles.cropCopy}>
                     <View style={[styles.cropIcon, { backgroundColor: colors.primary }]}>
                       <Ionicons name="crop-outline" size={18} color={colors.primaryForeground} />
@@ -1632,29 +1775,31 @@ export default function HomeScreen() {
                       </Text>
                     </View>
                   </View>
-                  <Pressable
-                    testID="remover-fundo"
-                    accessibilityRole="button"
-                    accessibilityLabel={edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte inteligente' : 'Remover fundo'}
-                    disabled={processing || (edit.backgroundRemoved && !edit.nonDestructiveCutout)}
-                    onPress={activateSmartCutout}
-                    style={({ pressed }) => [
-                      styles.removeBackgroundButton,
-                      {
-                        backgroundColor: edit.backgroundRemoved ? colors.success : colors.primary,
-                        opacity: processing ? 0.6 : pressed ? 0.78 : 1,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={edit.backgroundRemoved ? 'refresh-outline' : processing ? 'sync-outline' : 'cut-outline'}
-                      size={18}
-                      color={edit.backgroundRemoved ? colors.primaryForeground : colors.primaryForeground}
-                    />
-                    <Text style={[styles.removeBackgroundText, { color: colors.primaryForeground }]}>
-                      {edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte' : processing ? 'Separando pessoa…' : 'Remover fundo'}
-                    </Text>
-                  </Pressable>
+                  <Animated.View style={[styles.attentionButtonWrap, cropAttentionStyle]}>
+                    <Pressable
+                      testID="remover-fundo"
+                      accessibilityRole="button"
+                      accessibilityLabel={edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte inteligente' : 'Remover fundo'}
+                      disabled={processing || (edit.backgroundRemoved && !edit.nonDestructiveCutout)}
+                      onPress={activateSmartCutout}
+                      style={({ pressed }) => [
+                        styles.removeBackgroundButton,
+                        {
+                          backgroundColor: edit.backgroundRemoved ? colors.success : colors.primary,
+                          opacity: processing ? 0.6 : pressed ? 0.78 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={edit.backgroundRemoved ? 'refresh-outline' : processing ? 'sync-outline' : 'cut-outline'}
+                        size={18}
+                        color={edit.backgroundRemoved ? colors.primaryForeground : colors.primaryForeground}
+                      />
+                      <Text style={[styles.removeBackgroundText, { color: colors.primaryForeground }]}>
+                        {edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte' : processing ? 'Separando pessoa…' : 'Remover fundo'}
+                      </Text>
+                    </Pressable>
+                  </Animated.View>
                 </View>
               ) : (
                 <View style={[styles.infoRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
@@ -1859,16 +2004,19 @@ const styles = StyleSheet.create({
   cropCard: { borderWidth: 1, borderRadius: 18, padding: 15, marginBottom: 12 },
   cropCopy: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 11 },
   cropIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  attentionButtonWrap: { width: '100%' },
   infoRow: { borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 },
   removeBackgroundButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   removeBackgroundText: { fontSize: 11, fontFamily: 'Inter_700Bold' },
   emptyEdit: { gap: 18, paddingVertical: 8 },
   composeCanvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: 'center', borderRadius: 24, borderWidth: 1, overflow: 'hidden', marginTop: 20, marginBottom: 15, justifyContent: 'center', alignItems: 'center' },
   layerPicker: { flexDirection: 'row', width: '100%', gap: 7, marginBottom: 8 },
+  layerPickerItemWrap: { flex: 1 },
   layerPickerItem: { flex: 1, minHeight: 36, borderRadius: 11, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   layerPickerDot: { width: 5, height: 5, borderRadius: 3 },
   layerPickerText: { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
   gestureHint: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', marginBottom: 16 },
+  primaryButtonAttention: { width: '100%' },
   layerPreview: { position: 'absolute', width: '100%', height: '100%', borderWidth: 0, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   layerImage: { width: '100%', height: '100%' },
   previewPlaceholder: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
