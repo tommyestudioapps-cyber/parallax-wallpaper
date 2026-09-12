@@ -3,3 +3,4 @@
 - [GLES20 attribute state](gles20-attribute-state.md) — Android GLES20 lacks pointer readback; preserve renderer-owned canonical offsets with queryable attribute state.
 - [Wallpaper rendering thread](wallpaper-rendering-thread.md) — never decode images or block on canvas rendering from WallpaperService callbacks.
 - [Expo build port](expo-build-port.md) — the custom static build assumes Metro owns port 8081, so concurrent workflows can make it time out before bundling.
+- [Expo native splash sync](expo-native-splash-sync.md) — changing app.json does not refresh prebuilt Android/iOS splash resources already used by native builds.
