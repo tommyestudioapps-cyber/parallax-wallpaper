@@ -1,0 +1,120 @@
+Prompt B de 3 — Corrigir texturesLoaded prematuro em ParallaxTextureManager.java
+Cole isto no Replit. Instrução é aplicar e persistir, e depois mostrar git diff.
+
+text
+Correção cirúrgica em um único método. APLIQUE a alteração no arquivo — não apenas mostre o diff.
+
+ARQUIVO: ParallaxTextureManager.java
+MÉTODO: loadTextures(int targetWidth, int targetHeight)
+
+Hoje o método começa assim:
+
+    public int[] loadTextures(int targetWidth, int targetHeight) {
+      if (texturesLoaded) return mTextureIds;
+      texturesLoaded = true;
+
+      String json = context
+          .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+          .getString(PREF_COMPOSITION, null);
+      if (json == null) {
+        AppLog.w("PARALLAX_GL_COMPOSITION_MISSING");
+        return mTextureIds;
+      }
+
+      try {
+        JSONObject composition = new JSONObject(json);
+        mCompositionCanvasWidth = (float) composition.optDouble("canvasWidth", 280);
+        JSONObject layers = composition.optJSONObject("layers");
+        for (int index = 0; index < LAYER_COUNT; index += 1) {
+          JSONObject layerJson =
+              layers == null ? null : layers.optJSONObject(LAYER_NAMES[index]);
+          populateLayerData(mLayerData[index], layerJson, index);
+          mDepthFactors[index] = mLayerData[index].parallaxMultiplier;
+          Bitmap bitmap = loadLayerBitmap(layerJson, index, targetWidth, targetHeight);
+          if (bitmap != null && !bitmap.isRecycled()) {
+            mLayerData[index].textureWidth = bitmap.getWidth();
+            mLayerData[index].textureHeight = bitmap.getHeight();
+            uploadTexture(bitmap, index);
+            mLayerData[index].textureId = mTextureIds[index];
+          } else {
+            AppLog.w("PARALLAX_GL_TEXTURE_MISSING index=" + index);
+          }
+        }
+      } catch (Exception error) {
+        AppLog.e("PARALLAX_GL_COMPOSITION_FAILED", error);
+      }
+      return mTextureIds;
+    }
+
+PROBLEMA:
+A flag `texturesLoaded` é marcada como true ANTES de verificar se o JSON existe e ANTES de tentar carregar. Se a primeira chamada ocorrer quando o JSON ainda não estiver disponível (por exemplo, timing entre o `apply()` do SharedPreferences e a leitura da thread EGL), o manager fica marcado como "carregado" para sempre, mesmo sem nenhuma textura. Chamadas subsequentes retornam cedo sem tentar de novo.
+
+CORREÇÃO:
+Mover a atribuição `texturesLoaded = true;` de onde está hoje (logo após o `if (texturesLoaded) return mTextureIds;`) para o FINAL do bloco `try`, imediatamente após o `for` que carrega as camadas e antes do `catch`. Assim a flag só é marcada quando o JSON foi lido e o loop de carregamento completou sem exceção.
+
+CÓDIGO NOVO (o método completo, para não haver ambiguidade):
+
+    public int[] loadTextures(int targetWidth, int targetHeight) {
+      if (texturesLoaded) return mTextureIds;
+
+      String json = context
+          .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+          .getString(PREF_COMPOSITION, null);
+      if (json == null) {
+        AppLog.w("PARALLAX_GL_COMPOSITION_MISSING");
+        return mTextureIds;
+      }
+
+      try {
+        JSONObject composition = new JSONObject(json);
+        mCompositionCanvasWidth = (float) composition.optDouble("canvasWidth", 280);
+        JSONObject layers = composition.optJSONObject("layers");
+        for (int index = 0; index < LAYER_COUNT; index += 1) {
+          JSONObject layerJson =
+              layers == null ? null : layers.optJSONObject(LAYER_NAMES[index]);
+          populateLayerData(mLayerData[index], layerJson, index);
+          mDepthFactors[index] = mLayerData[index].parallaxMultiplier;
+          Bitmap bitmap = loadLayerBitmap(layerJson, index, targetWidth, targetHeight);
+          if (bitmap != null && !bitmap.isRecycled()) {
+            mLayerData[index].textureWidth = bitmap.getWidth();
+            mLayerData[index].textureHeight = bitmap.getHeight();
+            uploadTexture(bitmap, index);
+            mLayerData[index].textureId = mTextureIds[index];
+          } else {
+            AppLog.w("PARALLAX_GL_TEXTURE_MISSING index=" + index);
+          }
+        }
+        texturesLoaded = true;
+      } catch (Exception error) {
+        AppLog.e("PARALLAX_GL_COMPOSITION_FAILED", error);
+      }
+      return mTextureIds;
+    }
+
+DIFERENÇAS EM RELAÇÃO AO ATUAL:
+- Linha `texturesLoaded = true;` REMOVIDA de logo após o primeiro `if`.
+- Linha `texturesLoaded = true;` ADICIONADA ao final do bloco `try`, após o fechamento do `for` e antes do `}` do try.
+
+REGRAS:
+- NÃO alterar a assinatura do método.
+- NÃO alterar nenhuma outra linha do método.
+- NÃO alterar nenhum outro método do arquivo.
+- NÃO alterar nenhum outro arquivo.
+
+INSTRUÇÕES DE EXECUÇÃO:
+1. Edite ParallaxTextureManager.java de verdade, salvando a alteração no disco.
+2. Depois de salvar, execute `git diff ParallaxTextureManager.java` e me mostre a saída completa.
+3. Não reverta. Não use modo de pré-visualização. A alteração deve ficar persistida.
+
+RESULTADO ESPERADO:
+- O `git diff` mostra duas mudanças: uma linha `-      texturesLoaded = true;` logo após o primeiro `if`, e uma linha `+        texturesLoaded = true;` no final do bloco try (indentação de 8 espaços, dentro do try).
+- Nenhuma outra linha tocada.
+O que verificar quando o Replit responder:
+
+Uma única remoção: texturesLoaded = true; removida da segunda linha do método.
+
+Uma única adição: texturesLoaded = true; adicionada ao final do try, logo após o } do for e antes do } catch.
+
+A indentação da adição é 8 espaços (dentro do try, mesmo nível do JSONObject composition = ...).
+
+Nenhuma outra linha tocada.

@@ -54,7 +54,6 @@ public final class ParallaxTextureManager {
 
   public int[] loadTextures(int targetWidth, int targetHeight) {
     if (texturesLoaded) return mTextureIds;
-    texturesLoaded = true;
 
     String json = context
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -83,6 +82,7 @@ public final class ParallaxTextureManager {
           AppLog.w("PARALLAX_GL_TEXTURE_MISSING index=" + index);
         }
       }
+        texturesLoaded = true;
     } catch (Exception error) {
       AppLog.e("PARALLAX_GL_COMPOSITION_FAILED", error);
     }
