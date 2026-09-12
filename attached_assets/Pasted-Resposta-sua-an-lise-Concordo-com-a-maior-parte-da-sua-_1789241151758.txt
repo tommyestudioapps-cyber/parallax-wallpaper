@@ -1,0 +1,69 @@
+Resposta à sua análise
+Concordo com a maior parte da sua reordenação, e vou tentar ser preciso sobre o mecanismo que liga o updateLayerUvTransform() ao sintoma — porque aí há um detalhe que muda a conclusão prática.
+
+Onde eu concordo
+Você está certo que o mipmap+NPOT não produz "corte geométrico". Ele produz borda suave, halo, mistura de alfa — não uma linha dura. Retiro a posição de "causa primária".
+
+Você está certo que falha de carregamento descartaria a camada inteira (if (textureId == 0) continue;), não uma faixa.
+
+Você está certo que a corrida EGL produziria deformação global, não uma emenda localizada.
+
+E você está certo que o CanvasWallpaperRenderer não está no caminho ativo — o ParallaxWallpaperService.createRenderer() retorna ParallaxEglController. Boa pegada.
+
+Onde eu quero refinar antes de fechar
+O bloco de UV não desloca uma camada em relação à outra. Ele só muda quais pixels da textura cada camada exibe internamente. Para ele produzir uma "linha de corte entre a intermediária e a frontal", é preciso que uma destas condições seja verdadeira:
+
+As duas camadas foram compostas para alinhar numa linha comum (ex.: uma foto dividida em "céu" e "solo", com o horizonte coincidindo). Nesse caso, um ajuste de UV aplicado a uma e não à outra abre exatamente uma linha na junção.
+
+As duas camadas compartilham o mesmo bitmap/arquivo e o ajuste é aplicado de forma diferente — o que só acontece se imageWidth/imageHeight divergirem entre as duas entradas do JSON, ou se cropAspect de uma cair num ramo e da outra no outro.
+
+Fora desses casos, o ajuste UV apenas dá zoom de alguns por cento numa camada isolada — invisível na maioria das cenas.
+
+Então a primeira pergunta que separa as hipóteses é: as camadas intermediária e frontal compartilham a mesma imagem de origem (ou foram desenhadas para alinhar numa mesma linha), ou são imagens independentes?
+
+Se compartilham: a hipótese UV ganha muita força, e o próximo passo é comparar imageWidth/imageHeight e cropOrigin/cropWidth/cropHeight das duas entradas no JSON. Uma diferença de 1% entre elas já basta para uma delas entrar no ramo de correção e a outra não.
+
+Se são independentes: a hipótese UV enfraquece muito — porque o "corte" que você descreveu (parte de uma ou das duas removida) não teria como surgir de um ajuste isolado por camada.
+
+Um detalhe do código que reforça a suspeita do UV
+A condição de disparo é:
+
+java
+if (Math.abs(textureAspect - imageAspect) > imageAspect * 0.01f) {
+Isso dispara com qualquer divergência acima de 1%, não só com troca de eixos por EXIF. E o BitmapFactory com inSampleSize produz ceil(w/k) × ceil(h/k) — ou seja, o aspect da textura muda ligeiramente em função do sampleSize, que por sua vez depende de targetWidth/targetHeight (o tamanho da superfície no momento do decode). Em imagens pequenas ou com sampleSize alto, o desvio de aspect passa de 1% com facilidade.
+
+Consequência importante: o mesmo wallpaper pode disparar ou não o ajuste dependendo do tamanho da superfície onde foi decodificado (preview pequena vs. tela cheia). Isso é uma fonte natural de intermitência que casa com "às vezes aparece, às vezes não" — e não tem nada a ver com memória nem com corrida de thread.
+
+Um teste que decide entre as duas hipóteses
+Um AppLog.i dentro do ramo de ajuste, imprimindo:
+
+text
+index, textureWidth×textureHeight, imageWidth×imageHeight,
+cropOriginX/Y, cropWidth×cropHeight, ramo tomado
+Rode até reproduzir o defeito. Se o log aparecer exatamente no frame em que a linha surge, é o bloco UV. Se o log aparecer em ambos os frames (com e sem defeito) com os mesmos valores, é outra coisa.
+
+Em paralelo, um teste igualmente barato e complementar: trocar temporariamente
+
+java
+GL_LINEAR_MIPMAP_LINEAR → GL_LINEAR
+Se a linha sumir, é mipmap. Como você notou, é uma experiência barata que não custa nada rodar antes de mexer no UV.
+
+Direção de correção, se confirmar o UV
+Se for o ajuste UV, a correção conceitual é: o bloco atual muda o conteúdo para preservar o aspecto do destino. Isso é o inverso do que se quer quando as camadas precisam alinhar entre si.
+
+O que preserva o alinhamento é mexer no MVP (destino), não no UV (conteúdo). Isto é: manter u0, v0, du, dv exatamente como o usuário definiu no crop, e ajustar o retângulo de destino para refletir o aspecto físico real da textura. Assim:
+
+O conteúdo que o usuário escolheu é preservado pixel-a-pixel.
+
+O ajuste é determinístico e idêntico entre camadas que compartilham o mesmo bitmap.
+
+Nenhuma faixa de textura é “subtraída” — só há leve reescala de destino.
+
+E, mais fundo: a origem de todo o problema é textureAspect ≠ imageAspect. Isso já é sintoma de que o pipeline está gravando no JSON dimensões que não correspondem ao bitmap pós-EXIF. O lugar certo de consertar é na hora de gravar o JSON (registrar as dimensões pós-rotação). O bloco de UV virou um paliativo que esconde o sintoma mas introduz o efeito colateral que estamos discutindo.
+
+Para continuar o diálogo, preciso de duas coisas suas
+As camadas intermediária e frontal compartilham a mesma imagem (ou precisam alinhar numa linha comum)?
+
+Quando o defeito aparece, a camada sumiu por inteiro, ou ela continua visível mas com uma faixa da imagem removida? — essa resposta decide entre a hipótese de carregamento e a de UV, como você mesmo propôs.
+
+Com essas duas respostas eu fecho a ordem das causas e proponho o patch exato.
