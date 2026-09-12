@@ -1,0 +1,62 @@
+Análise da causa do "corte" intermitente entre as camadas
+Fiz uma leitura completa dos arquivos e reproduzi mentalmente o caminho de renderização no ParallaxGlRenderer (que é o renderer efetivamente usado — o CanvasWallpaperRenderer não é instanciado pelo ParallaxWallpaperService). Encontrei alguns pontos que podem explicar o sintoma exato que você descreve ("linha de corte" horizontal separando a camada do meio da frontal, que aparece só algumas vezes).
+
+O que eu observei
+1. Amostragem de texturas na borda com mipmap + NPOT + CLAMP_TO_EDGE (causa mais provável)
+Em ParallaxTextureManager.uploadTexture:
+
+java
+GLES20.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+GLES20.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+GLES20.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
+GLES20.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
+...
+GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D);
+E em ParallaxGlRenderer.updateLayerUvTransform, quando não há sourceCrop, o UV transform é (0, 0, 1, 1) — ou seja, a amostragem chega exatamente a u=1 e v=1 na borda direita/inferior de cada camada.
+
+Combine três coisas:
+
+As imagens são normalmente NPOT (dimensões arbitrárias).
+
+O filtro minificador usa mipmap (GL_LINEAR_MIPMAP_LINEAR).
+
+O wrap é GL_CLAMP_TO_EDGE.
+
+Essa combinação é conhecida por se comportar de forma inconsistente em vários drivers Adreno/Mali/PowerVR: no nível 0 o texel da borda é exatamente o pixel da imagem, mas nos níveis altos de mipmap o box-filter produz um texel de borda que pode ter canal alfa misturado. Como o u_DepthFactor e o parallaxMultiplier fazem as camadas se deslocarem em sub-pixel, o mipmap usado na avaliação muda de forma não determinística de quadro para quadro perto da borda comum entre a camada do meio e a frontal. O resultado visual é exatamente o que você descreveu: uma "linha de corte" que some e volta.
+
+Além disso, quando uma camada é bastante minificada (ex.: fundo distante num dispositivo de 1080p com imagem 4K), ela usa níveis de mipmap mais altos e borra a borda; a outra camada usa o nível 0 e fica nítida. O contraste entre a borda borrada e a borda nítida aparece como um "corte" horizontal.
+
+2. Falha silenciosa de carregamento de bitmap sob pressão de memória
+Em ParallaxTextureManager.loadLayerBitmap:
+
+java
+Bitmap bitmap = BitmapFactory.decodeFile(path, decodeOptions);
+if (bitmap == null) {
+    AppLog.w("PARALLAX_GL_BITMAP_LOAD_FAILED index=" + index + " reason=decode_null");
+}
+Se a decodificação falhar (o que acontece intermitentemente em dispositivos reais sob TRIM_MEMORY_RUNNING_LOW, ou quando o SO está com pouca RAM), uploadTexture não é chamado e a textura fica com ID 0. Em ParallaxGlRenderer.renderFrame:
+
+java
+if (textureId == 0) continue;
+A camada é pulada inteiramente. Isso produz exatamente o que você viu: a linha em que a camada do meio (ou a frontal) deveria estar some, e o fundo aparece por trás. Note que ParallaxEglController.onTrimMemory e ParallaxWallpaperService.onTrimMemory são chamados com frequência em Android moderno — cada um deles descarta todas as texturas e recarrega. Se a recarga coincide com um momento ruim de memória, uma ou duas camadas ficam faltando até o próximo reload.
+
+3. Corrida entre onSurfaceChanged e a thread EGL
+Em ParallaxEglController.updateRequestedSurface:
+
+java
+boolean surfaceReplaced = previousSurface != holder;
+if ((surfaceReplaced || sizeChanged) && eglThread != null && state != State.STOPPING) {
+    pendingReload = true;
+    state = State.STOPPING;
+    threadToStop = eglThread;
+}
+A nova thread é criada em startIfPossible e só então lê as dimensões via surfaceHolder.getSurfaceFrame() dentro dela (initializeGlRenderer). Se o onSurfaceChanged do WallpaperService reportar (w, h) mas o SurfaceHolder ainda devolver o frame antigo por alguns milissegundos, a nova thread nasce com glViewport errado e as camadas são posicionadas em relação a dimensões obsoletas — o que também gera uma faixa horizontal visível (o resto da tela fica com o buffer antigo). Isso casa com "aparece só algumas vezes", porque depende do timing do compositor.
+
+4. Detalhe secundário mas relevante
+Há uma divergência entre os dois renderers:
+
+CanvasWallpaperRenderer.drawLayer chama canvas.drawBitmap(bitmap, null, destination, paint) — passa src = null, o que ignora o sourceCrop (a imagem inteira é escalada para o retângulo do crop).
+
+ParallaxGlRenderer.updateLayerUvTransform realmente recorta pela UV.
+
+Ou seja, os dois renderers produzem resultados diferentes se o JSON tiver sourceCrop. Se o preview usa o Canvas e o wallpaper usa GL, as bordas entre camadas nunca coincidem exatamente, e onde a parallax desloca a camada do meio contra a frontal a emenda fica exposta. Não é a causa principal do "corte intermitente" (porque é determinística), mas agrava o problema.
