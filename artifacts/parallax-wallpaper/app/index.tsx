@@ -1068,10 +1068,6 @@ function ParallaxPreview({
               onSensorStatus={handleSensorStatus}
             />
           )}
-          <View style={styles.previewOverlayLabel}>
-            <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
-            <Text style={[styles.previewOverlayText, { color: colors.primary }]}>PARALLAX {project.intensity}%</Text>
-          </View>
         </View>
         <View style={styles.previewCopy}>
           <Text style={[styles.previewTitle, { color: colors.foreground }]}>Seu wallpaper ganhou vida.</Text>
@@ -2251,8 +2247,6 @@ const styles = StyleSheet.create({
   previewScreenBody: { flexGrow: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
   previewFrame: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, borderRadius: 26, borderWidth: 1, overflow: 'hidden', backgroundColor: '#11151D' },
   previewLayer: { ...StyleSheet.absoluteFillObject },
-  previewOverlayLabel: { position: 'absolute', top: 16, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#090B10CC', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 99 },
-  previewOverlayText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   previewCopy: { width: '100%', paddingVertical: 17 },
   previewTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginBottom: 6, letterSpacing: -0.4 },
   footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', paddingTop: 12 },
