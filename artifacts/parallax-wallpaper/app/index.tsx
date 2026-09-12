@@ -981,6 +981,7 @@ function ParallaxPreview({
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       <Header title="Preview fluido" subtitle="Mova o aparelho para sentir a profundidade" colors={colors} onBack={onBack} />
       <View style={styles.previewScreenBody}>
+        <Progress mode="preview" colors={colors} />
         <View style={[styles.previewFrame, { borderColor: colors.border }]}>
           {Platform.OS === 'web' ? (
             <PreviewLayers
