@@ -30,6 +30,7 @@ public final class ParallaxTextureManager {
     public float y;
     public float parallaxMultiplier;
     public boolean hasSourceCrop;
+    public boolean textureIsCropped;
     public float cropOriginX;
     public float cropOriginY;
     public float cropWidth;
