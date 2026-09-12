@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   Dimensions,
   NativeModules,
   PanResponder,
@@ -29,13 +30,17 @@ import Animated, {
   useSharedValue,
   withDelay,
   withSequence,
+  withRepeat,
   withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const STORAGE_KEY = '@parallax-wallpaper/project';
+const PINCH_HINT_STATE_KEY = '@parallax-wallpaper/pinch-hint-state';
+const PINCH_HINT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 const CANVAS_VIEWBOX_WIDTH = 100;
 const CANVAS_VIEWBOX_HEIGHT = 177.78;
 const CANVAS_ASPECT_RATIO = CANVAS_VIEWBOX_WIDTH / CANVAS_VIEWBOX_HEIGHT;
@@ -397,6 +402,59 @@ function Progress({
           <Ionicons name="chevron-forward" size={22} color={colors.primary} />
         </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+function PinchGestureHint({
+  colors,
+  onFinished,
+}: {
+  colors: ReturnType<typeof useColors>;
+  onFinished: () => void;
+}) {
+  const progress = useSharedValue(0);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    opacity.value = withSequence(
+      withTiming(1, { duration: 240 }),
+      withDelay(2500, withTiming(0, { duration: 320 })),
+    );
+    progress.value = withDelay(
+      240,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 620 }),
+          withTiming(0, { duration: 620 }),
+        ),
+        2,
+        false,
+        (finished) => {
+          if (finished) runOnJS(onFinished)();
+        },
+      ),
+    );
+  }, [onFinished, opacity, progress]);
+
+  const leftFingerStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateX: -(22 + progress.value * 14) }],
+  }));
+  const rightFingerStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateX: 22 + progress.value * 14 }],
+  }));
+
+  return (
+    <View pointerEvents="none" style={styles.pinchHintOverlay}>
+      <View style={styles.pinchHintVisual}>
+        <Animated.View style={[styles.pinchFinger, { backgroundColor: colors.primary }, leftFingerStyle]} />
+        <Animated.View style={[styles.pinchFinger, { backgroundColor: colors.primary }, rightFingerStyle]} />
+      </View>
+      <Text style={[styles.pinchHintText, { color: colors.foreground, backgroundColor: `${colors.background}E6` }]}>
+        Use dois dedos para ajustar
+      </Text>
     </View>
   );
 }
@@ -1036,7 +1094,10 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [pinchHintEligible, setPinchHintEligible] = useState(false);
+  const [showPinchHint, setShowPinchHint] = useState(false);
   const projectRef = useRef(project);
+  const pinchHintShownThisSession = useRef(false);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editScrollRef = useRef<ScrollView>(null);
   const composeScrollRef = useRef<ScrollView>(null);
@@ -1095,6 +1156,54 @@ export default function HomeScreen() {
       })
       .finally(() => setIsLoading(false));
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const registerAppOpen = async () => {
+      try {
+        const now = Date.now();
+        const stored = await AsyncStorage.getItem(PINCH_HINT_STATE_KEY);
+        let lastOpenedAt: number | null = null;
+
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored) as { lastOpenedAt?: number };
+            if (Number.isFinite(parsed.lastOpenedAt)) {
+              lastOpenedAt = parsed.lastOpenedAt ?? null;
+            }
+          } catch {
+            lastOpenedAt = null;
+          }
+        }
+
+        const shouldShowHint = lastOpenedAt === null || now - lastOpenedAt >= PINCH_HINT_INTERVAL_MS;
+        await AsyncStorage.setItem(PINCH_HINT_STATE_KEY, JSON.stringify({ lastOpenedAt: now }));
+
+        if (mounted && shouldShowHint) {
+          setPinchHintEligible(true);
+        }
+      } catch {
+        // Keep the hint hidden when its cadence cannot be persisted reliably.
+      }
+    };
+
+    registerAppOpen();
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') registerAppOpen();
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'compose' || !pinchHintEligible || pinchHintShownThisSession.current) return;
+    pinchHintShownThisSession.current = true;
+    setShowPinchHint(true);
+  }, [mode, pinchHintEligible]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -1281,6 +1390,10 @@ export default function HomeScreen() {
     setComposeAttentionRequest((current) => current + 1);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
+
+  const dismissPinchHint = useCallback(() => {
+    setShowPinchHint(false);
+  }, []);
 
   const animateScrollTo = useCallback(
     (
@@ -1503,6 +1616,7 @@ export default function HomeScreen() {
           const layer = projectRef.current.layers[gestureLayerId];
           const touches = event.nativeEvent.touches;
           const isPinch = touches.length >= 2;
+           if (isPinch) dismissPinchHint();
           const firstTouch = touches[0];
           const pageX = isPinch ? (touches[0].pageX + touches[1].pageX) / 2 : firstTouch?.pageX ?? event.nativeEvent.pageX;
           const pageY = isPinch ? (touches[0].pageY + touches[1].pageY) / 2 : firstTouch?.pageY ?? event.nativeEvent.pageY;
@@ -1528,6 +1642,7 @@ export default function HomeScreen() {
               const pageY = (touches[0].pageY + touches[1].pageY) / 2;
               const focalX = gestureStart.current.focalX + pageX - gestureStart.current.pageX;
               const focalY = gestureStart.current.focalY + pageY - gestureStart.current.pageY;
+               dismissPinchHint();
               gestureStart.current = { mode: 'pinch', x: layer.x, y: layer.y, scale: layer.scale, distance, focalX, focalY, pageX, pageY };
               return;
             }
@@ -1589,7 +1704,7 @@ export default function HomeScreen() {
         },
         onPanResponderTerminationRequest: () => false,
       }),
-    [canHandleCanvasGesture, getTranslationBounds, gestureLayerId, updateLayer],
+    [canHandleCanvasGesture, dismissPinchHint, getTranslationBounds, gestureLayerId, updateLayer],
   );
 
   if (isLoading) {
@@ -1680,6 +1795,7 @@ export default function HomeScreen() {
               <View style={[styles.liveDot, { backgroundColor: colors.accent }]} />
               <Text style={[styles.canvasBadgeText, { color: colors.foreground }]}>TOQUE PARA EDITAR</Text>
             </View>
+            {showPinchHint ? <PinchGestureHint colors={colors} onFinished={dismissPinchHint} /> : null}
           </View>
           <View
             style={styles.layerPicker}
@@ -2120,6 +2236,10 @@ const styles = StyleSheet.create({
   previewPlaceholder: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
   canvasBadge: { position: 'absolute', left: 14, top: 14, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: 0.9 },
   canvasBadgeText: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 0.6 },
+  pinchHintOverlay: { position: 'absolute', left: 0, right: 0, bottom: 42, alignItems: 'center', gap: 8 },
+  pinchHintVisual: { width: 112, height: 40, alignItems: 'center', justifyContent: 'center' },
+  pinchFinger: { position: 'absolute', width: 15, height: 28, borderRadius: 10, opacity: 0.86 },
+  pinchHintText: { fontSize: 10, fontFamily: 'Inter_600SemiBold', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 99 },
   previewScreenBody: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
   previewFrame: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, borderRadius: 26, borderWidth: 1, overflow: 'hidden', backgroundColor: '#11151D' },
   previewLayer: { ...StyleSheet.absoluteFillObject },
