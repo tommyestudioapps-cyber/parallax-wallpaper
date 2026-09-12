@@ -14,3 +14,17 @@ mtime_ms = 1789248438897
 storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:22c18908-2a8c-45c0-87ca-9de95c47e4fb/955cebc7-a5b3-4dc2-8c4c-027de8ced923/6f6c4264-845b-4e91-8a3b-ef1c4e55caff"
 storage_version_token = "1789248444537999"
 content_type = "image/png"
+
+[[outputs]]
+id = "9Y0lLXcgq8Tm0yRo1Lrj9"
+uri = "file://attached_assets/generated_images/parallax-layered-opening-titled.png"
+type = "image"
+title = "Imagem de abertura com nome do app"
+description = "Versão com PARALLAX WALLPAPER MAKER aplicado na área superior, mantendo as três camadas e a iluminação azul."
+logical_id = "aef58a15-00bd-49a5-94c4-be5f11c79251"
+content_hash = "sha256:7d21e31297e38f2027ef0efecf2471fdc3eab3179adcfb668ae632814ee8277e"
+size = 1485531
+mtime_ms = 1789248530533
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:22c18908-2a8c-45c0-87ca-9de95c47e4fb/aef58a15-00bd-49a5-94c4-be5f11c79251/ae7cc2d0-0203-4420-b541-2e780a514d7b"
+storage_version_token = "1789248535773629"
+content_type = "image/png"
