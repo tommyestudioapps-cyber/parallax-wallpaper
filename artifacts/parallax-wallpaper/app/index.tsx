@@ -1038,6 +1038,10 @@ export default function HomeScreen() {
   const composeAttentionPending = useRef(false);
   const editAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composeAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editScrollY = useRef(0);
+  const composeScrollY = useRef(0);
+  const editScrollFrame = useRef<number | null>(null);
+  const composeScrollFrame = useRef<number | null>(null);
   const [editAttentionRequest, setEditAttentionRequest] = useState(0);
   const [composeAttentionRequest, setComposeAttentionRequest] = useState(0);
   const [editCropCardLayoutVersion, setEditCropCardLayoutVersion] = useState(0);
@@ -1270,29 +1274,63 @@ export default function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
+  const animateScrollTo = useCallback(
+    (
+      scrollRef: React.MutableRefObject<ScrollView | null>,
+      currentYRef: React.MutableRefObject<number>,
+      frameRef: React.MutableRefObject<number | null>,
+      targetY: number,
+    ) => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      const startY = currentYRef.current;
+      const startedAt = performance.now();
+      const duration = 900;
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        const nextY = startY + (targetY - startY) * eased;
+        scrollRef.current?.scrollTo({ y: nextY, animated: false });
+        if (progress < 1) {
+          frameRef.current = requestAnimationFrame(step);
+        } else {
+          currentYRef.current = targetY;
+          frameRef.current = null;
+        }
+      };
+      frameRef.current = requestAnimationFrame(step);
+    },
+    [],
+  );
+
   const cropAttentionStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: cropAttention.value * 2.5 },
-      { scale: 1 + Math.abs(cropAttention.value) * 0.025 },
-    ],
+    transform: [{ translateX: cropAttention.value }],
+  }));
+  const cropAttentionGlowStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(0.38, Math.abs(cropAttention.value) * 0.2),
+    transform: [{ scale: 1 + Math.min(0.05, Math.abs(cropAttention.value) * 0.025) }],
   }));
   const middlePickerAttentionStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: middlePickerAttention.value * 1.5 },
-      { scale: 1 + Math.abs(middlePickerAttention.value) * 0.035 },
-    ],
+    transform: [{ translateX: middlePickerAttention.value }],
+  }));
+  const middlePickerGlowStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(0.38, Math.abs(middlePickerAttention.value) * 0.25),
+    transform: [{ scale: 1 + Math.min(0.05, Math.abs(middlePickerAttention.value) * 0.03) }],
   }));
   const foregroundPickerAttentionStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: foregroundPickerAttention.value * 1.5 },
-      { scale: 1 + Math.abs(foregroundPickerAttention.value) * 0.035 },
-    ],
+    transform: [{ translateX: foregroundPickerAttention.value }],
+  }));
+  const foregroundPickerGlowStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(0.38, Math.abs(foregroundPickerAttention.value) * 0.25),
+    transform: [{ scale: 1 + Math.min(0.05, Math.abs(foregroundPickerAttention.value) * 0.03) }],
   }));
   const previewButtonAttentionStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: previewButtonAttention.value * 1.8 },
-      { scale: 1 + Math.abs(previewButtonAttention.value) * 0.045 },
-    ],
+    transform: [{ translateX: previewButtonAttention.value }],
+  }));
+  const previewButtonGlowStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(0.42, Math.abs(previewButtonAttention.value) * 0.28),
+    transform: [{ scale: 1 + Math.min(0.06, Math.abs(previewButtonAttention.value) * 0.035) }],
   }));
 
   useEffect(() => {
@@ -1301,23 +1339,26 @@ export default function HomeScreen() {
       const targetY = editCropCardY.current;
       if (targetY === null) return;
       editAttentionPending.current = false;
-      editScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 24), animated: true });
+      animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24));
       if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
       editAttentionTimer.current = setTimeout(() => {
         cropAttention.value = withDelay(
-          380,
+          180,
           withSequence(
-            withTiming(1, { duration: 120 }),
-            withTiming(-0.8, { duration: 90 }),
-            withTiming(0, { duration: 150 }),
-            withTiming(0.65, { duration: 110 }),
-            withTiming(0, { duration: 150 }),
+            withTiming(-2, { duration: 150 }),
+            withTiming(2, { duration: 220 }),
+            withTiming(-1, { duration: 160 }),
+            withTiming(0, { duration: 190 }),
           ),
         );
-      }, 90);
+      }, 760);
     });
-    return () => cancelAnimationFrame(frame);
-  }, [cropAttention, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
+      if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
+    };
+  }, [animateScrollTo, cropAttention, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
 
   useEffect(() => {
     if (mode !== 'compose' || !composeAttentionPending.current) return;
@@ -1325,37 +1366,45 @@ export default function HomeScreen() {
       const targetY = composeLayerPickerY.current;
       if (targetY === null) return;
       composeAttentionPending.current = false;
-      composeScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 24), animated: true });
+      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, Math.max(0, targetY - 24));
       if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
       composeAttentionTimer.current = setTimeout(() => {
         middlePickerAttention.value = withDelay(
-          360,
+          120,
           withSequence(
-            withTiming(1, { duration: 140 }),
-            withTiming(-0.45, { duration: 100 }),
-            withTiming(0, { duration: 170 }),
+            withTiming(-1.5, { duration: 160 }),
+            withTiming(1.5, { duration: 220 }),
+            withTiming(-0.7, { duration: 160 }),
+            withTiming(0, { duration: 190 }),
           ),
         );
         foregroundPickerAttention.value = withDelay(
           820,
           withSequence(
-            withTiming(1, { duration: 140 }),
-            withTiming(-0.45, { duration: 100 }),
-            withTiming(0, { duration: 170 }),
-          ),
-        );
-        previewButtonAttention.value = withDelay(
-          1280,
-          withSequence(
-            withTiming(1.2, { duration: 150 }),
-            withTiming(-0.55, { duration: 105 }),
+            withTiming(-1.5, { duration: 160 }),
+            withTiming(1.5, { duration: 220 }),
+            withTiming(-0.7, { duration: 160 }),
             withTiming(0, { duration: 190 }),
           ),
         );
-      }, 120);
+        previewButtonAttention.value = withDelay(
+          1520,
+          withSequence(
+            withTiming(-2, { duration: 170 }),
+            withTiming(2, { duration: 240 }),
+            withTiming(-0.9, { duration: 170 }),
+            withTiming(0, { duration: 210 }),
+          ),
+        );
+      }, 780);
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
+      if (composeScrollFrame.current !== null) cancelAnimationFrame(composeScrollFrame.current);
+    };
   }, [
+    animateScrollTo,
     composeAttentionRequest,
     composeLayerPickerLayoutVersion,
     foregroundPickerAttention,
@@ -1564,7 +1613,15 @@ export default function HomeScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <Header title="Composição" subtitle="Ajuste a distância entre os planos" colors={colors} onBack={() => setMode('edit')} onReset={resetProject} />
-        <ScrollView ref={composeScrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={composeScrollRef}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(event) => {
+            composeScrollY.current = event.nativeEvent.contentOffset.y;
+          }}
+        >
           <Progress mode={mode} colors={colors} />
           <Text style={[styles.sectionKicker, { color: colors.primary }]}>PRÉVIA DA CENA</Text>
           <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Selecione uma camada abaixo e use os gestos no quadro para ajustar o enquadramento.</Text>
@@ -1631,6 +1688,14 @@ export default function HomeScreen() {
                   id === 'middle' ? middlePickerAttentionStyle : foregroundPickerAttentionStyle,
                 ]}
               >
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.attentionGlow,
+                    { borderColor: colors.primary, backgroundColor: colors.primary },
+                    id === 'middle' ? middlePickerGlowStyle : foregroundPickerGlowStyle,
+                  ]}
+                />
                 <Pressable
                   testID={`select-${id}`}
                   onPress={() => setProject((current) => ({ ...current, activeLayer: id }))}
@@ -1668,6 +1733,14 @@ export default function HomeScreen() {
             </View>
           </View>
           <Animated.View style={[styles.primaryButtonAttention, previewButtonAttentionStyle]}>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.attentionGlow,
+                { borderColor: colors.primary, backgroundColor: colors.primary },
+                previewButtonGlowStyle,
+              ]}
+            />
             <PrimaryButton title="Visualizar movimento" onPress={() => setMode('preview')} colors={colors} icon="play" />
           </Animated.View>
           <View style={{ height: insets.bottom + 24 }} />
@@ -1692,7 +1765,15 @@ export default function HomeScreen() {
           }}
           inHeader
         />
-        <ScrollView ref={editScrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={editScrollRef}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(event) => {
+            editScrollY.current = event.nativeEvent.contentOffset.y;
+          }}
+        >
           <View
             {...canvasResponder.panHandlers}
             style={[styles.editPreview, { backgroundColor: colors.muted, borderColor: colors.border }]}
@@ -1776,6 +1857,14 @@ export default function HomeScreen() {
                     </View>
                   </View>
                   <Animated.View style={[styles.attentionButtonWrap, cropAttentionStyle]}>
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.attentionGlow,
+                        { borderColor: colors.primary, backgroundColor: colors.primary },
+                        cropAttentionGlowStyle,
+                      ]}
+                    />
                     <Pressable
                       testID="remover-fundo"
                       accessibilityRole="button"
@@ -2004,19 +2093,20 @@ const styles = StyleSheet.create({
   cropCard: { borderWidth: 1, borderRadius: 18, padding: 15, marginBottom: 12 },
   cropCopy: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 11 },
   cropIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  attentionButtonWrap: { width: '100%' },
+  attentionButtonWrap: { width: '100%', position: 'relative' },
+  attentionGlow: { position: 'absolute', top: -5, right: -5, bottom: -5, left: -5, borderWidth: 1, borderRadius: 17 },
   infoRow: { borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 },
   removeBackgroundButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   removeBackgroundText: { fontSize: 11, fontFamily: 'Inter_700Bold' },
   emptyEdit: { gap: 18, paddingVertical: 8 },
   composeCanvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: 'center', borderRadius: 24, borderWidth: 1, overflow: 'hidden', marginTop: 20, marginBottom: 15, justifyContent: 'center', alignItems: 'center' },
   layerPicker: { flexDirection: 'row', width: '100%', gap: 7, marginBottom: 8 },
-  layerPickerItemWrap: { flex: 1 },
+  layerPickerItemWrap: { flex: 1, position: 'relative' },
   layerPickerItem: { flex: 1, minHeight: 36, borderRadius: 11, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   layerPickerDot: { width: 5, height: 5, borderRadius: 3 },
   layerPickerText: { fontSize: 10, fontFamily: 'Inter_600SemiBold' },
   gestureHint: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', marginBottom: 16 },
-  primaryButtonAttention: { width: '100%' },
+  primaryButtonAttention: { width: '100%', position: 'relative' },
   layerPreview: { position: 'absolute', width: '100%', height: '100%', borderWidth: 0, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   layerImage: { width: '100%', height: '100%' },
   previewPlaceholder: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
