@@ -817,6 +817,19 @@ public final class ParallaxGlRenderer {
 
   private void updateLayerUvTransform(int index) {
     ParallaxTextureManager.LayerData layer = textureManager.getLayerData(index);
+    if (layer.textureIsCropped) {
+      if (BuildConfig.DEBUG && layer.textureWidth > 0) {
+        AppLog.i(
+            "PARALLAX_GL_CROPPED_TEXTURE index=" + index
+                + " texture=" + layer.textureWidth + "x" + layer.textureHeight
+                + " crop=" + layer.cropWidth + "x" + layer.cropHeight);
+      }
+      mUvTransform[0] = 0f;
+      mUvTransform[1] = 0f;
+      mUvTransform[2] = 1f;
+      mUvTransform[3] = 1f;
+      return;
+    }
     if (layer == null
         || !layer.hasSourceCrop
         || layer.imageWidth <= 0f
