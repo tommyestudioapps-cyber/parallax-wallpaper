@@ -1,0 +1,89 @@
+Plano de reparos — dois prompts + verificação
+Dois arquivos, dois reparos independentes, um prompt de verificação final. Envie um por vez, aguarde o git diff e confirme antes de mandar o próximo — foi assim que funcionou na correção anterior.
+
+A ordem importa: o Reparo A (EGL) é a causa raiz do "primeiro Apply falha". O Reparo B (texturesLoaded) é higiene defensiva no mesmo território. Se você quiser aplicar só o A agora e deixar o B para depois, também é uma decisão defensável — me diga e eu corto.
+
+Prompt A de 3 — Corrigir updateRequestedSurface em ParallaxEglController.java
+Cole isto no Replit. Instrução é aplicar e persistir, e depois mostrar git diff.
+
+text
+Correção cirúrgica em um único método. APLIQUE a alteração no arquivo — não apenas mostre o diff.
+
+ARQUIVO: ParallaxEglController.java
+MÉTODO: updateRequestedSurface(SurfaceHolder holder, boolean sizeChanged)
+
+Hoje o método é assim:
+
+    private void updateRequestedSurface(SurfaceHolder holder, boolean sizeChanged) {
+      ParallaxEglThread threadToStop = null;
+      synchronized (stateLock) {
+        SurfaceHolder previousSurface = requestedSurface;
+        requestedSurface = holder;
+        boolean surfaceReplaced = previousSurface != holder;
+        if ((surfaceReplaced || sizeChanged)
+            && eglThread != null
+            && state != State.STOPPING) {
+          pendingReload = true;
+          state = State.STOPPING;
+          threadToStop = eglThread;
+        }
+      }
+      requestStop(threadToStop);
+      startIfPossible();
+    }
+
+PROBLEMA:
+Na primeira aplicação do wallpaper, o Android despacha onSurfaceChanged logo após onSurfaceCreated. Se a thread EGL já foi criada (por onVisibilityChanged ou onSurfaceCreated) e ainda está em State.STARTING (initializeEgl em andamento), o código atual interpreta o onSurfaceChanged como "precisa reiniciar" e chama requestStop() na thread recém-criada. Isso descarta uma inicialização EGL inteira e deixa o preview preto até o retry automático (3s). O usuário tende a fechar antes e concluir que "não funcionou".
+
+CORREÇÃO:
+Substituir o bloco interno `if ((surfaceReplaced || sizeChanged) && ...)` por uma versão que distingue dois sub-casos:
+
+- Se a superfície foi TROCADA (surfaceReplaced == true), sempre reiniciar — a EGL surface antiga não serve para o novo holder.
+- Se APENAS o tamanho mudou e a thread está em State.RUNNING, reiniciar — precisa reconfigurar glViewport e recalcular MVP.
+- Se APENAS o tamanho mudou e a thread está em State.STARTING, NÃO reiniciar — deixar a thread terminar. Ela lê a dimensão atual em initializeGlRenderer() via surfaceHolder.getSurfaceFrame(), já com o onSurfaceChanged aplicado.
+
+CÓDIGO NOVO (substituir o bloco interno, mantendo a indentação existente de 8 espaços na condição e 10 espaços no corpo):
+
+        if ((surfaceReplaced || sizeChanged)
+            && eglThread != null
+            && state != State.STOPPING) {
+          // Durante a primeira criação da superfície, o Android despacha
+          // onSurfaceChanged logo após onSurfaceCreated. Se a thread EGL
+          // ainda estiver em STARTING (initializeEgl em andamento), parar
+          // agora desperdiça uma inicialização inteira e deixa o preview
+          // preto até o retry automático. Deixamos a thread terminar: ela
+          // lê a dimensão atual em initializeGlRenderer(), já com o
+          // onSurfaceChanged aplicado.
+          if (surfaceReplaced || state == State.RUNNING) {
+            pendingReload = true;
+            state = State.STOPPING;
+            threadToStop = eglThread;
+          }
+        }
+
+REGRAS:
+- NÃO alterar a assinatura do método.
+- NÃO alterar o restante do corpo do método (as linhas `requestStop(threadToStop);` e `startIfPossible();` permanecem).
+- NÃO alterar nenhum outro método.
+- NÃO alterar nenhum outro arquivo.
+- Manter a indentação existente do arquivo (2 espaços para corpo de classe/método, 4 para o corpo do synchronized, 6 para o primeiro if, 8 para o if interno, 10 para o corpo do if interno).
+
+INSTRUÇÕES DE EXECUÇÃO:
+1. Edite ParallaxEglController.java de verdade, salvando a alteração no disco.
+2. Depois de salvar, execute `git diff ParallaxEglController.java` e me mostre a saída completa.
+3. Não reverta. Não use modo de pré-visualização. A alteração deve ficar persistida.
+
+RESULTADO ESPERADO:
+- O `git diff` mostra um bloco `if (surfaceReplaced || state == State.RUNNING) { ... }` adicionado dentro do `if ((surfaceReplaced || sizeChanged) && ...)` existente.
+- O corpo antigo (`pendingReload = true; state = State.STOPPING; threadToStop = eglThread;`) aparece agora dentro do novo if interno.
+- Um comentário de 7 linhas explicando o motivo aparece imediatamente antes do novo if interno.
+- Nenhuma outra modificação no arquivo.
+O que verificar quando o Replit responder:
+
+O git diff mostra que as três linhas antigas (pendingReload = true; state = State.STOPPING; threadToStop = eglThread;) foram movidas para dentro de um novo if (surfaceReplaced || state == State.RUNNING) { ... }.
+
+Um comentário de 7 linhas aparece antes desse if interno.
+
+O if ((surfaceReplaced || sizeChanged) && ...) externo continua intacto.
+
+Nada mais no arquivo foi tocado.

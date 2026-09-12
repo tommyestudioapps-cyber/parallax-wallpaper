@@ -257,9 +257,18 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
       if ((surfaceReplaced || sizeChanged)
           && eglThread != null
           && state != State.STOPPING) {
-        pendingReload = true;
-        state = State.STOPPING;
-        threadToStop = eglThread;
+          // Durante a primeira criação da superfície, o Android despacha
+          // onSurfaceChanged logo após onSurfaceCreated. Se a thread EGL
+          // ainda estiver em STARTING (initializeEgl em andamento), parar
+          // agora desperdiça uma inicialização inteira e deixa o preview
+          // preto até o retry automático. Deixamos a thread terminar: ela
+          // lê a dimensão atual em initializeGlRenderer(), já com o
+          // onSurfaceChanged aplicado.
+          if (surfaceReplaced || state == State.RUNNING) {
+            pendingReload = true;
+            state = State.STOPPING;
+            threadToStop = eglThread;
+          }
       }
     }
     requestStop(threadToStop);
