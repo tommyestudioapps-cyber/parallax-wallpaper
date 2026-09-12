@@ -1038,7 +1038,14 @@ function ParallaxPreview({
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       <Header title="Preview fluido" subtitle="Mova o aparelho para sentir a profundidade" colors={colors} onBack={onBack} />
-      <View style={styles.previewScreenBody}>
+      <ScrollView
+        style={styles.previewScreenScroll}
+        contentContainerStyle={[
+          styles.previewScreenBody,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <Progress mode="preview" colors={colors} />
         <View style={[styles.previewFrame, { borderColor: colors.border }]}>
           {Platform.OS === 'web' ? (
@@ -1080,7 +1087,7 @@ function ParallaxPreview({
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
           {Platform.OS === 'android' ? 'O Android usará o serviço nativo de wallpaper quando instalado.' : 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.'}
         </Text>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -2240,7 +2247,8 @@ const styles = StyleSheet.create({
   pinchHintVisual: { width: 112, height: 40, alignItems: 'center', justifyContent: 'center' },
   pinchFinger: { position: 'absolute', width: 15, height: 28, borderRadius: 10, opacity: 0.86 },
   pinchHintText: { fontSize: 10, fontFamily: 'Inter_600SemiBold', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 99 },
-  previewScreenBody: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
+  previewScreenScroll: { flex: 1, width: '100%' },
+  previewScreenBody: { flexGrow: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 12, alignItems: 'center' },
   previewFrame: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, borderRadius: 26, borderWidth: 1, overflow: 'hidden', backgroundColor: '#11151D' },
   previewLayer: { ...StyleSheet.absoluteFillObject },
   previewOverlayLabel: { position: 'absolute', top: 16, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#090B10CC', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 99 },
