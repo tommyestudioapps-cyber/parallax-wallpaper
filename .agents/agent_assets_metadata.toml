@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "orby9PTVuCeptvMC2_ahJ"
+uri = "file://attached_assets/generated_images/parallax-layered-opening.png"
+type = "image"
+title = "Imagem de abertura Parallax"
+description = "Imagem original com três camadas fotográficas em perspectiva, recorte central translúcido e bordas luminosas azuladas."
+logical_id = "955cebc7-a5b3-4dc2-8c4c-027de8ced923"
+content_hash = "sha256:dd0b98cc3c83427045bacaaab03d6ead1f0752770287c77df669a47d17d9dd29"
+size = 1459444
+mtime_ms = 1789248438897
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:22c18908-2a8c-45c0-87ca-9de95c47e4fb/955cebc7-a5b3-4dc2-8c4c-027de8ced923/6f6c4264-845b-4e91-8a3b-ef1c4e55caff"
+storage_version_token = "1789248444537999"
+content_type = "image/png"
