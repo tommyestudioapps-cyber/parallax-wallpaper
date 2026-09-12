@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/icon.png",
+      "image": "./assets/images/parallax-layered-opening-titled.png",
       "resizeMode": "contain",
       "backgroundColor": "#090B10"
     },

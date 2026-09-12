@@ -2,3 +2,4 @@
 - [Canvas bitmap ownership](canvas-bitmap-ownership.md) — decoded Canvas bitmaps need renderer-owned references so lifecycle cleanup can recycle them centrally.
 - [GLES20 attribute state](gles20-attribute-state.md) — Android GLES20 lacks pointer readback; preserve renderer-owned canonical offsets with queryable attribute state.
 - [Wallpaper rendering thread](wallpaper-rendering-thread.md) — never decode images or block on canvas rendering from WallpaperService callbacks.
+- [Expo build port](expo-build-port.md) — the custom static build assumes Metro owns port 8081, so concurrent workflows can make it time out before bundling.
