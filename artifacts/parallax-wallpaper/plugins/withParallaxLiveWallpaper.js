@@ -47,7 +47,7 @@ function withParallaxWallpaperManifest(config) {
       application.service.push({
         $: {
           'android:name': '.ParallaxWallpaperService',
-          'android:label': 'Parallax Wallpaper',
+          'android:label': 'Parallax Wallpaper Maker',
           'android:permission': 'android.permission.BIND_WALLPAPER',
           'android:exported': 'true',
         },

@@ -675,7 +675,14 @@ function Header({
     <View style={styles.header}>
       {onBack ? <IconButton name="chevron-back" onPress={onBack} colors={colors} label="Voltar" /> : <View style={styles.headerSpacer} />}
       <View style={styles.headerTitleWrap}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{title}</Text>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+          style={[styles.headerTitle, { color: colors.foreground }]}
+        >
+          {title}
+        </Text>
         {subtitle ? <Text style={[styles.headerSubtitle, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
       </View>
       {onReset ? <IconButton name="refresh-outline" onPress={onReset} colors={colors} label="Recomeçar" /> : <View style={styles.headerSpacer} />}
@@ -1910,7 +1917,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-       <Header title="Parallax" subtitle="Tommy Studio" colors={colors} onReset={importedCount > 0 ? resetProject : undefined} />
+       <Header title="Parallax Wallpaper Maker" colors={colors} onReset={importedCount > 0 ? resetProject : undefined} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Progress mode={mode} colors={colors} />
         <View style={styles.hero}>
@@ -2023,7 +2030,7 @@ const styles = StyleSheet.create({
   header: { width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', minHeight: 68, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerSpacer: { width: 38 },
   headerTitleWrap: { alignItems: 'center', flex: 1 },
-  headerTitle: { fontSize: 16, fontFamily: 'Inter_700Bold', letterSpacing: -0.2 },
+  headerTitle: { fontSize: 15, fontFamily: 'Inter_700Bold', letterSpacing: -0.35 },
   headerSubtitle: { fontSize: 10, fontFamily: 'Inter_500Medium', marginTop: 3, letterSpacing: 0.3 },
   iconButton: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   pressed: { transform: [{ scale: 0.96 }], opacity: 0.8 },
