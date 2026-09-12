@@ -1,0 +1,88 @@
+text
+Continuando a correção anterior. Preciso de uma alteração cirúrgica em um único método.
+
+ARQUIVO: ParallaxTextureManager.java
+MÉTODO: populateLayerData(LayerData data, JSONObject layer, int index)
+
+O método tem DOIS caminhos de execução. Ambos precisam ser alterados. Não pule nenhum.
+
+CAMINHO 1 — retorno antecipado para camada nula ou desabilitada.
+Hoje o código começa assim:
+
+    if (layer == null || !layer.optBoolean("enabled", true)) {
+      data.parallaxMultiplier = DEFAULT_DEPTH_FACTORS[index];
+      data.imageWidth = 0;
+      data.imageHeight = 0;
+      data.sourceWidth = 0;
+      data.sourceHeight = 0;
+      data.scale = 1f;
+      data.x = 0;
+      data.y = 0;
+      data.hasSourceCrop = false;
+      data.cropOriginX = 0;
+      data.cropOriginY = 0;
+      data.cropWidth = 0;
+      data.cropHeight = 0;
+      return;
+    }
+
+ADICIONAR dentro deste bloco, junto às outras atribuições, a linha:
+
+    data.textureIsCropped = false;
+
+Coloque logo após `data.hasSourceCrop = false;` para agrupar com os outros booleanos.
+
+CAMINHO 2 — fluxo normal da camada habilitada.
+Hoje o código continua assim:
+
+    data.imageWidth = (float) layer.optDouble("imageWidth", 0);
+    data.imageHeight = (float) layer.optDouble("imageHeight", 0);
+    data.scale = (float) layer.optDouble("scale", 1);
+    data.x = (float) layer.optDouble("x", 0);
+    data.y = (float) layer.optDouble("y", 0);
+    data.parallaxMultiplier = (float) layer.optDouble(
+        "parallaxMultiplier",
+        DEFAULT_DEPTH_FACTORS[index]);
+    JSONObject crop = layer.optJSONObject("sourceCrop");
+    data.hasSourceCrop = crop != null;
+    data.cropOriginX = crop == null ? 0 : (float) crop.optDouble("originX", 0);
+    data.cropOriginY = crop == null ? 0 : (float) crop.optDouble("originY", 0);
+    data.cropWidth = crop == null ? 0 : (float) crop.optDouble("width", 0);
+    data.cropHeight = crop == null ? 0 : (float) crop.optDouble("height", 0);
+
+ADICIONAR dentro deste bloco, junto às outras leituras, a linha:
+
+    data.textureIsCropped = layer.optBoolean("cutoutOutputCropped", false);
+
+Coloque logo após `data.hasSourceCrop = crop != null;` para que os dois booleanos relacionados fiquem juntos.
+
+CONTEXTO IMPORTANTE:
+- A flag `cutoutOutputCropped` indica que o bitmap já está fisicamente recortado, mas os metadados `imageWidth/imageHeight` e `sourceCrop` continuam descrevendo a imagem ORIGINAL. O renderer precisa saber disso.
+- `optBoolean` já retorna `false` quando a chave não existe, então wallpapers antigos continuam com comportamento idêntico.
+- NÃO alterar nenhuma outra leitura de JSON.
+- NÃO alterar a assinatura do método.
+- NÃO alterar outros métodos.
+
+ADICIONAR TAMBÉM, imediatamente antes da linha `if (layer == null || !layer.optBoolean("enabled", true)) {`, um comentário de documentação curto:
+
+    // ATENÇÃO: quando cutoutOutputCropped === true, o bitmap já está fisicamente
+    // recortado, mas imageWidth/imageHeight e sourceCrop descrevem a imagem ORIGINAL.
+    // O renderer deve usar textureIsCropped para amostrar UV [0,1]x[0,1] em vez
+    // de reaplicar sourceCrop. Ver ParallaxGlRenderer.updateLayerUvTransform.
+
+RESULTADO ESPERADO:
+- UMA linha adicionada no caminho 1.
+- UMA linha adicionada no caminho 2.
+- UM bloco de comentário adicionado antes do if inicial.
+- Nenhuma outra modificação.
+
+Por favor, mostre o diff antes de aplicar e não faça mais nada além disso.
+O que verificar no diff antes de aprovar:
+
+Uma linha data.textureIsCropped = false; dentro do bloco de camada desabilitada, logo abaixo de data.hasSourceCrop = false;.
+
+Uma linha data.textureIsCropped = layer.optBoolean("cutoutOutputCropped", false); no fluxo normal, logo abaixo de data.hasSourceCrop = crop != null;.
+
+O bloco de comentário de 4 linhas antes do if inicial.
+
+Nada mais tocado no arquivo.
