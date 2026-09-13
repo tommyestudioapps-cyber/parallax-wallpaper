@@ -22,3 +22,15 @@ timeoutMs = 20000
 [nix]
 channel = "stable-25_05"
 packages = ["android-tools", "android-sdk", "jdk17", "nano"]
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 24158
+externalPort = 3000
