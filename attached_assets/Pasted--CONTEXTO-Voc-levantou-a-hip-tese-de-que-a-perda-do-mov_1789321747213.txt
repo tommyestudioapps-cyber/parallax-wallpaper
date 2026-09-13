@@ -1,0 +1,66 @@
+[CONTEXTO]
+Você levantou a hipótese de que a perda do movimento vertical vem da
+incompatibilidade entre o pitch do React Native e o pitch do serviço
+Android nativo, persistido pela calibração entre Preview e wallpaper.
+
+Antes de aplicar qualquer correção, preciso VERIFICAR essa hipótese com
+evidência. Sua análise foi sólida, mas foi baseada em leitura de código,
+não em execução. Precisamos confirmar antes de reescrever a calibração,
+senão corremos o risco de consertar o lugar errado.
+
+[TAREFA — adicionar logs temporários, sem alterar lógica]
+
+── PARTE 1: Logs no Preview (app/index.tsx) ──
+No componente NativeParallaxLayers, adicione logs APENAS quando o valor
+mudar significativamente (threshold 0.5 grau), para não inundar o console:
+
+  console.log('[PREVIEW] pitch=', pitch.toFixed(2),
+              'roll=', roll.toFixed(2),
+              'targetY=', targetY.toFixed(3),
+              'motionY=', motionY.toFixed(3));
+
+Coloque imediatamente antes do translateY ser aplicado.
+
+── PARTE 2: Logs no serviço Android nativo ──
+No arquivo Java que faz a calibração (o que lê baselinePitch/baselineRoll),
+adicione logs com a MESMA estrutura, no momento em que a calibração é
+carregada e no momento em que cada leitura é processada:
+
+  Log.d("PARALLAX", "[NATIVE] baselinePitch=" + baselinePitch
+        + " baselineRoll=" + baselineRoll
+        + " calibrated=" + calibrated);
+  Log.d("PARALLAX", "[NATIVE] rawPitch=" + pitch
+        + " rawRoll=" + roll
+        + " motionY=" + motionY
+        + " motionX=" + motionX);
+
+Coloque um no onVisibilityChanged(true) logo depois de
+loadPersistedCalibration() e refreshCachedRotation(), e outro no loop
+de leitura do sensor.
+
+── PARTE 3: Log dos valores persistidos ──
+Onde o Preview salva sensorCalibration { pitch, roll }, adicione:
+
+  console.log('[PREVIEW→PERSIST] saving pitch=', pitch,
+              'roll=', roll);
+
+E onde o serviço Android lê esses valores:
+
+  Log.d("PARALLAX", "[PERSIST→NATIVE] loaded pitch=" + pitch
+        + " roll=" + roll);
+
+[NÃO FAÇA]
+- Não altere a lógica de calibração ainda.
+- Não mude o remapCoordinateSystem.
+- Não mexa no shader.
+- Não remova logs existentes.
+- Não altere a ordem de loadPersistedCalibration e refreshCachedRotation
+  ainda — primeiro quero ver o comportamento atual documentado.
+
+[VERIFICAÇÃO]
+Me diga:
+1. Em quais arquivos exatamente você adicionou cada log (caminho + linha).
+2. Como eu executo o Preview + aplico o wallpaper no meu celular para
+   capturar os dois lados.
+3. Onde eu vejo os logs do serviço Android (adb logcat? outro lugar?).
+4. Qual comando exato eu rodo para filtrar só os logs "PARALLAX".
