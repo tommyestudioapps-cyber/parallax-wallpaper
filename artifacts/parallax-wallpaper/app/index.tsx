@@ -338,15 +338,7 @@ function PrimaryButton({
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-type AttentionAnimation = {
-  buttonStyle: ReturnType<typeof useAnimatedStyle>;
-  laserProgress: SharedValue<number>;
-  laserOpacity: SharedValue<number>;
-  laserScale: SharedValue<number>;
-  start: (delay?: number) => void;
-};
-
-function useAttentionAnimation(): AttentionAnimation {
+function useAttentionAnimation() {
   const shake = useSharedValue(0);
   const laserProgress = useSharedValue(0);
   const laserOpacity = useSharedValue(0);
@@ -407,6 +399,8 @@ function useAttentionAnimation(): AttentionAnimation {
     start,
   };
 }
+
+type AttentionAnimation = ReturnType<typeof useAttentionAnimation>;
 
 function createAttentionPath(width: number, height: number) {
   const inset = 4;
@@ -1292,7 +1286,7 @@ function ParallaxPreview({
   const previewApplyButtonY = useRef<number | null>(null);
   const previewAttentionStarted = useRef(false);
   const [previewButtonLayoutVersion, setPreviewButtonLayoutVersion] = useState(0);
-  const previewButtonAttention = useSharedValue(0);
+  const previewAttention = useAttentionAnimation();
   const [sensorStatus, setSensorStatus] = useState<'checking' | 'ready' | 'unavailable'>(
     Platform.OS === 'web' ? 'unavailable' : 'checking',
   );
@@ -1319,14 +1313,6 @@ function ParallaxPreview({
     }
     onApplyWallpaper(sensorCalibration);
   }, [onApplyWallpaper, sensorCalibration, sensorStatus]);
-  const previewButtonAttentionStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: previewButtonAttention.value }],
-  }));
-  const previewButtonGlowStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(0.62, Math.abs(previewButtonAttention.value) * 0.42),
-    transform: [{ scale: 1 + Math.min(0.07, Math.abs(previewButtonAttention.value) * 0.04) }],
-  }));
-
   useEffect(() => {
     if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
     previewAttentionStarted.current = true;
@@ -1351,15 +1337,7 @@ function ParallaxPreview({
     };
 
     previewScrollFrame.current = requestAnimationFrame(step);
-    previewButtonAttention.value = withDelay(
-      360,
-      withSequence(
-        withTiming(-2, { duration: 170 }),
-        withTiming(2, { duration: 240 }),
-        withTiming(-0.9, { duration: 170 }),
-        withTiming(0, { duration: 210 }),
-      ),
-    );
+    previewAttention.start(360);
 
     return () => {
       if (previewScrollFrame.current !== null) {
@@ -1367,7 +1345,7 @@ function ParallaxPreview({
         previewScrollFrame.current = null;
       }
     };
-  }, [previewButtonAttention, previewButtonLayoutVersion]);
+  }, [previewAttention.start, previewButtonLayoutVersion]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1420,25 +1398,22 @@ function ParallaxPreview({
           </Text>
         </View>
         <Animated.View
-          style={[styles.primaryButtonAttention, previewButtonAttentionStyle]}
+          style={[styles.primaryButtonAttention, previewAttention.buttonStyle]}
           onLayout={(event) => {
             previewApplyButtonY.current = event.nativeEvent.layout.y;
             setPreviewButtonLayoutVersion((current) => current + 1);
           }}
         >
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.attentionGlow,
-              { borderColor: colors.primary, backgroundColor: colors.primary },
-              previewButtonGlowStyle,
-            ]}
-          />
           <PrimaryButton
             title={applied ? 'Aplicado ao sistema' : 'Aplicar wallpaper'}
             onPress={handleApplyPress}
             colors={colors}
             icon={applied ? 'checkmark' : 'arrow-up-circle-outline'}
+          />
+          <AttentionLaser
+            animation={previewAttention}
+            color={colors.primary}
+            headColor={colors.foreground}
           />
         </Animated.View>
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
@@ -1505,10 +1480,10 @@ export default function HomeScreen() {
   const [composeAttentionRequest, setComposeAttentionRequest] = useState(0);
   const [editCropCardLayoutVersion, setEditCropCardLayoutVersion] = useState(0);
   const [composeLayerPickerLayoutVersion, setComposeLayerPickerLayoutVersion] = useState(0);
-  const cropAttention = useSharedValue(0);
-  const middlePickerAttention = useSharedValue(0);
-  const foregroundPickerAttention = useSharedValue(0);
-  const previewButtonAttention = useSharedValue(0);
+  const cropAttention = useAttentionAnimation();
+  const middlePickerAttention = useAttentionAnimation();
+  const foregroundPickerAttention = useAttentionAnimation();
+  const previewButtonAttention = useAttentionAnimation();
   const gestureStart = useRef<{
     mode: CanvasGestureMode;
     x: number;
@@ -1834,35 +1809,6 @@ export default function HomeScreen() {
     [],
   );
 
-  const cropAttentionStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: cropAttention.value }],
-  }));
-  const cropAttentionGlowStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(0.55, Math.abs(cropAttention.value) * 0.3),
-    transform: [{ scale: 1 + Math.min(0.05, Math.abs(cropAttention.value) * 0.025) }],
-  }));
-  const middlePickerAttentionStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: middlePickerAttention.value }],
-  }));
-  const middlePickerGlowStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(0.55, Math.abs(middlePickerAttention.value) * 0.34),
-    transform: [{ scale: 1 + Math.min(0.05, Math.abs(middlePickerAttention.value) * 0.03) }],
-  }));
-  const foregroundPickerAttentionStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: foregroundPickerAttention.value }],
-  }));
-  const foregroundPickerGlowStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(0.55, Math.abs(foregroundPickerAttention.value) * 0.34),
-    transform: [{ scale: 1 + Math.min(0.05, Math.abs(foregroundPickerAttention.value) * 0.03) }],
-  }));
-  const previewButtonAttentionStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: previewButtonAttention.value }],
-  }));
-  const previewButtonGlowStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(0.58, Math.abs(previewButtonAttention.value) * 0.38),
-    transform: [{ scale: 1 + Math.min(0.06, Math.abs(previewButtonAttention.value) * 0.035) }],
-  }));
-
   useEffect(() => {
     if (mode !== 'edit' || editingLayer === 'background' || !editAttentionPending.current) return;
     const frame = requestAnimationFrame(() => {
@@ -1872,15 +1818,7 @@ export default function HomeScreen() {
       animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24));
       if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
       editAttentionTimer.current = setTimeout(() => {
-        cropAttention.value = withDelay(
-          180,
-          withSequence(
-            withTiming(-2, { duration: 150 }),
-            withTiming(2, { duration: 220 }),
-            withTiming(-1, { duration: 160 }),
-            withTiming(0, { duration: 190 }),
-          ),
-        );
+        cropAttention.start(180);
       }, 760);
     });
     return () => {
@@ -1888,7 +1826,7 @@ export default function HomeScreen() {
       if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
       if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
     };
-  }, [animateScrollTo, cropAttention, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
+  }, [animateScrollTo, cropAttention.start, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
 
   useEffect(() => {
     if (mode !== 'compose' || !composeAttentionPending.current) return;
@@ -1899,33 +1837,9 @@ export default function HomeScreen() {
       animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, Math.max(0, targetY - 24));
       if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
       composeAttentionTimer.current = setTimeout(() => {
-        middlePickerAttention.value = withDelay(
-          120,
-          withSequence(
-            withTiming(-1.5, { duration: 160 }),
-            withTiming(1.5, { duration: 220 }),
-            withTiming(-0.7, { duration: 160 }),
-            withTiming(0, { duration: 190 }),
-          ),
-        );
-        foregroundPickerAttention.value = withDelay(
-          820,
-          withSequence(
-            withTiming(-1.5, { duration: 160 }),
-            withTiming(1.5, { duration: 220 }),
-            withTiming(-0.7, { duration: 160 }),
-            withTiming(0, { duration: 190 }),
-          ),
-        );
-        previewButtonAttention.value = withDelay(
-          1520,
-          withSequence(
-            withTiming(-2, { duration: 170 }),
-            withTiming(2, { duration: 240 }),
-            withTiming(-0.9, { duration: 170 }),
-            withTiming(0, { duration: 210 }),
-          ),
-        );
+        middlePickerAttention.start(120);
+        foregroundPickerAttention.start(820);
+        previewButtonAttention.start(1520);
       }, 780);
     });
     return () => {
@@ -1937,10 +1851,11 @@ export default function HomeScreen() {
     animateScrollTo,
     composeAttentionRequest,
     composeLayerPickerLayoutVersion,
-    foregroundPickerAttention,
+    foregroundPickerAttention.start,
     middlePickerAttention,
     mode,
-    previewButtonAttention,
+    middlePickerAttention.start,
+    previewButtonAttention.start,
   ]);
 
   const applyWallpaper = async (sensorCalibration: SensorCalibration | null) => {
@@ -2221,17 +2136,9 @@ export default function HomeScreen() {
                 key={id}
                 style={[
                   styles.layerPickerItemWrap,
-                  id === 'middle' ? middlePickerAttentionStyle : foregroundPickerAttentionStyle,
+                  id === 'middle' ? middlePickerAttention.buttonStyle : foregroundPickerAttention.buttonStyle,
                 ]}
               >
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.attentionGlow,
-                    { borderColor: colors.primary, backgroundColor: colors.primary },
-                    id === 'middle' ? middlePickerGlowStyle : foregroundPickerGlowStyle,
-                  ]}
-                />
                 <Pressable
                   testID={`select-${id}`}
                   onPress={() => setProject((current) => ({ ...current, activeLayer: id }))}
@@ -2248,6 +2155,11 @@ export default function HomeScreen() {
                     {layerMeta[id].label}
                   </Text>
                 </Pressable>
+                <AttentionLaser
+                  animation={id === 'middle' ? middlePickerAttention : foregroundPickerAttention}
+                  color={colors.primary}
+                  headColor={colors.foreground}
+                />
               </Animated.View>
             ))}
           </View>
@@ -2268,16 +2180,13 @@ export default function HomeScreen() {
               <Text style={[styles.sliderEndText, { color: colors.mutedForeground }]}>Imersivo</Text>
             </View>
           </View>
-          <Animated.View style={[styles.primaryButtonAttention, previewButtonAttentionStyle]}>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.attentionGlow,
-                { borderColor: colors.primary, backgroundColor: colors.primary },
-                previewButtonGlowStyle,
-              ]}
-            />
+          <Animated.View style={[styles.primaryButtonAttention, previewButtonAttention.buttonStyle]}>
             <PrimaryButton title="Visualizar movimento" onPress={() => setMode('preview')} colors={colors} icon="play" />
+            <AttentionLaser
+              animation={previewButtonAttention}
+              color={colors.primary}
+              headColor={colors.foreground}
+            />
           </Animated.View>
           <View style={{ height: insets.bottom + 24 }} />
         </ScrollView>
@@ -2392,15 +2301,7 @@ export default function HomeScreen() {
                       </Text>
                     </View>
                   </View>
-                  <Animated.View style={[styles.attentionButtonWrap, cropAttentionStyle]}>
-                    <Animated.View
-                      pointerEvents="none"
-                      style={[
-                        styles.attentionGlow,
-                        { borderColor: colors.primary, backgroundColor: colors.primary },
-                        cropAttentionGlowStyle,
-                      ]}
-                    />
+                  <Animated.View style={[styles.attentionButtonWrap, cropAttention.buttonStyle]}>
                     <Pressable
                       testID="remover-fundo"
                       accessibilityRole="button"
@@ -2424,6 +2325,11 @@ export default function HomeScreen() {
                         {edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte' : processing ? 'Separando pessoa…' : 'Remover fundo'}
                       </Text>
                     </Pressable>
+                    <AttentionLaser
+                      animation={cropAttention}
+                      color={colors.primary}
+                      headColor={colors.foreground}
+                    />
                   </Animated.View>
                 </View>
               ) : (
@@ -2630,7 +2536,7 @@ const styles = StyleSheet.create({
   cropCopy: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 11 },
   cropIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   attentionButtonWrap: { width: '100%', position: 'relative' },
-  attentionGlow: { position: 'absolute', top: -2, right: -2, bottom: -2, left: -2, borderWidth: 2, borderRadius: 15 },
+  attentionLaser: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 3 },
   infoRow: { borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 },
   removeBackgroundButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   removeBackgroundText: { fontSize: 11, fontFamily: 'Inter_700Bold' },
