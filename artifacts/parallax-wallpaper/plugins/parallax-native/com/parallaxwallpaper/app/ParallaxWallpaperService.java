@@ -1,22 +1,28 @@
 package com.parallaxwallpaper.app;
 
+import android.app.WallpaperManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.service.wallpaper.WallpaperService;
 import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.WindowManager;
+import android.widget.Toast;
 import org.json.JSONObject;
 
 public class ParallaxWallpaperService extends WallpaperService {
   private static final String TAG = "ParallaxWallpaper";
   static final String PREFS_NAME = "parallax_wallpaper";
+  static final String PREF_PENDING_APPLICATION = "pending_application";
   private static volatile ParallaxEngine activeEngine;
 
   @Override
@@ -54,8 +60,16 @@ public class ParallaxWallpaperService extends WallpaperService {
     private final SensorManager sensorManager;
     private final Sensor rotationSensor;
     private final PowerManager powerManager;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Object motionLock = new Object();
     private volatile WallpaperRenderer renderer;
+    private int appliedToastAttempts;
+    private final Runnable appliedToastCheck = new Runnable() {
+      @Override
+      public void run() {
+        checkAndShowAppliedToast();
+      }
+    };
 
     private volatile boolean visible;
     private volatile boolean destroyed;
@@ -119,8 +133,10 @@ public class ParallaxWallpaperService extends WallpaperService {
         refreshCachedRotation();
         unregisterSensor();
         registerSensor();
+        scheduleAppliedToastCheck();
         requestFrame();
       } else {
+        mainHandler.removeCallbacks(appliedToastCheck);
         unregisterSensor();
       }
     }
@@ -147,6 +163,7 @@ public class ParallaxWallpaperService extends WallpaperService {
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) currentRenderer.onSurfaceChanged(holder, format, width, height);
       AppLog.i("PARALLAX_SURFACE_CHANGED width=" + width + " height=" + height + " valid=" + holder.getSurface().isValid());
+      if (visible) scheduleAppliedToastCheck();
       requestFrame();
     }
 
@@ -174,8 +191,49 @@ public class ParallaxWallpaperService extends WallpaperService {
         currentRenderer.release();
       }
       unregisterSensor();
+      mainHandler.removeCallbacks(appliedToastCheck);
       AppLog.i("PARALLAX_ENGINE_DESTROYED");
       super.onDestroy();
+    }
+
+    private void scheduleAppliedToastCheck() {
+      mainHandler.removeCallbacks(appliedToastCheck);
+      appliedToastAttempts = 0;
+      mainHandler.postDelayed(appliedToastCheck, 450);
+    }
+
+    private void checkAndShowAppliedToast() {
+      if (!visible || destroyed) return;
+
+      boolean pending = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+          .getBoolean(PREF_PENDING_APPLICATION, false);
+      if (!pending) return;
+
+      WallpaperManager manager = WallpaperManager.getInstance(ParallaxWallpaperService.this);
+      ComponentName active = manager == null || manager.getWallpaperInfo() == null
+          ? null
+          : new ComponentName(
+              manager.getWallpaperInfo().getPackageName(),
+              manager.getWallpaperInfo().getServiceName());
+      ComponentName expected = new ComponentName(
+          ParallaxWallpaperService.this, ParallaxWallpaperService.class);
+
+      if (expected.equals(active)) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(PREF_PENDING_APPLICATION, false)
+            .apply();
+        Toast.makeText(
+            ParallaxWallpaperService.this,
+            "Seu wallpaper já foi criado, você pode fechar o app.",
+            Toast.LENGTH_LONG
+        ).show();
+        return;
+      }
+
+      if (appliedToastAttempts++ < 12) {
+        mainHandler.postDelayed(appliedToastCheck, 450);
+      }
     }
 
     void onConfigurationChanged() {

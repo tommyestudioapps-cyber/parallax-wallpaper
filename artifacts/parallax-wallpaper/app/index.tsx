@@ -3,7 +3,6 @@ import {
   Alert,
   AppState,
   Dimensions,
-  Modal,
   NativeModules,
   PanResponder,
   Platform,
@@ -22,12 +21,9 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Defs, Image as SvgImage, Path, Pattern, Rect } from 'react-native-svg';
+import Svg, { Defs, Image as SvgImage, Pattern, Rect } from 'react-native-svg';
 import Animated, {
-  cancelAnimation,
-  Easing,
   SensorType,
-  useAnimatedProps,
   useAnimatedSensor,
   useAnimatedStyle,
   useFrameCallback,
@@ -37,7 +33,6 @@ import Animated, {
   withRepeat,
   withTiming,
   runOnJS,
-  type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -336,56 +331,26 @@ function PrimaryButton({
   );
 }
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-
 function useAttentionAnimation() {
   const shake = useSharedValue(0);
-  const laserProgress = useSharedValue(0);
-  const laserOpacity = useSharedValue(0);
-  const laserScale = useSharedValue(1);
 
   const start = useCallback((delay = 0) => {
-    cancelAnimation(shake);
-    cancelAnimation(laserProgress);
-    cancelAnimation(laserOpacity);
-    cancelAnimation(laserScale);
-
     shake.value = 0;
-    laserProgress.value = 0;
-    laserOpacity.value = 0;
-    laserScale.value = 1;
-
     shake.value = withDelay(
       delay,
       withRepeat(
         withSequence(
-          withTiming(-6, { duration: 40, easing: Easing.linear }),
-          withTiming(6, { duration: 40, easing: Easing.linear }),
-          withTiming(-4, { duration: 40, easing: Easing.linear }),
-          withTiming(4, { duration: 40, easing: Easing.linear }),
-          withTiming(0, { duration: 40, easing: Easing.linear }),
+          withTiming(-6, { duration: 160 }),
+          withTiming(6, { duration: 160 }),
+          withTiming(-4, { duration: 120 }),
+          withTiming(4, { duration: 120 }),
+          withTiming(0, { duration: 240 }),
         ),
-        4,
+        1,
         false,
       ),
     );
-
-    laserProgress.value = withDelay(
-      delay + 800,
-      withTiming(1, { duration: 700, easing: Easing.linear }),
-    );
-    laserOpacity.value = withDelay(
-      delay + 800,
-      withSequence(
-        withTiming(1, { duration: 70, easing: Easing.ease }),
-        withDelay(230, withTiming(0, { duration: 600, easing: Easing.in(Easing.ease) })),
-      ),
-    );
-    laserScale.value = withDelay(
-      delay + 1100,
-      withTiming(1.15, { duration: 600, easing: Easing.ease }),
-    );
-  }, [laserOpacity, laserProgress, laserScale, shake]);
+  }, [shake]);
 
   const buttonStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shake.value }],
@@ -393,186 +358,8 @@ function useAttentionAnimation() {
 
   return {
     buttonStyle,
-    laserProgress,
-    laserOpacity,
-    laserScale,
     start,
   };
-}
-
-type AttentionAnimation = ReturnType<typeof useAttentionAnimation>;
-
-function createAttentionPath(width: number, height: number) {
-  const inset = 4;
-  const left = inset;
-  const top = inset;
-  const right = width - inset;
-  const bottom = height - inset;
-  const radius = Math.min(13, (right - left) / 2, (bottom - top) / 2);
-  const centerX = (left + right) / 2;
-
-  return {
-    d: [
-      `M ${centerX} ${top}`,
-      `L ${right - radius} ${top}`,
-      `Q ${right} ${top} ${right} ${top + radius}`,
-      `L ${right} ${bottom - radius}`,
-      `Q ${right} ${bottom} ${right - radius} ${bottom}`,
-      `L ${left + radius} ${bottom}`,
-      `Q ${left} ${bottom} ${left} ${bottom - radius}`,
-      `L ${left} ${top + radius}`,
-      `Q ${left} ${top} ${left + radius} ${top}`,
-      `L ${centerX} ${top}`,
-    ].join(' '),
-    perimeter: 2 * ((right - left) + (bottom - top) - 2 * radius) + 2 * Math.PI * radius,
-  };
-}
-
-function AttentionLaserSegment({
-  d,
-  perimeter,
-  dashLength,
-  phase,
-  progress,
-  color,
-  opacity,
-  strokeWidth,
-}: {
-  d: string;
-  perimeter: number;
-  dashLength: number;
-  phase: number;
-  progress: SharedValue<number>;
-  color: string;
-  opacity: number;
-  strokeWidth: number;
-}) {
-  const animatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: -(progress.value * perimeter + phase),
-  }));
-
-  return (
-    <AnimatedPath
-      d={d}
-      animatedProps={animatedProps}
-      fill="none"
-      stroke={color}
-      strokeDasharray={[dashLength, perimeter - dashLength]}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeOpacity={opacity}
-      strokeWidth={strokeWidth}
-    />
-  );
-}
-
-function AttentionLaser({
-  animation,
-  color,
-  headColor,
-}: {
-  animation: AttentionAnimation;
-  color: string;
-  headColor: string;
-}) {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const ringStyle = useAnimatedStyle(() => ({
-    opacity: animation.laserOpacity.value,
-    transform: [{ scale: animation.laserScale.value }],
-  }));
-
-  if (size.width <= 0 || size.height <= 0) {
-    return (
-      <Animated.View
-        pointerEvents="none"
-        style={styles.attentionLaser}
-        onLayout={(event) => {
-          const { width, height } = event.nativeEvent.layout;
-          setSize({ width, height });
-        }}
-      />
-    );
-  }
-
-  const { d, perimeter } = createAttentionPath(size.width, size.height);
-  const tailLength = perimeter * (17.5 / 360);
-  const headLength = perimeter * (10 / 360);
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[styles.attentionLaser, ringStyle]}
-      onLayout={(event) => {
-        const { width, height } = event.nativeEvent.layout;
-        if (width !== size.width || height !== size.height) {
-          setSize({ width, height });
-        }
-      }}
-    >
-      <Svg width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
-        <AttentionLaserSegment
-          d={d}
-          perimeter={perimeter}
-          dashLength={headLength + tailLength * 4}
-          phase={0}
-          progress={animation.laserProgress}
-          color={color}
-          opacity={0.16}
-          strokeWidth={7}
-        />
-        <AttentionLaserSegment
-          d={d}
-          perimeter={perimeter}
-          dashLength={tailLength}
-          phase={-(headLength + tailLength * 3)}
-          progress={animation.laserProgress}
-          color={color}
-          opacity={0.1}
-          strokeWidth={1.7}
-        />
-        <AttentionLaserSegment
-          d={d}
-          perimeter={perimeter}
-          dashLength={tailLength}
-          phase={-(headLength + tailLength * 2)}
-          progress={animation.laserProgress}
-          color={color}
-          opacity={0.25}
-          strokeWidth={1.7}
-        />
-        <AttentionLaserSegment
-          d={d}
-          perimeter={perimeter}
-          dashLength={tailLength}
-          phase={-(headLength + tailLength)}
-          progress={animation.laserProgress}
-          color={color}
-          opacity={0.5}
-          strokeWidth={1.7}
-        />
-        <AttentionLaserSegment
-          d={d}
-          perimeter={perimeter}
-          dashLength={tailLength}
-          phase={-headLength}
-          progress={animation.laserProgress}
-          color={color}
-          opacity={0.75}
-          strokeWidth={1.7}
-        />
-        <AttentionLaserSegment
-          d={d}
-          perimeter={perimeter}
-          dashLength={headLength}
-          phase={0}
-          progress={animation.laserProgress}
-          color={headColor}
-          opacity={1}
-          strokeWidth={2.6}
-        />
-      </Svg>
-    </Animated.View>
-  );
 }
 
 function Progress({
@@ -1266,18 +1053,14 @@ function ParallaxPreview({
   project,
   colors,
   applied,
-  showAppliedNotice,
   onBack,
   onApplyWallpaper,
-  onDismissAppliedNotice,
 }: {
   project: Project;
   colors: ReturnType<typeof useColors>;
   applied: boolean;
-  showAppliedNotice: boolean;
   onBack: () => void;
   onApplyWallpaper: (calibration: SensorCalibration | null) => void;
-  onDismissAppliedNotice: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const previewScrollRef = useRef<ScrollView | null>(null);
@@ -1410,41 +1193,11 @@ function ParallaxPreview({
             colors={colors}
             icon={applied ? 'checkmark' : 'arrow-up-circle-outline'}
           />
-          <AttentionLaser
-            animation={previewAttention}
-            color={colors.primary}
-            headColor={colors.foreground}
-          />
         </Animated.View>
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
           {Platform.OS === 'android' ? 'O Android usará o serviço nativo de wallpaper quando instalado.' : 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.'}
         </Text>
       </ScrollView>
-      <Modal
-        visible={showAppliedNotice}
-        transparent
-        animationType="fade"
-        onRequestClose={onDismissAppliedNotice}
-      >
-        <View style={[styles.appliedNoticeBackdrop, { backgroundColor: `${colors.background}CC` }]}>
-          <Pressable
-            testID="dismiss-applied-wallpaper-notice"
-            accessibilityRole="button"
-            accessibilityLabel="Fechar aviso de wallpaper criado"
-            onPress={onDismissAppliedNotice}
-            style={[styles.appliedNoticeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <View style={[styles.appliedNoticeIcon, { backgroundColor: colors.primary }]}>
-              <Ionicons name="checkmark" size={24} color={colors.primaryForeground} />
-            </View>
-            <Text style={[styles.appliedNoticeTitle, { color: colors.foreground }]}>Wallpaper criado</Text>
-            <Text style={[styles.appliedNoticeText, { color: colors.mutedForeground }]}>
-              Seu wallpaper já foi criado, você pode fechar o app.
-            </Text>
-            <Text style={[styles.appliedNoticeDismiss, { color: colors.primary }]}>Entendi</Text>
-          </Pressable>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -1458,7 +1211,6 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [applied, setApplied] = useState(false);
-  const [showAppliedNotice, setShowAppliedNotice] = useState(false);
   const [pinchHintEligible, setPinchHintEligible] = useState(false);
   const [showPinchHint, setShowPinchHint] = useState(false);
   const projectRef = useRef(project);
@@ -1566,7 +1318,6 @@ export default function HomeScreen() {
               const active = await nativeWallpaper?.isWallpaperActive?.();
               if (active) {
                 setApplied(true);
-                setShowAppliedNotice(true);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
             } catch {
@@ -2049,10 +1800,8 @@ export default function HomeScreen() {
         project={project}
         colors={colors}
         applied={applied}
-        showAppliedNotice={showAppliedNotice}
         onBack={() => setMode('compose')}
         onApplyWallpaper={applyWallpaper}
-        onDismissAppliedNotice={() => setShowAppliedNotice(false)}
       />
     );
   }
@@ -2155,11 +1904,6 @@ export default function HomeScreen() {
                     {layerMeta[id].label}
                   </Text>
                 </Pressable>
-                <AttentionLaser
-                  animation={id === 'middle' ? middlePickerAttention : foregroundPickerAttention}
-                  color={colors.primary}
-                  headColor={colors.foreground}
-                />
               </Animated.View>
             ))}
           </View>
@@ -2182,11 +1926,6 @@ export default function HomeScreen() {
           </View>
           <Animated.View style={[styles.primaryButtonAttention, previewButtonAttention.buttonStyle]}>
             <PrimaryButton title="Visualizar movimento" onPress={() => setMode('preview')} colors={colors} icon="play" />
-            <AttentionLaser
-              animation={previewButtonAttention}
-              color={colors.primary}
-              headColor={colors.foreground}
-            />
           </Animated.View>
           <View style={{ height: insets.bottom + 24 }} />
         </ScrollView>
@@ -2325,11 +2064,6 @@ export default function HomeScreen() {
                         {edit.backgroundRemoved && edit.nonDestructiveCutout ? 'Refazer recorte' : processing ? 'Separando pessoa…' : 'Remover fundo'}
                       </Text>
                     </Pressable>
-                    <AttentionLaser
-                      animation={cropAttention}
-                      color={colors.primary}
-                      headColor={colors.foreground}
-                    />
                   </Animated.View>
                 </View>
               ) : (
@@ -2536,7 +2270,6 @@ const styles = StyleSheet.create({
   cropCopy: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 11 },
   cropIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   attentionButtonWrap: { width: '100%', position: 'relative' },
-  attentionLaser: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 3 },
   infoRow: { borderWidth: 1, borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 },
   removeBackgroundButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   removeBackgroundText: { fontSize: 11, fontFamily: 'Inter_700Bold' },
@@ -2565,12 +2298,6 @@ const styles = StyleSheet.create({
   previewCopy: { width: '100%', paddingVertical: 17 },
   previewTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginBottom: 6, letterSpacing: -0.4 },
   footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', paddingTop: 12 },
-  appliedNoticeBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-  appliedNoticeCard: { width: '100%', maxWidth: 330, borderWidth: 1, borderRadius: 24, paddingHorizontal: 24, paddingVertical: 26, alignItems: 'center' },
-  appliedNoticeIcon: { width: 50, height: 50, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
-  appliedNoticeTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', letterSpacing: -0.4, marginBottom: 8 },
-  appliedNoticeText: { fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular', textAlign: 'center' },
-  appliedNoticeDismiss: { fontSize: 12, fontFamily: 'Inter_700Bold', marginTop: 20 },
   editSliderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 13 },
   sliderNumber: { width: 28, textAlign: 'right', fontSize: 10, fontFamily: 'Inter_600SemiBold' },
 });

@@ -12,6 +12,7 @@ import com.facebook.react.bridge.ReactMethod;
 public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
   private static final String PREFS_NAME = ParallaxWallpaperService.PREFS_NAME;
   private static final String PREF_COMPOSITION = "composition";
+  private static final String PREF_PENDING_APPLICATION = ParallaxWallpaperService.PREF_PENDING_APPLICATION;
 
   private final ReactApplicationContext reactContext;
 
@@ -28,10 +29,11 @@ public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void configureLiveWallpaper(String configJson, Promise promise) {
     try {
-      reactContext
-          .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+      boolean wasAlreadyActive = isCurrentWallpaperActive();
+      reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
           .edit()
           .putString(PREF_COMPOSITION, configJson)
+          .putBoolean(PREF_PENDING_APPLICATION, !wasAlreadyActive)
           .apply();
       ParallaxWallpaperService.notifyCompositionChanged();
       promise.resolve(true);
@@ -59,21 +61,22 @@ public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void isWallpaperActive(Promise promise) {
     try {
-      WallpaperManager manager = WallpaperManager.getInstance(reactContext);
-      if (manager == null) {
-        promise.resolve(false);
-        return;
-      }
-      ComponentName active = manager.getWallpaperInfo() == null
-          ? null
-          : new ComponentName(
-              manager.getWallpaperInfo().getPackageName(),
-              manager.getWallpaperInfo().getServiceName());
-      ComponentName expected = new ComponentName(
-          reactContext, ParallaxWallpaperService.class);
-      promise.resolve(expected.equals(active));
+      promise.resolve(isCurrentWallpaperActive());
     } catch (Exception error) {
       promise.reject("IS_WALLPAPER_ACTIVE_FAILED", error);
     }
+  }
+
+  private boolean isCurrentWallpaperActive() {
+    WallpaperManager manager = WallpaperManager.getInstance(reactContext);
+    if (manager == null || manager.getWallpaperInfo() == null) {
+      return false;
+    }
+    ComponentName active = new ComponentName(
+        manager.getWallpaperInfo().getPackageName(),
+        manager.getWallpaperInfo().getServiceName());
+    ComponentName expected = new ComponentName(
+        reactContext, ParallaxWallpaperService.class);
+    return expected.equals(active);
   }
 }
