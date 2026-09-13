@@ -1,0 +1,54 @@
+[CONTEXTO]
+Instrumentação aplicada. Antes de rodar o teste no celular, preciso
+esclarecer 3 pontos que podem invalidar a captura:
+
+── PONTO 1: Tag dos logs nativos ──
+Você especificou:
+  Log.d("PARALLAX", ...) no prompt original
+Mas o comando de filtro usa:
+  adb logcat -s ReactNativeJS:D ParallaxWallpaper:D '*:S'
+
+Qual tag foi usada de fato nos Log.d dos 3 pontos no
+ParallaxWallpaperService.java (linhas 120, 257, 358)?
+  • "PARALLAX"? → ajuste o comando do adb para bater
+  • "ParallaxWallpaper"? → ajuste os Log.d para bater
+  • Outra? → qual?
+
+Confirme que o comando adb FINAL que vou rodar captura 100% dos logs.
+
+── PONTO 2: CanvasWallpaperRenderer.java ausente ──
+Você mencionou que o arquivo está ausente no projeto gerado. Preciso
+entender:
+  • Onde o projeto ESPERA encontrar esse arquivo? (caminho exato)
+  • Ele está referenciado em algum lugar (import, AndroidManifest,
+    build.gradle)?
+  • Existe um arquivo com nome similar?
+  • Se o renderer está ausente, qual é o renderer ATIVO?
+  • Esse renderer ativo suporta motionY?
+
+Se o renderer ativo não suportar translateY vertical, então o problema
+não está na calibração — está no renderer. Isso muda o diagnóstico todo.
+Cole o trecho do código que instancia/usa o renderer.
+
+── PONTO 3: Alternativa sem ADB ──
+Se eu não conseguir rodar adb logcat (sem cabo, sem ADB instalado),
+existe alternativa para capturar os logs nativos?
+  • Opção A: escrever os logs em arquivo dentro do app
+  • Opção B: mostrar os logs numa tela de debug dentro do próprio app
+  • Opção C: outro método
+
+Se nenhuma alternativa existir, me diga qual é o método MAIS SIMPLES
+para habilitar ADB sem instalar Android Studio completo.
+
+[NÃO FAÇA]
+- Não altere mais nada no código ainda.
+- Não remova os logs que já foram adicionados.
+- Não implemente as alternativas — só descreva quais são viáveis.
+
+[VERIFICAÇÃO]
+Me devolva:
+1. A tag exata usada nos 3 Log.d.
+2. O comando adb final, pronto para copiar e colar.
+3. O caminho exato onde CanvasWallpaperRenderer.java DEVERIA estar e
+   qual renderer está ativo hoje.
+4. Uma alternativa viável caso eu não tenha ADB.
