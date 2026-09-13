@@ -3,6 +3,7 @@ import {
   Alert,
   AppState,
   Dimensions,
+  Modal,
   NativeModules,
   PanResponder,
   Platform,
@@ -115,6 +116,11 @@ type Project = {
   layers: Record<LayerId, Layer>;
   intensity: number;
   activeLayer: LayerId;
+};
+
+type SensorCalibration = {
+  pitch: number;
+  roll: number;
 };
 
 type CanvasGestureMode = 'idle' | 'pan' | 'pinch';
@@ -875,6 +881,7 @@ function NativeParallaxLayers({
   middleMultiplier,
   foregroundMultiplier,
   onSensorStatus,
+  onSensorCalibration,
 }: {
   project: Project;
   colors: ReturnType<typeof useColors>;
@@ -884,6 +891,7 @@ function NativeParallaxLayers({
   middleMultiplier: number;
   foregroundMultiplier: number;
   onSensorStatus: (status: 'checking' | 'ready' | 'unavailable') => void;
+  onSensorCalibration: (pitch: number, roll: number) => void;
 }) {
   const sensor = useAnimatedSensor(SensorType.ROTATION, {
     interval: 16,
@@ -900,6 +908,7 @@ function NativeParallaxLayers({
   const rollSum = useSharedValue(0);
   const baselinePitch = useSharedValue(0);
   const baselineRoll = useSharedValue(0);
+  const calibrationReported = useSharedValue(0);
 
   useEffect(() => {
     intensity.value = project.intensity;
@@ -944,6 +953,10 @@ function NativeParallaxLayers({
       if (sampleCount.value === PARALLAX_SENSOR_SAMPLE_COUNT) {
         baselinePitch.value = pitchSum.value / PARALLAX_SENSOR_SAMPLE_COUNT;
         baselineRoll.value = rollSum.value / PARALLAX_SENSOR_SAMPLE_COUNT;
+        if (!calibrationReported.value) {
+          calibrationReported.value = 1;
+          runOnJS(onSensorCalibration)(baselinePitch.value, baselineRoll.value);
+        }
       }
       return;
     }
@@ -1010,14 +1023,18 @@ function ParallaxPreview({
   project,
   colors,
   applied,
+  showAppliedNotice,
   onBack,
   onApplyWallpaper,
+  onDismissAppliedNotice,
 }: {
   project: Project;
   colors: ReturnType<typeof useColors>;
   applied: boolean;
+  showAppliedNotice: boolean;
   onBack: () => void;
-  onApplyWallpaper: () => void;
+  onApplyWallpaper: (calibration: SensorCalibration | null) => void;
+  onDismissAppliedNotice: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const previewScrollRef = useRef<ScrollView | null>(null);
@@ -1030,6 +1047,7 @@ function ParallaxPreview({
   const [sensorStatus, setSensorStatus] = useState<'checking' | 'ready' | 'unavailable'>(
     Platform.OS === 'web' ? 'unavailable' : 'checking',
   );
+  const [sensorCalibration, setSensorCalibration] = useState<SensorCalibration | null>(null);
   const backgroundSurface = getPreviewSurface(
     project.layers.background,
     getParallaxMultiplier('background', project.intensity),
@@ -1041,6 +1059,17 @@ function ParallaxPreview({
   const handleSensorStatus = useCallback((status: 'checking' | 'ready' | 'unavailable') => {
     setSensorStatus(status);
   }, []);
+  const handleSensorCalibration = useCallback((pitch: number, roll: number) => {
+    if (!Number.isFinite(pitch) || !Number.isFinite(roll)) return;
+    setSensorCalibration({ pitch, roll });
+  }, []);
+  const handleApplyPress = useCallback(() => {
+    if (Platform.OS === 'android' && sensorStatus !== 'unavailable' && sensorCalibration === null) {
+      Alert.alert('Aguarde um instante', 'O preview ainda está calibrando o movimento.');
+      return;
+    }
+    onApplyWallpaper(sensorCalibration);
+  }, [onApplyWallpaper, sensorCalibration, sensorStatus]);
   const previewButtonAttentionStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: previewButtonAttention.value }],
   }));
@@ -1127,6 +1156,7 @@ function ParallaxPreview({
               middleMultiplier={middleMultiplier}
               foregroundMultiplier={foregroundMultiplier}
               onSensorStatus={handleSensorStatus}
+              onSensorCalibration={handleSensorCalibration}
             />
           )}
         </View>
@@ -1157,7 +1187,7 @@ function ParallaxPreview({
           />
           <PrimaryButton
             title={applied ? 'Aplicado ao sistema' : 'Aplicar wallpaper'}
-            onPress={onApplyWallpaper}
+            onPress={handleApplyPress}
             colors={colors}
             icon={applied ? 'checkmark' : 'arrow-up-circle-outline'}
           />
@@ -1166,6 +1196,31 @@ function ParallaxPreview({
           {Platform.OS === 'android' ? 'O Android usará o serviço nativo de wallpaper quando instalado.' : 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.'}
         </Text>
       </ScrollView>
+      <Modal
+        visible={showAppliedNotice}
+        transparent
+        animationType="fade"
+        onRequestClose={onDismissAppliedNotice}
+      >
+        <View style={[styles.appliedNoticeBackdrop, { backgroundColor: `${colors.background}CC` }]}>
+          <Pressable
+            testID="dismiss-applied-wallpaper-notice"
+            accessibilityRole="button"
+            accessibilityLabel="Fechar aviso de wallpaper criado"
+            onPress={onDismissAppliedNotice}
+            style={[styles.appliedNoticeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <View style={[styles.appliedNoticeIcon, { backgroundColor: colors.primary }]}>
+              <Ionicons name="checkmark" size={24} color={colors.primaryForeground} />
+            </View>
+            <Text style={[styles.appliedNoticeTitle, { color: colors.foreground }]}>Wallpaper criado</Text>
+            <Text style={[styles.appliedNoticeText, { color: colors.mutedForeground }]}>
+              Seu wallpaper já foi criado, você pode fechar o app.
+            </Text>
+            <Text style={[styles.appliedNoticeDismiss, { color: colors.primary }]}>Entendi</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1179,6 +1234,7 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [showAppliedNotice, setShowAppliedNotice] = useState(false);
   const [pinchHintEligible, setPinchHintEligible] = useState(false);
   const [showPinchHint, setShowPinchHint] = useState(false);
   const projectRef = useRef(project);
@@ -1216,6 +1272,7 @@ export default function HomeScreen() {
     pageY: number;
   }>({ mode: 'idle', x: 0, y: 0, scale: 1, distance: 0, focalX: 0, focalY: 0, pageX: 0, pageY: 0 });
   projectRef.current = project;
+  const awaitingWallpaperResult = useRef(false);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
@@ -1275,7 +1332,25 @@ export default function HomeScreen() {
 
     registerAppOpen();
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') registerAppOpen();
+      if (nextState === 'active') {
+        registerAppOpen();
+        if (awaitingWallpaperResult.current && Platform.OS === 'android') {
+          const nativeWallpaper = NativeModules.ParallaxWallpaper;
+          awaitingWallpaperResult.current = false;
+          setTimeout(async () => {
+            try {
+              const active = await nativeWallpaper?.isWallpaperActive?.();
+              if (active) {
+                setApplied(true);
+                setShowAppliedNotice(true);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+            } catch {
+              // The chooser may have been cancelled or the native state may still be settling.
+            }
+          }, 250);
+        }
+      }
     });
 
     return () => {
@@ -1619,16 +1694,18 @@ export default function HomeScreen() {
     previewButtonAttention,
   ]);
 
-  const applyWallpaper = async () => {
+  const applyWallpaper = async (sensorCalibration: SensorCalibration | null) => {
     if (Platform.OS === 'android') {
       const nativeWallpaper = NativeModules.ParallaxWallpaper;
       if (nativeWallpaper?.configureLiveWallpaper && nativeWallpaper?.openLiveWallpaperChooser) {
         try {
+          awaitingWallpaperResult.current = true;
           await nativeWallpaper.configureLiveWallpaper(
             JSON.stringify({
               intensity: project.intensity,
               canvasWidth: CANVAS_WIDTH,
               canvasHeight: CANVAS_HEIGHT,
+              sensorCalibration,
               layers: LAYER_IDS.reduce((layers, id) => {
                 layers[id] = {
                   ...project.layers[id],
@@ -1639,9 +1716,8 @@ export default function HomeScreen() {
             }),
           );
           await nativeWallpaper.openLiveWallpaperChooser();
-          setApplied(true);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch {
+          awaitingWallpaperResult.current = false;
           Alert.alert('Aplicar wallpaper', 'Não foi possível preparar o wallpaper nativo neste aparelho.');
         }
       } else {
@@ -1809,8 +1885,10 @@ export default function HomeScreen() {
         project={project}
         colors={colors}
         applied={applied}
+        showAppliedNotice={showAppliedNotice}
         onBack={() => setMode('compose')}
         onApplyWallpaper={applyWallpaper}
+        onDismissAppliedNotice={() => setShowAppliedNotice(false)}
       />
     );
   }
@@ -2332,6 +2410,12 @@ const styles = StyleSheet.create({
   previewCopy: { width: '100%', paddingVertical: 17 },
   previewTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginBottom: 6, letterSpacing: -0.4 },
   footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', paddingTop: 12 },
+  appliedNoticeBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  appliedNoticeCard: { width: '100%', maxWidth: 330, borderWidth: 1, borderRadius: 24, paddingHorizontal: 24, paddingVertical: 26, alignItems: 'center' },
+  appliedNoticeIcon: { width: 50, height: 50, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
+  appliedNoticeTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', letterSpacing: -0.4, marginBottom: 8 },
+  appliedNoticeText: { fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  appliedNoticeDismiss: { fontSize: 12, fontFamily: 'Inter_700Bold', marginTop: 20 },
   editSliderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 13 },
   sliderNumber: { width: 28, textAlign: 'right', fontSize: 10, fontFamily: 'Inter_600SemiBold' },
 });

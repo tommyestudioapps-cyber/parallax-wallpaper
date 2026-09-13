@@ -12,6 +12,7 @@ import android.view.Display;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.WindowManager;
+import org.json.JSONObject;
 
 public class ParallaxWallpaperService extends WallpaperService {
   private static final String TAG = "ParallaxWallpaper";
@@ -48,6 +49,7 @@ public class ParallaxWallpaperService extends WallpaperService {
     private static final float MOTION_DEAD_ZONE = 0.12f;
     private static final int SENSOR_INTERVAL_US = 33000;
     private static final int SENSOR_INTERVAL_POWER_SAVE_US = 100000;
+    private static final String PREF_COMPOSITION = "composition";
 
     private final SensorManager sensorManager;
     private final Sensor rotationSensor;
@@ -87,6 +89,7 @@ public class ParallaxWallpaperService extends WallpaperService {
           : sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
       powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
       refreshCachedRotation();
+      loadPersistedCalibration();
       renderer = createRenderer();
       AppLog.i("PARALLAX_ENGINE_CREATED");
       requestFrame();
@@ -100,10 +103,12 @@ public class ParallaxWallpaperService extends WallpaperService {
       AppLog.i("PARALLAX_VISIBILITY_CHANGED visible=" + isVisible);
       if (isVisible) {
         if (currentRenderer != null) currentRenderer.invalidateComposition();
-        calibrated = false;
-        calibrationSamples = 0;
-        pitchSum = 0;
-        rollSum = 0;
+        loadPersistedCalibration();
+        if (!calibrated) {
+          calibrationSamples = 0;
+          pitchSum = 0;
+          rollSum = 0;
+        }
         synchronized (motionLock) {
           filteredMotionX = 0f;
           filteredMotionY = 0f;
@@ -176,14 +181,14 @@ public class ParallaxWallpaperService extends WallpaperService {
     void onConfigurationChanged() {
       boolean rotationChanged = refreshCachedRotation();
       if (rotationChanged) {
-        invalidateSensorCalibration();
-        AppLog.i("PARALLAX_SENSOR_CALIBRATION_INVALIDATED reason=rotation_changed");
+        AppLog.i("PARALLAX_SENSOR_ROTATION_CHANGED");
         requestFrame();
       }
     }
 
     void onCompositionChangedExternally() {
       if (destroyed) return;
+      loadPersistedCalibration();
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) {
         currentRenderer.invalidateComposition();
@@ -230,12 +235,35 @@ public class ParallaxWallpaperService extends WallpaperService {
       return rotationChanged;
     }
 
-    private void invalidateSensorCalibration() {
-      calibrated = false;
-      calibrationSamples = 0;
-      pitchSum = 0f;
-      rollSum = 0f;
-      lastTimestamp = 0;
+    private boolean loadPersistedCalibration() {
+      String json = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+          .getString(PREF_COMPOSITION, null);
+      if (json == null) return false;
+      try {
+        JSONObject composition = new JSONObject(json);
+        JSONObject calibration = composition.optJSONObject("sensorCalibration");
+        if (calibration == null) return false;
+        double pitch = calibration.optDouble("pitch", Double.NaN);
+        double roll = calibration.optDouble("roll", Double.NaN);
+        if (Double.isNaN(pitch)
+            || Double.isInfinite(pitch)
+            || Double.isNaN(roll)
+            || Double.isInfinite(roll)) {
+          return false;
+        }
+        baselinePitch = (float) pitch;
+        baselineRoll = (float) roll;
+        calibrated = true;
+        calibrationSamples = 0;
+        pitchSum = 0f;
+        rollSum = 0f;
+        lastTimestamp = 0;
+        AppLog.i("PARALLAX_SENSOR_CALIBRATION_LOADED");
+        return true;
+      } catch (Exception error) {
+        AppLog.w("PARALLAX_SENSOR_CALIBRATION_LOAD_FAILED");
+        return false;
+      }
     }
 
     private void registerSensor() {
