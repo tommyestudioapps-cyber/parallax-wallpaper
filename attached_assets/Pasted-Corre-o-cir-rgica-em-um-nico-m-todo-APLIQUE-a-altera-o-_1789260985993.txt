@@ -1,0 +1,75 @@
+Correção cirúrgica em um único método. APLIQUE a alteração no arquivo — não apenas mostre o diff.
+
+ARQUIVO: ParallaxEglController.java
+MÉTODO: invalidateComposition()
+
+Hoje o método é assim:
+
+    @Override
+    public void invalidateComposition() {
+      ParallaxEglThread threadToStop = null;
+      synchronized (stateLock) {
+        refreshIntensityFromPrefs();
+        pendingReload = true;
+        if (eglThread != null && state != State.STOPPING) {
+          state = State.STOPPING;
+          threadToStop = eglThread;
+        }
+      }
+      requestStop(threadToStop);
+      startIfPossible();
+    }
+
+PROBLEMA:
+Na primeira aplicação do wallpaper, o Android chama onVisibilityChanged(true), que executa em sequência:
+  1. setVisible(true)          → cria thread EGL, estado = STARTING
+  2. invalidateComposition()   → vê thread existente em STARTING, para a thread
+
+Isso descarta uma inicialização EGL inteira. A thread precisa ser criada novamente, e o preview fica preto até a segunda tentativa terminar. Sintoma idêntico ao Reparo A, mas por outro caminho — onVisibilityChanged em vez de onSurfaceChanged.
+
+Uma thread em STARTING ainda vai ler as preferências de composição em initializeGlRenderer() (via ParallaxTextureManager.loadTextures). Parar essa thread é desnecessário: ela naturalmente lerá o estado mais recente. Só é preciso parar uma thread em RUNNING, que já carregou as texturas antigas.
+
+CORREÇÃO:
+Trocar a condição `state != State.STOPPING` por `state == State.RUNNING`.
+
+CÓDIGO NOVO (o método completo, para não haver ambiguidade):
+
+    @Override
+    public void invalidateComposition() {
+      ParallaxEglThread threadToStop = null;
+      synchronized (stateLock) {
+        refreshIntensityFromPrefs();
+        pendingReload = true;
+        if (eglThread != null && state == State.RUNNING) {
+          state = State.STOPPING;
+          threadToStop = eglThread;
+        }
+      }
+      requestStop(threadToStop);
+      startIfPossible();
+    }
+
+ADICIONAR TAMBÉM um comentário curto antes do if, explicando a razão:
+
+        // Uma thread em STARTING ainda vai ler as preferências em
+        // initializeGlRenderer(). Parar aqui desperdiça a inicialização.
+        // Só uma thread em RUNNING já carregou texturas antigas e precisa
+        // ser reiniciada para pegar a composição nova.
+
+REGRAS:
+- NÃO alterar a assinatura do método.
+- NÃO alterar nenhuma outra linha do método além da condição do if e do comentário.
+- NÃO alterar nenhum outro método.
+- NÃO alterar nenhum outro arquivo.
+- Manter a indentação existente do arquivo (2 espaços para corpo de classe/método, 4 para o corpo do synchronized, 6 para o primeiro nível dentro do synchronized).
+
+INSTRUÇÕES DE EXECUÇÃO:
+1. Edite ParallaxEglController.java de verdade, salvando a alteração no disco.
+2. Depois de salvar, execute `git diff ParallaxEglController.java` e me mostre a saída completa.
+3. Não reverta. Não use modo de pré-visualização. A alteração deve ficar persistida.
+
+RESULTADO ESPERADO:
+- Uma linha `-        if (eglThread != null && state != State.STOPPING) {` removida.
+- Uma linha `+        if (eglThread != null && state == State.RUNNING) {` adicionada.
+- Um comentário de 4 linhas adicionado imediatamente antes do if.
+- Nenhuma outra modificação no arquivo.

@@ -164,7 +164,11 @@ public final class ParallaxEglController implements WallpaperRenderer, ParallaxE
     synchronized (stateLock) {
       refreshIntensityFromPrefs();
       pendingReload = true;
-      if (eglThread != null && state != State.STOPPING) {
+      // Uma thread em STARTING ainda vai ler as preferências em
+      // initializeGlRenderer(). Parar aqui desperdiça a inicialização.
+      // Só uma thread em RUNNING já carregou texturas antigas e precisa
+      // ser reiniciada para pegar a composição nova.
+      if (eglThread != null && state == State.RUNNING) {
         state = State.STOPPING;
         threadToStop = eglThread;
       }
