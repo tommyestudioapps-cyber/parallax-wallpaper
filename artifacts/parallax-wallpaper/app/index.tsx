@@ -22,9 +22,12 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { DeviceMotion } from 'expo-sensors';
 import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/react-native-bg-removal';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Defs, Image as SvgImage, Pattern, Rect } from 'react-native-svg';
+import Svg, { Defs, Image as SvgImage, Path, Pattern, Rect } from 'react-native-svg';
 import Animated, {
+  cancelAnimation,
+  Easing,
   SensorType,
+  useAnimatedProps,
   useAnimatedSensor,
   useAnimatedStyle,
   useFrameCallback,
@@ -34,6 +37,7 @@ import Animated, {
   withRepeat,
   withTiming,
   runOnJS,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
@@ -329,6 +333,251 @@ function PrimaryButton({
         <Ionicons name={icon} size={18} color={secondary ? colors.foreground : colors.primaryForeground} />
       ) : null}
     </Pressable>
+  );
+}
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+type AttentionAnimation = {
+  buttonStyle: ReturnType<typeof useAnimatedStyle>;
+  laserProgress: SharedValue<number>;
+  laserOpacity: SharedValue<number>;
+  laserScale: SharedValue<number>;
+  start: (delay?: number) => void;
+};
+
+function useAttentionAnimation(): AttentionAnimation {
+  const shake = useSharedValue(0);
+  const laserProgress = useSharedValue(0);
+  const laserOpacity = useSharedValue(0);
+  const laserScale = useSharedValue(1);
+
+  const start = useCallback((delay = 0) => {
+    cancelAnimation(shake);
+    cancelAnimation(laserProgress);
+    cancelAnimation(laserOpacity);
+    cancelAnimation(laserScale);
+
+    shake.value = 0;
+    laserProgress.value = 0;
+    laserOpacity.value = 0;
+    laserScale.value = 1;
+
+    shake.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(-6, { duration: 40, easing: Easing.linear }),
+          withTiming(6, { duration: 40, easing: Easing.linear }),
+          withTiming(-4, { duration: 40, easing: Easing.linear }),
+          withTiming(4, { duration: 40, easing: Easing.linear }),
+          withTiming(0, { duration: 40, easing: Easing.linear }),
+        ),
+        4,
+        false,
+      ),
+    );
+
+    laserProgress.value = withDelay(
+      delay + 800,
+      withTiming(1, { duration: 700, easing: Easing.linear }),
+    );
+    laserOpacity.value = withDelay(
+      delay + 800,
+      withSequence(
+        withTiming(1, { duration: 70, easing: Easing.ease }),
+        withDelay(230, withTiming(0, { duration: 600, easing: Easing.in(Easing.ease) })),
+      ),
+    );
+    laserScale.value = withDelay(
+      delay + 1100,
+      withTiming(1.15, { duration: 600, easing: Easing.ease }),
+    );
+  }, [laserOpacity, laserProgress, laserScale, shake]);
+
+  const buttonStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shake.value }],
+  }));
+
+  return {
+    buttonStyle,
+    laserProgress,
+    laserOpacity,
+    laserScale,
+    start,
+  };
+}
+
+function createAttentionPath(width: number, height: number) {
+  const inset = 4;
+  const left = inset;
+  const top = inset;
+  const right = width - inset;
+  const bottom = height - inset;
+  const radius = Math.min(13, (right - left) / 2, (bottom - top) / 2);
+  const centerX = (left + right) / 2;
+
+  return {
+    d: [
+      `M ${centerX} ${top}`,
+      `L ${right - radius} ${top}`,
+      `Q ${right} ${top} ${right} ${top + radius}`,
+      `L ${right} ${bottom - radius}`,
+      `Q ${right} ${bottom} ${right - radius} ${bottom}`,
+      `L ${left + radius} ${bottom}`,
+      `Q ${left} ${bottom} ${left} ${bottom - radius}`,
+      `L ${left} ${top + radius}`,
+      `Q ${left} ${top} ${left + radius} ${top}`,
+      `L ${centerX} ${top}`,
+    ].join(' '),
+    perimeter: 2 * ((right - left) + (bottom - top) - 2 * radius) + 2 * Math.PI * radius,
+  };
+}
+
+function AttentionLaserSegment({
+  d,
+  perimeter,
+  dashLength,
+  phase,
+  progress,
+  color,
+  opacity,
+  strokeWidth,
+}: {
+  d: string;
+  perimeter: number;
+  dashLength: number;
+  phase: number;
+  progress: SharedValue<number>;
+  color: string;
+  opacity: number;
+  strokeWidth: number;
+}) {
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: -(progress.value * perimeter + phase),
+  }));
+
+  return (
+    <AnimatedPath
+      d={d}
+      animatedProps={animatedProps}
+      fill="none"
+      stroke={color}
+      strokeDasharray={[dashLength, perimeter - dashLength]}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeOpacity={opacity}
+      strokeWidth={strokeWidth}
+    />
+  );
+}
+
+function AttentionLaser({
+  animation,
+  color,
+  headColor,
+}: {
+  animation: AttentionAnimation;
+  color: string;
+  headColor: string;
+}) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: animation.laserOpacity.value,
+    transform: [{ scale: animation.laserScale.value }],
+  }));
+
+  if (size.width <= 0 || size.height <= 0) {
+    return (
+      <Animated.View
+        pointerEvents="none"
+        style={styles.attentionLaser}
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          setSize({ width, height });
+        }}
+      />
+    );
+  }
+
+  const { d, perimeter } = createAttentionPath(size.width, size.height);
+  const tailLength = perimeter * (17.5 / 360);
+  const headLength = perimeter * (10 / 360);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.attentionLaser, ringStyle]}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        if (width !== size.width || height !== size.height) {
+          setSize({ width, height });
+        }
+      }}
+    >
+      <Svg width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
+        <AttentionLaserSegment
+          d={d}
+          perimeter={perimeter}
+          dashLength={headLength + tailLength * 4}
+          phase={0}
+          progress={animation.laserProgress}
+          color={color}
+          opacity={0.16}
+          strokeWidth={7}
+        />
+        <AttentionLaserSegment
+          d={d}
+          perimeter={perimeter}
+          dashLength={tailLength}
+          phase={-(headLength + tailLength * 3)}
+          progress={animation.laserProgress}
+          color={color}
+          opacity={0.1}
+          strokeWidth={1.7}
+        />
+        <AttentionLaserSegment
+          d={d}
+          perimeter={perimeter}
+          dashLength={tailLength}
+          phase={-(headLength + tailLength * 2)}
+          progress={animation.laserProgress}
+          color={color}
+          opacity={0.25}
+          strokeWidth={1.7}
+        />
+        <AttentionLaserSegment
+          d={d}
+          perimeter={perimeter}
+          dashLength={tailLength}
+          phase={-(headLength + tailLength)}
+          progress={animation.laserProgress}
+          color={color}
+          opacity={0.5}
+          strokeWidth={1.7}
+        />
+        <AttentionLaserSegment
+          d={d}
+          perimeter={perimeter}
+          dashLength={tailLength}
+          phase={-headLength}
+          progress={animation.laserProgress}
+          color={color}
+          opacity={0.75}
+          strokeWidth={1.7}
+        />
+        <AttentionLaserSegment
+          d={d}
+          perimeter={perimeter}
+          dashLength={headLength}
+          phase={0}
+          progress={animation.laserProgress}
+          color={headColor}
+          opacity={1}
+          strokeWidth={2.6}
+        />
+      </Svg>
+    </Animated.View>
   );
 }
 
