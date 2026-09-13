@@ -3,6 +3,7 @@ import {
   Alert,
   AppState,
   Dimensions,
+  Modal,
   NativeModules,
   PanResponder,
   Platform,
@@ -1053,14 +1054,18 @@ function ParallaxPreview({
   project,
   colors,
   applied,
+  showAppliedNotice,
   onBack,
   onApplyWallpaper,
+  onDismissAppliedNotice,
 }: {
   project: Project;
   colors: ReturnType<typeof useColors>;
   applied: boolean;
+  showAppliedNotice: boolean;
   onBack: () => void;
   onApplyWallpaper: (calibration: SensorCalibration | null) => void;
+  onDismissAppliedNotice: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const previewScrollRef = useRef<ScrollView | null>(null);
@@ -1198,6 +1203,31 @@ function ParallaxPreview({
           {Platform.OS === 'android' ? 'O Android usará o serviço nativo de wallpaper quando instalado.' : 'A aplicação automática no iOS fica disponível quando o app for instalado como build nativo.'}
         </Text>
       </ScrollView>
+      <Modal
+        visible={showAppliedNotice}
+        transparent
+        animationType="fade"
+        onRequestClose={onDismissAppliedNotice}
+      >
+        <View style={[styles.appliedNoticeBackdrop, { backgroundColor: `${colors.background}CC` }]}>
+          <Pressable
+            testID="dismiss-applied-wallpaper-notice"
+            accessibilityRole="button"
+            accessibilityLabel="Fechar aviso de wallpaper criado"
+            onPress={onDismissAppliedNotice}
+            style={[styles.appliedNoticeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <View style={[styles.appliedNoticeIcon, { backgroundColor: colors.primary }]}>
+              <Ionicons name="checkmark" size={24} color={colors.primaryForeground} />
+            </View>
+            <Text style={[styles.appliedNoticeTitle, { color: colors.foreground }]}>Wallpaper criado</Text>
+            <Text style={[styles.appliedNoticeText, { color: colors.mutedForeground }]}>
+              Seu wallpaper já foi criado, você pode fechar o app.
+            </Text>
+            <Text style={[styles.appliedNoticeDismiss, { color: colors.primary }]}>Entendi</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1211,6 +1241,7 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [showAppliedNotice, setShowAppliedNotice] = useState(false);
   const [pinchHintEligible, setPinchHintEligible] = useState(false);
   const [showPinchHint, setShowPinchHint] = useState(false);
   const projectRef = useRef(project);
@@ -1318,6 +1349,7 @@ export default function HomeScreen() {
               const active = await nativeWallpaper?.isWallpaperActive?.();
               if (active) {
                 setApplied(true);
+                setShowAppliedNotice(true);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
             } catch {
@@ -1800,8 +1832,10 @@ export default function HomeScreen() {
         project={project}
         colors={colors}
         applied={applied}
+        showAppliedNotice={showAppliedNotice}
         onBack={() => setMode('compose')}
         onApplyWallpaper={applyWallpaper}
+        onDismissAppliedNotice={() => setShowAppliedNotice(false)}
       />
     );
   }
@@ -2298,6 +2332,12 @@ const styles = StyleSheet.create({
   previewCopy: { width: '100%', paddingVertical: 17 },
   previewTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginBottom: 6, letterSpacing: -0.4 },
   footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', paddingTop: 12 },
+  appliedNoticeBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  appliedNoticeCard: { width: '100%', maxWidth: 330, borderWidth: 1, borderRadius: 24, paddingHorizontal: 24, paddingVertical: 26, alignItems: 'center' },
+  appliedNoticeIcon: { width: 50, height: 50, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
+  appliedNoticeTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', letterSpacing: -0.4, marginBottom: 8 },
+  appliedNoticeText: { fontSize: 14, lineHeight: 21, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  appliedNoticeDismiss: { fontSize: 12, fontFamily: 'Inter_700Bold', marginTop: 20 },
   editSliderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 13 },
   sliderNumber: { width: 28, textAlign: 'right', fontSize: 10, fontFamily: 'Inter_600SemiBold' },
 });

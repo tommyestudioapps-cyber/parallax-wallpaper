@@ -12,7 +12,6 @@ import com.facebook.react.bridge.ReactMethod;
 public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
   private static final String PREFS_NAME = ParallaxWallpaperService.PREFS_NAME;
   private static final String PREF_COMPOSITION = "composition";
-  private static final String PREF_PENDING_APPLICATION = ParallaxWallpaperService.PREF_PENDING_APPLICATION;
 
   private final ReactApplicationContext reactContext;
 
@@ -29,11 +28,10 @@ public class ParallaxWallpaperModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void configureLiveWallpaper(String configJson, Promise promise) {
     try {
-      boolean wasAlreadyActive = isCurrentWallpaperActive();
-      reactContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+      reactContext
+          .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
           .edit()
           .putString(PREF_COMPOSITION, configJson)
-          .putBoolean(PREF_PENDING_APPLICATION, !wasAlreadyActive)
           .apply();
       ParallaxWallpaperService.notifyCompositionChanged();
       promise.resolve(true);
