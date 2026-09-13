@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Botão Tremendo + Laser (1 volta)</title>
+    <style>
+        @property --angulo {
+            syntax: '<angle>';
+            initial-value: 0deg;
+            inherits: false;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #0b0f1a;
+            font-family: Arial, sans-serif;
+        }
+
+        .botao-tremendo {
+            position: relative;
+            padding: 20px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            background: #e63946;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            transition: transform 0.1s;
+        }
+
+        /* Anel de laser */
+        .botao-tremendo::before {
+            content: "";
+            position: absolute;
+            inset: -3px;
+            padding: 3px;
+            border-radius: 15px;
+            background: conic-gradient(
+                from var(--angulo),
+                transparent 0deg,
+                transparent 280deg,
+                #00e5ff 320deg,
+                #ffffff 350deg,
+                #00e5ff 360deg
+            );
+            -webkit-mask:
+                linear-gradient(#000 0 0) content-box,
+                linear-gradient(#000 0 0);
+            -webkit-mask-composite: xor;
+                    mask:
+                linear-gradient(#000 0 0) content-box,
+                linear-gradient(#000 0 0);
+                    mask-composite: exclude;
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        /* Tremor */
+        .botao-tremendo.tremendo {
+            animation: tremer 0.2s linear infinite;
+        }
+        @keyframes tremer {
+            0%   { transform: translateX(0); }
+            20%  { transform: translateX(-6px); }
+            40%  { transform: translateX(6px); }
+            60%  { transform: translateX(-4px); }
+            80%  { transform: translateX(4px); }
+            100% { transform: translateX(0); }
+        }
+
+        /* Laser: gira 1 vez e se dissolve enquanto gira */
+        .botao-tremendo.laser::before {
+            animation:
+                aparecer-laser 0.07s ease forwards,
+                girar-laser 0.7s linear 1 forwards,
+                sumir-laser 0.6s ease-in 0.3s forwards;
+            filter:
+                drop-shadow(0 0 6px #00e5ff)
+                drop-shadow(0 0 14px #00e5ff);
+        }
+
+        @keyframes aparecer-laser {
+            to { opacity: 1; }
+        }
+
+        @keyframes girar-laser {
+            from { --angulo: 0deg; }
+            to   { --angulo: 360deg; }
+        }
+
+        /* Dissolução suave: some + expande */
+        @keyframes sumir-laser {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(1.15);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="botao-tremendo" onclick="chamarAtencao(this)">
+        CLIQUE AQUI
+    </button>
+
+    <script>
+        function chamarAtencao(botao) {
+            botao.classList.remove('tremendo', 'laser');
+            void botao.offsetWidth;
+
+            botao.classList.add('tremendo');
+
+            setTimeout(() => {
+                botao.classList.remove('tremendo');
+                botao.classList.add('laser');
+
+                setTimeout(() => {
+                    botao.classList.remove('laser');
+                }, 950); // 0.3s (delay) + 0.6s (fade) = 0.9s → arredondei p/ 950ms
+
+            }, 800);
+        }
+    </script>
+
+</body>
+</html>
