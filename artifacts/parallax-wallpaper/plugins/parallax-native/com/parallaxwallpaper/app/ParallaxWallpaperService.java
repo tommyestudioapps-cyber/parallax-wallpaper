@@ -117,6 +117,9 @@ public class ParallaxWallpaperService extends WallpaperService {
         }
         lastTimestamp = 0;
         refreshCachedRotation();
+        AppLog.d("[NATIVE] baselinePitch=" + baselinePitch
+            + " baselineRoll=" + baselineRoll
+            + " calibrated=" + calibrated);
         unregisterSensor();
         registerSensor();
         requestFrame();
@@ -251,6 +254,7 @@ public class ParallaxWallpaperService extends WallpaperService {
             || Double.isInfinite(roll)) {
           return false;
         }
+        AppLog.d("[PERSIST→NATIVE] loaded pitch=" + pitch + " roll=" + roll);
         baselinePitch = (float) pitch;
         baselineRoll = (float) roll;
         calibrated = true;
@@ -351,6 +355,10 @@ public class ParallaxWallpaperService extends WallpaperService {
           }
         }
       }
+      AppLog.d("[NATIVE] rawPitch=" + pitch
+          + " rawRoll=" + roll
+          + " motionY=" + processedMotionY
+          + " motionX=" + processedMotionX);
       if (!publishMotion) return;
       requestFrame();
     }

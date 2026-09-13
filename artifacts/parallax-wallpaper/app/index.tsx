@@ -940,6 +940,9 @@ function NativeParallaxLayers({
   const baselinePitch = useSharedValue(0);
   const baselineRoll = useSharedValue(0);
   const calibrationReported = useSharedValue(0);
+  const lastLoggedPitchDegrees = useSharedValue(0);
+  const lastLoggedRollDegrees = useSharedValue(0);
+  const previewMotionLogReady = useSharedValue(0);
 
   useEffect(() => {
     intensity.value = project.intensity;
@@ -1018,6 +1021,28 @@ function NativeParallaxLayers({
 
     motionX.value += (targetX - motionX.value) * filterFactor;
     motionY.value += (targetY - motionY.value) * filterFactor;
+
+    const pitchDegrees = (rotation.pitch * 180) / Math.PI;
+    const rollDegrees = (rotation.roll * 180) / Math.PI;
+    if (
+      !previewMotionLogReady.value
+      || Math.abs(pitchDegrees - lastLoggedPitchDegrees.value) >= 0.5
+      || Math.abs(rollDegrees - lastLoggedRollDegrees.value) >= 0.5
+    ) {
+      console.log(
+        '[PREVIEW] pitch=',
+        pitchDegrees.toFixed(2),
+        'roll=',
+        rollDegrees.toFixed(2),
+        'targetY=',
+        targetY.toFixed(3),
+        'motionY=',
+        motionY.value.toFixed(3),
+      );
+      lastLoggedPitchDegrees.value = pitchDegrees;
+      lastLoggedRollDegrees.value = rollDegrees;
+      previewMotionLogReady.value = 1;
+    }
   });
 
   const backgroundStyle = useAnimatedStyle(() => ({
@@ -1647,6 +1672,14 @@ export default function HomeScreen() {
       if (nativeWallpaper?.configureLiveWallpaper && nativeWallpaper?.openLiveWallpaperChooser) {
         try {
           awaitingWallpaperResult.current = true;
+          if (sensorCalibration) {
+            console.log(
+              '[PREVIEW→PERSIST] saving pitch=',
+              sensorCalibration.pitch,
+              'roll=',
+              sensorCalibration.roll,
+            );
+          }
           await nativeWallpaper.configureLiveWallpaper(
             JSON.stringify({
               intensity: project.intensity,
