@@ -1,0 +1,90 @@
+[CONTEXTO]
+Existem duas diferenças observáveis entre o Preview fluido do app e o
+wallpaper nativo aplicado na tela inicial:
+
+PROBLEMA 1: No Preview, o parallax funciona em diagonal (combina
+horizontal e vertical simultaneamente). No wallpaper nativo, o
+movimento é "engessado" — ou anda na horizontal, ou na vertical,
+nunca nos dois eixos ao mesmo tempo.
+
+PROBLEMA 2: A composição renderizada no wallpaper não coincide com a
+do Preview. Aparentemente o wallpaper mostra MAIS área da imagem
+(especialmente na parte inferior) do que o Preview. A impressão é que
+a imagem frontal "vem para frente" no wallpaper, alterando o
+enquadramento.
+
+Preciso entender as causas antes de corrigir. NÃO altere nenhum código
+nesta tarefa. Apenas LEIA e REPRODUZA os trechos relevantes.
+
+────────────────────────────────────────────────
+DIAGNÓSTICO 1 — Caminho de pitch/roll até motionX/motionY (nativo)
+────────────────────────────────────────────────
+No arquivo ParallaxWallpaperService.java (e nas classes que ele usa):
+
+1.1. Cole o trecho COMPLETO do callback do sensor (onSensorChanged ou
+     equivalente) — desde a leitura de event.values até o cálculo
+     final de motionX e motionY.
+
+1.2. Existe alguma das seguintes estruturas no caminho?
+     • Clamp de magnitude: tipo sqrt(pitch² + roll²) ou normalização
+       de vetor, com escolha de eixo dominante
+     • Filtro por eixo dominante: if (Math.abs(pitch) > Math.abs(roll))
+       ou equivalente
+     • Sobrescrita de um eixo por outro
+     • Multiplicador de um eixo por zero em alguma condição
+     Se SIM, cole o trecho exato e a linha.
+
+1.3. Cole a assinatura completa de updateSensorState(x, y) no
+     ParallaxGlRenderer.java e mostre onde x e y são aplicados ao
+     shader. Confirme se o shader recebe um vec2 único ou dois
+     uniforms separados.
+
+────────────────────────────────────────────────
+DIAGNÓSTICO 2 — Diferenças de dimensão e escala (Preview vs Wallpaper)
+────────────────────────────────────────────────
+2.1. No Preview (app/index.tsx ou onde a composição é renderizada):
+     • Qual é a largura e altura (em pixels) que a composição ocupa?
+     • Como é calculado o aspect ratio da composição?
+     • Existe algum "safe area" ou inset aplicado?
+     • Existe um fator de zoom/scale aplicado às imagens?
+
+2.2. No wallpaper nativo (ParallaxEglThread / ParallaxGlRenderer):
+     • Qual é a largura e altura da superfície EGL?
+     • Essa superfície inclui a barra de status e de navegação?
+       (procure por setOffsetNotificationsEnabled, cutout mode, ou
+       comentários sobre system bars)
+     • Como o aspect ratio da composição é calculado aqui?
+     • Existe algum fator de zoom/scale diferente do Preview?
+
+2.3. Cole a fórmula exata em ParallaxGlRenderer.java:728 (a que
+     calcula motionY) e a fórmula equivalente para motionX. Confirme
+     se surfaceWidth/surfaceHeight são as dimensões da superfície EGL
+     ou da composição.
+
+2.4. Compare:
+     • compositionWidth e compositionHeight: valores usados no Preview
+       vs valores usados no wallpaper. São os mesmos? Se não, como
+       cada lado os calcula?
+     • A camada frontal tem posição Z ou profundidade definida de
+       forma diferente entre Preview e wallpaper?
+
+────────────────────────────────────────────────
+[NÃO FAÇA]
+- Não altere código.
+- Não remova os logs ainda.
+- Não proponha correção ainda.
+- Não mexa no shader.
+
+[VERIFICAÇÃO]
+Responda com 2 blocos:
+
+BLOCO 1 — Caminho pitch/roll → motionX/motionY no nativo
+  • Trecho completo do callback do sensor
+  • Presença/ausência de cada estrutura suspeita (listar)
+  • Assinatura de updateSensorState e como o shader recebe os eixos
+
+BLOCO 2 — Comparação de dimensões/escala Preview vs Wallpaper
+  • Dimensões de cada superfície
+  • Fórmula de aspect ratio em cada lado
+  • Fórmula de motionX e motionY no nativo
+  • Diferenças identificadas (lista)
