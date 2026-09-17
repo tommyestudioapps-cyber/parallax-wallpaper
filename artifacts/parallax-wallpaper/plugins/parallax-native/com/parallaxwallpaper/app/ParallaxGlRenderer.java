@@ -716,16 +716,11 @@ public final class ParallaxGlRenderer {
     }
     float compositionWidth = textureManager.getCompositionCanvasWidth();
     if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
-    // Mesma normalização do Canvas: motionPixels = sensorX * multiplier * (W / compositionWidth).
-    // Convertendo pixels -> NDC e deixando o u_DepthFactor multiplicar em runtime:
-    //   offsetX =  sensorX * 2 / compositionWidth
-    //   offsetY = -sensorY * 2 * surfaceWidth / (compositionWidth * surfaceHeight)
-    // O Y precisa do aspect ratio porque o Canvas desloca em pixels do eixo X
-    // e converte para NDC-Y usando a altura real da superfície. O sinal é negativo
-    // porque o Canvas tem Y crescendo para baixo e o clip space do OpenGL tem Y
-    // crescendo para cima.
+    float compositionHeight = textureManager.getCompositionCanvasHeight();
+    if (compositionHeight <= 0f) compositionHeight = surfaceHeight;
+    // Mapeia o espaço do Canvas virtual para NDC, com a mesma proporção usada pelo Preview.
     motionX = sensorMotionX * 2f / compositionWidth;
-    motionY = -sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
+    motionY = -sensorMotionY * 2f / compositionHeight;
   }
 
   private void configureAlphaPrecisionTexture() {
@@ -897,10 +892,14 @@ public final class ParallaxGlRenderer {
     float canvasHeight = surfaceHeight;
     float compositionWidth = textureManager.getCompositionCanvasWidth();
     if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
+    float compositionHeight = textureManager.getCompositionCanvasHeight();
+    if (compositionHeight <= 0f) compositionHeight = canvasHeight;
     float coordinateScale = canvasWidth / compositionWidth;
 
     // Espelha exatamente o cálculo do drawLayer() do Canvas.
-    float fitScale = Math.max(canvasWidth / layer.imageWidth, canvasHeight / layer.imageHeight);
+    float fitScale = Math.max(
+        compositionWidth / layer.imageWidth,
+        compositionHeight / layer.imageHeight);
     float drawScale = fitScale * layer.scale;
 
     float left;

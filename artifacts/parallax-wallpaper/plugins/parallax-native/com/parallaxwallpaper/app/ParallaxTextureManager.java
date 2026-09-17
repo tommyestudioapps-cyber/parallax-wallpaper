@@ -42,6 +42,7 @@ public final class ParallaxTextureManager {
   private final float[] mDepthFactors = new float[LAYER_COUNT];
   private final LayerData[] mLayerData = new LayerData[LAYER_COUNT];
   private float mCompositionCanvasWidth = 280f;
+  private float mCompositionCanvasHeight = 500f;
   private boolean texturesLoaded;
 
   public ParallaxTextureManager(Context context) {
@@ -66,6 +67,7 @@ public final class ParallaxTextureManager {
     try {
       JSONObject composition = new JSONObject(json);
       mCompositionCanvasWidth = (float) composition.optDouble("canvasWidth", 280);
+      mCompositionCanvasHeight = (float) composition.optDouble("canvasHeight", 500);
       JSONObject layers = composition.optJSONObject("layers");
       for (int index = 0; index < LAYER_COUNT; index += 1) {
         JSONObject layerJson =
@@ -205,6 +207,10 @@ public final class ParallaxTextureManager {
 
   public float getCompositionCanvasWidth() {
     return mCompositionCanvasWidth;
+  }
+
+  public float getCompositionCanvasHeight() {
+    return mCompositionCanvasHeight;
   }
 
   public LayerData getLayerData(int index) {
