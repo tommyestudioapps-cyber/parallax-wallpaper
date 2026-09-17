@@ -46,7 +46,7 @@ public class ParallaxWallpaperService extends WallpaperService {
   }
 
   private class ParallaxEngine extends Engine implements SensorEventListener {
-    private static final float MOTION_DEAD_ZONE = 0.12f;
+    private static final float MOTION_DEAD_ZONE = 0f;
     private static final int SENSOR_INTERVAL_US = 33000;
     private static final int SENSOR_INTERVAL_POWER_SAVE_US = 100000;
     private static final String PREF_COMPOSITION = "composition";

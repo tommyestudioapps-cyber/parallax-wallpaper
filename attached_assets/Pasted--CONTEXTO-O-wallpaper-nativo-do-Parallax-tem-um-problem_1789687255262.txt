@@ -1,0 +1,54 @@
+[CONTEXTO]
+O wallpaper nativo do Parallax tem um problema de fluidez no movimento
+diagonal. O Preview (React Native) se move suavemente em qualquer
+direção, mas o wallpaper nativo parece "engessado" e responde bem só
+na horizontal OU na vertical, nunca nas duas ao mesmo tempo.
+
+Hipótese técnica: a constante MOTION_DEAD_ZONE = 0.12f no
+ParallaxWallpaperService.ParallaxEngine faz com que o renderer só seja
+notificado quando UM dos eixos varia 0.12 ou mais. Em movimento
+diagonal, cada eixo varia menos por evento, e o render loop fica
+dormindo em frameLock.wait(). Isso produz step visual.
+
+Vamos testar essa hipótese diretamente: desabilitar a deadzone de
+publicação. Se o movimento ficar suave em todas as direções, a hipótese
+está confirmada.
+
+[TAREFA — alteração mínima em UMA linha, nas duas cópias]
+
+No arquivo:
+  artifacts/parallax-wallpaper/plugins/parallax-native/com/parallaxwallpaper/app/ParallaxWallpaperService.java
+E também em:
+  artifacts/parallax-wallpaper/android/app/src/main/java/com/parallaxwallpaper/app/ParallaxWallpaperService.java
+
+Localize a linha:
+
+  private static final float MOTION_DEAD_ZONE = 0.12f;
+
+E troque por:
+
+  private static final float MOTION_DEAD_ZONE = 0f;
+
+Não altere mais nada. Não mexa no filtro, no softLimit, no shader,
+nem no cálculo de motionX/motionY.
+
+[POR QUE ESSA MUDANÇA]
+Com MOTION_DEAD_ZONE = 0f, a condição de publicação vira sempre
+verdadeira (qualquer variação >= 0), então TODO evento do sensor
+(30 Hz) publica um novo estado e acorda o render loop. É o
+comportamento mais próximo do Preview.
+
+[NÃO FAÇA]
+- Não altere outras constantes.
+- Não modifique o shader, o remap de coordenadas ou a calibração.
+- Não mexa no Preview (app/index.tsx).
+- Não remova nenhum log existente.
+- Não altere o filtro exponencial.
+
+[VERIFICAÇÃO]
+1. Confirme que as duas cópias do Java continuam sincronizadas.
+2. Rode o typecheck.
+3. Me diga o comando para eu gerar um novo build de desenvolvimento.
+   (Preciso disso para testar no celular com logcat.)
+4. Se existir alguma razão técnica para NÃO fazer essa mudança
+   (ex.: custo de bateria conhecido), me avise antes de aplicar.
