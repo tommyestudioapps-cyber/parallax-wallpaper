@@ -1,0 +1,164 @@
+[CONTEXTO]
+O Preview do Parallax usa uma moldura fixa de proporção ~9:16
+(CANVAS_VIEWBOX_WIDTH=100, CANVAS_VIEWBOX_HEIGHT=177.78). Mas o
+wallpaper nativo renderiza numa superfície EGL cuja proporção é a
+da tela física completa do dispositivo, incluindo barra de status e
+de navegação (~9:20 em celulares modernos).
+
+Resultado: o wallpaper faz fitScale usando uma proporção mais alta
+que o Preview, ampliando a imagem verticalmente e revelando mais
+área (ex.: o usuário enquadra até o joelho no Preview, mas vê a
+canela no wallpaper).
+
+Correção: fazer o Preview usar a proporção REAL da tela física, e
+persistir canvasWidth + canvasHeight no JSON, para que o nativo
+leia os dois e use a mesma proporção.
+
+Vou aplicar em 3 partes. NÃO altere nada fora dessas 3 partes.
+
+────────────────────────────────────────────────
+PARTE 1 — Preview: usar proporção real da tela (app/index.tsx)
+────────────────────────────────────────────────
+
+1.1. No topo do arquivo, se ainda não existir, adicione o import:
+     import { Dimensions } from 'react-native';
+
+1.2. Localize onde hoje SCREEN_WIDTH e SCREEN_HEIGHT são definidos.
+     Troque a fonte para Dimensions.get('screen') — não 'window' —
+     porque 'screen' inclui as barras do sistema, igual ao wallpaper.
+
+     Se hoje é algo como:
+       const SCREEN_WIDTH = Dimensions.get('window').width;
+       const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+     Mude para:
+       const SCREEN_WIDTH = Dimensions.get('screen').width;
+       const SCREEN_HEIGHT = Dimensions.get('screen').height;
+
+1.3. Substitua o cálculo de CANVAS_ASPECT_RATIO para refletir a
+     proporção REAL da tela, mantendo o viewBox apenas como sistema
+     de coordenadas interno (não mexa no CANVAS_VIEWBOX_*):
+
+       const CANVAS_ASPECT_RATIO = SCREEN_WIDTH / SCREEN_HEIGHT;
+
+1.4. Os cálculos de CANVAS_WIDTH e CANVAS_HEIGHT continuam a
+     existir, mas agora vão refletir a proporção real. Não mude a
+     fórmula atual deles, só a fonte do aspect.
+
+     IMPORTANTE: se hoje existe algum limite (MAX_CANVAS_WIDTH,
+     MAX_CANVAS_HEIGHT) que força a composição a caber em 57% da
+     tela vertical, MANTENHA — só garanta que o aspecto usado é o
+     novo. Se o limite atual impedir a proporção real de se
+     manifestar, ajuste o limite para permitir que CANVAS_HEIGHT
+     cubra a tela inteira em modo portrait.
+
+────────────────────────────────────────────────
+PARTE 2 — Preview: persistir canvasHeight no JSON
+────────────────────────────────────────────────
+
+2.1. Localize onde o app salva a composição para o wallpaper
+     (provavelmente chama ParallaxWallpaper.configureLiveWallpaper
+     com um JSON).
+
+2.2. No objeto JSON que é enviado, hoje provavelmente existe algo
+     como:
+       { canvasWidth: CANVAS_WIDTH, ... }
+
+     Adicione o campo canvasHeight logo após canvasWidth:
+       { canvasWidth: CANVAS_WIDTH, canvasHeight: CANVAS_HEIGHT, ... }
+
+2.3. NÃO remova nem renomeie campos existentes. NÃO altere o
+     objeto sensorCalibration. NÃO altere o array de layers.
+
+────────────────────────────────────────────────
+PARTE 3 — Nativo: usar canvasWidth E canvasHeight (ParallaxGlRenderer.java)
+────────────────────────────────────────────────
+
+3.1. No arquivo ParallaxTextureManager.java, adicione um método
+     getter novo, ao lado de getCompositionCanvasWidth():
+
+       public float getCompositionCanvasHeight() { return mCompositionCanvasHeight; }
+
+     E no campo:
+       private float mCompositionCanvasHeight = 500f;
+
+     Em loadTextures(), onde hoje lê canvasWidth do JSON, leia também:
+
+       mCompositionCanvasHeight = (float) composition.optDouble("canvasHeight", 500);
+
+3.2. No ParallaxGlRenderer.updateSensorState(), a fórmula atual é:
+
+       motionX =  sensorMotionX * 2f / compositionWidth;
+       motionY = -sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
+
+     Ajuste motionY para usar compositionHeight em vez de surfaceHeight:
+
+       float compositionHeight = textureManager.getCompositionCanvasHeight();
+       if (compositionHeight <= 0f) compositionHeight = DEFAULT_CANVAS_WIDTH;
+
+       motionX =  sensorMotionX * 2f / compositionWidth;
+       motionY = -sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
+
+     ATENÇÃO: o objetivo é que motionX e motionY tenham o MESMO fator
+     de conversão pixels→NDC, para que a diagonal fique simétrica.
+     Como o Preview aplica motionX/motionY em unidades de layout do
+     Canvas virtual, o nativo precisa reproduzir esse mesmo espaço.
+
+     Substitua a fórmula de motionY por:
+
+       float compositionHeight = textureManager.getCompositionCanvasHeight();
+       if (compositionHeight <= 0f) compositionHeight = surfaceHeight;
+
+       // Mapeia o espaço do Canvas virtual para NDC, com a mesma
+       // proporção usada pelo Preview.
+       motionX = sensorMotionX * 2f / compositionWidth;
+       motionY = -sensorMotionY * 2f / compositionHeight;
+
+3.3. Em updateLayerMvp(), hoje o fitScale usa surfaceWidth/surfaceHeight.
+     Troque para usar a proporção do Preview (compositionWidth x
+     compositionHeight), e use surfaceWidth/surfaceHeight apenas para
+     posicionar o centro do letterbox se necessário. Mantenha o mesmo
+     cálculo do Preview: fitScale = max(W_composição / imageWidth,
+     H_composição / imageHeight).
+
+     Pseudo-código:
+       float compWidth = textureManager.getCompositionCanvasWidth();
+       float compHeight = textureManager.getCompositionCanvasHeight();
+       float fitScale = Math.max(compWidth / layer.imageWidth,
+                                  compHeight / layer.imageHeight);
+       float drawScale = fitScale * layer.scale;
+
+     O posicionamento (left/top) continua usando surfaceWidth/surfaceHeight
+     como canvas físico, mas o fitScale usa as dimensões do Preview.
+
+────────────────────────────────────────────────
+[NÃO FAÇA]
+- Não mexa no shader (VERTEX_SHADER / FRAGMENT_SHADER).
+- Não mexa no remap de coordenadas do sensor.
+- Não mexa em MOTION_DEAD_ZONE.
+- Não mexa no sensorCalibration.
+- Não mexa em ParallaxEglThread ou ParallaxEglController.
+- Não sincronize as duas cópias do ParallaxWallpaperService — só
+  ParallaxGlRenderer e ParallaxTextureManager estão sendo tocados.
+- Não remova logs existentes.
+
+[VERIFICAÇÃO — responda com 4 blocos]
+BLOCO 1 — Preview (app/index.tsx)
+  • Linhas alteradas (números) e o trecho antes/depois das constantes.
+  • O novo valor calculado de CANVAS_ASPECT_RATIO para o dispositivo
+    de teste (se souber as dimensões via Dimensions.get('screen')).
+
+BLOCO 2 — JSON persistido
+  • O trecho exato onde canvasHeight foi adicionado.
+  • Confirmação de que campos existentes permanecem intactos.
+
+BLOCO 3 — Nativo (GlRenderer + TextureManager)
+  • Linhas alteradas em cada arquivo.
+  • As novas fórmulas de motionX e motionY (cole o trecho final).
+  • A nova fórmula de fitScale em updateLayerMvp.
+  • Confirmação de que as duas cópias do ParallaxWallpaperService
+    continuam sincronizadas (nada foi tocado nelas).
+
+BLOCO 4 — Typecheck
+  • Passou ou falhou? Se falhou, cole o erro.
+  • Comando final para eu buildar a nova versão.
