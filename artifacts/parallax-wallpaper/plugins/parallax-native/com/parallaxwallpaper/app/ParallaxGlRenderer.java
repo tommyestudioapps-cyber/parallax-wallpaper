@@ -900,7 +900,10 @@ public final class ParallaxGlRenderer {
     float fitScale = Math.max(
         compositionWidth / layer.imageWidth,
         compositionHeight / layer.imageHeight);
-    float drawScale = fitScale * layer.scale;
+    // drawScale sai em unidades da composição; coordenadas de destino
+    // (left/top/width/height) estão em pixels físicos do surface.
+    // O coordinateScale converte entre os dois sistemas.
+    float drawScale = fitScale * layer.scale * coordinateScale;
 
     float left;
     float top;
