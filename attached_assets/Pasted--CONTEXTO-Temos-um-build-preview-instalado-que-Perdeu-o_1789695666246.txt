@@ -1,0 +1,85 @@
+[CONTEXTO]
+Temos um build preview instalado que:
+- Perdeu o movimento vertical/diagonal após a última mudança
+- Mantém o enquadramento errado (joelho vs canela)
+- Não permite ler SharedPreferences via `adb run-as` (app não é debuggable)
+- Não emite logs [NATIVE] via AppLog.d() mesmo com FORCE_LOGGING
+
+Vamos fazer UM build que:
+(a) Reverte a última mudança no renderer nativo (para restaurar movimento)
+(b) Torna o app debuggable no perfil preview (para permitir `run-as`)
+(c) Mantém FORCE_LOGGING e Dimensions.screen
+
+────────────────────────────────────────────────
+TAREFA 1 — Reverter ParallaxGlRenderer.java (2 cópias)
+────────────────────────────────────────────────
+Em:
+  artifacts/parallax-wallpaper/android/app/src/main/java/com/parallaxwallpaper/app/ParallaxGlRenderer.java
+  artifacts/parallax-wallpaper/plugins/parallax-native/com/parallaxwallpaper/app/ParallaxGlRenderer.java
+
+Reverter updateSensorState() para:
+  float compositionWidth = textureManager.getCompositionCanvasWidth();
+  if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
+  motionX = sensorMotionX * 2f / compositionWidth;
+  motionY = -sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
+
+Reverter updateLayerMvp() para:
+  float fitScale = Math.max(canvasWidth / layer.imageWidth,
+                            canvasHeight / layer.imageHeight);
+  float drawScale = fitScale * layer.scale;
+(sem * coordinateScale, sem compositionHeight)
+
+Mantenha o campo e getter getCompositionCanvasHeight() no TextureManager
+— só não são mais usados pelo renderer.
+
+────────────────────────────────────────────────
+TAREFA 2 — Tornar o app debuggable no profile preview
+────────────────────────────────────────────────
+No arquivo .eas.json, adicione ao profile "preview" a opção:
+  "android": {
+    "buildType": "apk",
+    "gradleCommand": ":app:assembleRelease"
+  }
+
+Se a opção acima não funcionar (por depender de build type), a
+alternativa é adicionar android:debuggable="true" no AndroidManifest
+via config plugin. Crie um plugin novo em:
+
+  artifacts/parallax-wallpaper/plugins/withDebuggablePreview.js
+
+com este conteúdo:
+
+  const { withAndroidManifest } = require('@expo/config-plugins');
+
+  module.exports = function withDebuggablePreview(config) {
+    return withAndroidManifest(config, async (config) => {
+      const manifest = config.modResults;
+      const application = manifest.manifest.application?.[0];
+      if (application) {
+        application.$['android:debuggable'] = 'true';
+      }
+      return config;
+    });
+  };
+
+E adicione "./plugins/withDebuggablePreview" ao array "plugins" no app.json
+APENAS se o EAS profile for preview. Se não houver forma condicional,
+adicione permanentemente — vamos remover depois.
+
+────────────────────────────────────────────────
+TAREFA 3 — Manter intacto
+────────────────────────────────────────────────
+- AppLog.java: FORCE_LOGGING = true (não tocar)
+- app/index.tsx: Dimensions.screen (não tocar)
+- ParallaxWallpaperService.java: MOTION_DEAD_ZONE = 0f (não tocar)
+- JSON: canvasHeight continua sendo salvo (não tocar)
+
+[VERIFICAÇÃO]
+1. Cole o corpo final de updateSensorState() e updateLayerMvp()
+2. Confirme que as 2 cópias do renderer estão sincronizadas
+3. Confirme que AppLog, index.tsx e Service não foram tocados
+4. Typecheck
+5. Comando exato para build via GitHub push
+
+Depois do build, eu vou poder rodar `adb shell run-as` para ler
+SharedPreferences e ver logs [NATIVE] no logcat.
