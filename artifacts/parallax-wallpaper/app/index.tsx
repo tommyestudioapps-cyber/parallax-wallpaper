@@ -1680,6 +1680,8 @@ export default function HomeScreen() {
               sensorCalibration.roll,
             );
           }
+          console.log('[CANVAS] width=', CANVAS_WIDTH, 'height=', CANVAS_HEIGHT);
+          console.log('[CANVAS→WALLPAPER] enviando width=', CANVAS_WIDTH, 'height=', CANVAS_HEIGHT);
           await nativeWallpaper.configureLiveWallpaper(
             JSON.stringify({
               intensity: project.intensity,
