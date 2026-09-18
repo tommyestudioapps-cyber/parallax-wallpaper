@@ -198,25 +198,23 @@ public final class ParallaxEglThread extends Thread {
       return;
     }
 
-    if (BuildConfig.DEBUG) {
-      double averageRenderMs =
-          metricsWindowDrawTimeNs / (double) metricsWindowFrames / 1000000.0;
-      double averageFps = metricsWindowFrames * 1000000000.0 / windowDurationNs;
-      String swapStatus = metricsWindowLastSwapSucceeded ? "OK" : "FAILED";
-      AppLog.i(
-          "PARALLAX_GPU_METRICS"
-              + " averageFps=" + averageFps
-              + " averageRenderMs=" + averageRenderMs
-              + " maxRenderMs=" + metricsWindowMaxFrameTimeMs
-              + " totalGlFrames=" + totalGlFrames
-              + " droppedGlFrames=" + droppedGlFrames
-              + " vsyncMisses=" + vsyncMisses
-              + " swapStatus=" + swapStatus
-              + " lastSwapMs=" + metricsWindowLastSwapMs
-              + " swapFailures=" + metricsWindowSwapFailures
-              + " accumulatedDrawTimeNs=" + accumulatedDrawTimeNs
-              + " windowDrawnFrames=" + metricsWindowFrames);
-    }
+    double averageRenderMs =
+        metricsWindowDrawTimeNs / (double) metricsWindowFrames / 1000000.0;
+    double averageFps = metricsWindowFrames * 1000000000.0 / windowDurationNs;
+    String swapStatus = metricsWindowLastSwapSucceeded ? "OK" : "FAILED";
+    AppLog.i(
+        "PARALLAX_GPU_METRICS"
+            + " averageFps=" + averageFps
+            + " averageRenderMs=" + averageRenderMs
+            + " maxRenderMs=" + metricsWindowMaxFrameTimeMs
+            + " totalGlFrames=" + totalGlFrames
+            + " droppedGlFrames=" + droppedGlFrames
+            + " vsyncMisses=" + vsyncMisses
+            + " swapStatus=" + swapStatus
+            + " lastSwapMs=" + metricsWindowLastSwapMs
+            + " swapFailures=" + metricsWindowSwapFailures
+            + " accumulatedDrawTimeNs=" + accumulatedDrawTimeNs
+            + " windowDrawnFrames=" + metricsWindowFrames);
 
     metricsWindowStartedAtNs = nowNs;
     metricsWindowFrames = 0L;

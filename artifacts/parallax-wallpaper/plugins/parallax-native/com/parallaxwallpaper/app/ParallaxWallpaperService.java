@@ -308,6 +308,8 @@ public class ParallaxWallpaperService extends WallpaperService {
       float processedMotionX;
       float processedMotionY;
       boolean publishMotion;
+      float publishDeltaX;
+      float publishDeltaY;
       ParallaxSensorState nextSensorState = null;
       synchronized (motionLock) {
         filteredMotionX += (targetX - filteredMotionX) * filter;
@@ -316,9 +318,11 @@ public class ParallaxWallpaperService extends WallpaperService {
         processedMotionY = filteredMotionY;
 
         ParallaxSensorState publishedSnapshot = motionSnapshot;
+        publishDeltaX = Math.abs(processedMotionX - publishedSnapshot.getX());
+        publishDeltaY = Math.abs(processedMotionY - publishedSnapshot.getY());
         publishMotion =
-            Math.abs(processedMotionX - publishedSnapshot.getX()) >= MOTION_DEAD_ZONE
-                || Math.abs(processedMotionY - publishedSnapshot.getY()) >= MOTION_DEAD_ZONE;
+            publishDeltaX >= MOTION_DEAD_ZONE
+                || publishDeltaY >= MOTION_DEAD_ZONE;
         if (publishMotion) {
           nextSensorState = new ParallaxSensorState(processedMotionX, processedMotionY);
           motionSnapshot = nextSensorState;
@@ -330,7 +334,11 @@ public class ParallaxWallpaperService extends WallpaperService {
       AppLog.d("[NATIVE] rawPitch=" + pitch
           + " rawRoll=" + roll
           + " motionY=" + processedMotionY
-          + " motionX=" + processedMotionX);
+          + " motionX=" + processedMotionX
+          + " published=" + publishMotion);
+      AppLog.d("[NATIVE] publishDecision deltaX=" + publishDeltaX
+          + " deltaY=" + publishDeltaY
+          + " threshold=" + MOTION_DEAD_ZONE);
       if (!publishMotion) return;
       requestFrame();
     }

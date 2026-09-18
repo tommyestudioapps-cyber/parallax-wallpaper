@@ -897,6 +897,14 @@ public final class ParallaxGlRenderer {
         canvasHeight / layer.imageHeight);
     float drawScale = fitScale * layer.scale;
 
+    if (index == 0) {
+      AppLog.d("[RENDERER] surface=" + surfaceWidth + "x" + surfaceHeight
+          + " composition=" + compositionWidth
+          + " fitScale=" + fitScale
+          + " drawScale=" + drawScale
+          + " layerScale=" + layer.scale);
+    }
+
     float left;
     float top;
     float width;

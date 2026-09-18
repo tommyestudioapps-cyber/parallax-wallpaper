@@ -1,0 +1,112 @@
+[CONTEXTO]
+Antes de disparar o build, precisamos adicionar 3 logs temporários de
+diagnóstico para evitar um segundo build de 25 minutos depois. Cada um
+responde uma pergunta específica que ficou em aberto.
+
+────────────────────────────────────────────────
+LOG 1 — Decisão de publicação do frame (diagonal)
+────────────────────────────────────────────────
+Arquivo: ParallaxWallpaperService.java (as DUAS cópias)
+
+Em onSensorChanged(), existe hoje este log:
+
+  AppLog.d("[NATIVE] rawPitch=" + pitch
+      + " rawRoll=" + roll
+      + " motionY=" + processedMotionY
+      + " motionX=" + processedMotionX);
+
+Adicione no FINAL da mesma linha (antes do parêntese de fechamento):
+
+  + " published=" + publishMotion
+
+E ANTES da linha "if (!publishMotion) return;", adicione:
+
+  AppLog.d("[NATIVE] publishDecision deltaX="
+      + Math.abs(processedMotionX - motionSnapshot.getX())
+      + " deltaY="
+      + Math.abs(processedMotionY - motionSnapshot.getY())
+      + " threshold=" + MOTION_DEAD_ZONE);
+
+Nota: motionSnapshot já foi atualizado no bloco synchronized anterior.
+Se isso gerar inconsistência, capture a referência ANTES do bloco
+synchronized e compare com os valores pós-processamento.
+
+────────────────────────────────────────────────
+LOG 2 — Enquadramento (joelho/canela)
+────────────────────────────────────────────────
+Arquivo: ParallaxGlRenderer.java (as DUAS cópias)
+
+Em updateLayerMvp(), logo APÓS calcular fitScale e drawScale, adicione:
+
+  if (index == 0) {
+    AppLog.d("[RENDERER] surface=" + surfaceWidth + "x" + surfaceHeight
+        + " composition=" + compositionWidth
+        + " fitScale=" + fitScale
+        + " drawScale=" + drawScale
+        + " layerScale=" + layer.scale);
+  }
+
+O if (index == 0) evita inundar o log — só loga a camada de fundo
+(background), que é a que define o "cover" da composição.
+
+────────────────────────────────────────────────
+LOG 3 — FPS e eficiência (bateria)
+────────────────────────────────────────────────
+Arquivo: ParallaxEglThread.java (as DUAS cópias)
+
+Em emitGlMetricsIfNeeded(), o bloco:
+
+  if (BuildConfig.DEBUG) {
+    ...
+    AppLog.i("PARALLAX_GPU_METRICS" + ...);
+  }
+
+Hoje não emite em build preview. Substitua o guard para:
+
+  if (BuildConfig.DEBUG || true) {
+    ...
+  }
+
+Ou, mais limpo, remova o guard `if (BuildConfig.DEBUG)` e deixe o
+AppLog.i() sozinho — já que AppLog.i() agora emite sempre via
+FORCE_LOGGING.
+
+────────────────────────────────────────────────
+[NÃO FAÇA]
+────────────────────────────────────────────────
+- Não altere a fórmula motionX/motionY.
+- Não altere updateSensorState().
+- Não altere a lógica de calibração (já está correta).
+- Não altere os logs existentes [PREVIEW], [CANVAS], [PERSIST→NATIVE].
+- Não altere MOTION_DEAD_ZONE (continua 0f).
+- Não altere o shader.
+- Não instale dependências.
+
+────────────────────────────────────────────────
+TAREFA EXTRA — Sincronização
+────────────────────────────────────────────────
+As duas cópias de cada arquivo Java alterado (ParallaxWallpaperService,
+ParallaxGlRenderer, ParallaxEglThread) devem ficar byte-idênticas nos
+trechos modificados.
+
+[VERIFICAÇÃO — responda com 4 blocos]
+
+BLOCO 1 — ParallaxWallpaperService.java
+  Cole o trecho final de onSensorChanged() mostrando:
+  - o log [NATIVE] com " published=" no final
+  - o novo log [NATIVE] publishDecision
+  - o if (!publishMotion) return; na sequência correta
+
+BLOCO 2 — ParallaxGlRenderer.java
+  Cole o trecho final de updateLayerMvp() mostrando o novo log
+  [RENDERER] logo após fitScale/drawScale.
+
+BLOCO 3 — ParallaxEglThread.java
+  Cole o trecho final de emitGlMetricsIfNeeded() mostrando que
+  PARALLAX_GPU_METRICS agora emite sempre.
+
+BLOCO 4 — Sincronização e typecheck
+  Confirme que as 3 duplas de arquivos estão idênticas.
+  Typecheck: passou?
+  Comando final: git status (para eu confirmar que está tudo pronto
+  para o push).
