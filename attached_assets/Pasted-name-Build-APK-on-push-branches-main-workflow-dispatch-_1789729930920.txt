@@ -1,0 +1,69 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Instalar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar dependências do monorepo
+        run: pnpm install --no-frozen-lockfile --config.strict-dep-builds=false
+
+      - name: Gerar pasta android com Expo prebuild
+        working-directory: artifacts/parallax-wallpaper
+        run: pnpm exec expo prebuild --platform android --no-install
+
+      - name: Dar permissão ao gradlew
+        working-directory: artifacts/parallax-wallpaper/android
+        run: chmod +x gradlew
+
+      - name: Garantir debug keystore
+        working-directory: artifacts/parallax-wallpaper/android/app
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair \
+              -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Compilar APK (release)
+        working-directory: artifacts/parallax-wallpaper/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Publicar APK como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-apk
+          path: artifacts/parallax-wallpaper/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
