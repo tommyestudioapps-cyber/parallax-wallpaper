@@ -717,7 +717,7 @@ public final class ParallaxGlRenderer {
     float compositionWidth = textureManager.getCompositionCanvasWidth();
     if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
     motionX = sensorMotionX * 2f / compositionWidth;
-    motionY = -sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
+    motionY = sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
   }
 
   private void configureAlphaPrecisionTexture() {
