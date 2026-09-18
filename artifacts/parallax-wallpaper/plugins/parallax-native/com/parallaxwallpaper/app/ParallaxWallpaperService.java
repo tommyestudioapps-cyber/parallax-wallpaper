@@ -89,6 +89,7 @@ public class ParallaxWallpaperService extends WallpaperService {
           : sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
       powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
       refreshCachedRotation();
+      AppLog.d("[PERSIST→NATIVE] persisted calibration ignored; native auto-calibration enabled");
       loadPersistedCalibration();
       renderer = createRenderer();
       AppLog.i("PARALLAX_ENGINE_CREATED");
