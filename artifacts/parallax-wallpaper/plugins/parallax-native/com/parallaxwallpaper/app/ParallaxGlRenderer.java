@@ -716,11 +716,8 @@ public final class ParallaxGlRenderer {
     }
     float compositionWidth = textureManager.getCompositionCanvasWidth();
     if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
-    float compositionHeight = textureManager.getCompositionCanvasHeight();
-    if (compositionHeight <= 0f) compositionHeight = surfaceHeight;
-    // Mapeia o espaço do Canvas virtual para NDC, com a mesma proporção usada pelo Preview.
     motionX = sensorMotionX * 2f / compositionWidth;
-    motionY = -sensorMotionY * 2f / compositionHeight;
+    motionY = -sensorMotionY * 2f * surfaceWidth / (compositionWidth * surfaceHeight);
   }
 
   private void configureAlphaPrecisionTexture() {
@@ -892,18 +889,13 @@ public final class ParallaxGlRenderer {
     float canvasHeight = surfaceHeight;
     float compositionWidth = textureManager.getCompositionCanvasWidth();
     if (compositionWidth <= 0f) compositionWidth = DEFAULT_CANVAS_WIDTH;
-    float compositionHeight = textureManager.getCompositionCanvasHeight();
-    if (compositionHeight <= 0f) compositionHeight = canvasHeight;
     float coordinateScale = canvasWidth / compositionWidth;
 
     // Espelha exatamente o cálculo do drawLayer() do Canvas.
     float fitScale = Math.max(
-        compositionWidth / layer.imageWidth,
-        compositionHeight / layer.imageHeight);
-    // drawScale sai em unidades da composição; coordenadas de destino
-    // (left/top/width/height) estão em pixels físicos do surface.
-    // O coordinateScale converte entre os dois sistemas.
-    float drawScale = fitScale * layer.scale * coordinateScale;
+        canvasWidth / layer.imageWidth,
+        canvasHeight / layer.imageHeight);
+    float drawScale = fitScale * layer.scale;
 
     float left;
     float top;
