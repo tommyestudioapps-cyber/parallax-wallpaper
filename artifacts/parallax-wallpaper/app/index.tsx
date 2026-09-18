@@ -1687,7 +1687,6 @@ export default function HomeScreen() {
               intensity: project.intensity,
               canvasWidth: CANVAS_WIDTH,
               canvasHeight: CANVAS_HEIGHT,
-              sensorCalibration,
               layers: LAYER_IDS.reduce((layers, id) => {
                 layers[id] = {
                   ...project.layers[id],

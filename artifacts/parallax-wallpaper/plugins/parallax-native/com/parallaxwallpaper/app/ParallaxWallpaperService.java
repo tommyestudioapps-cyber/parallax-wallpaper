@@ -103,12 +103,6 @@ public class ParallaxWallpaperService extends WallpaperService {
       AppLog.i("PARALLAX_VISIBILITY_CHANGED visible=" + isVisible);
       if (isVisible) {
         if (currentRenderer != null) currentRenderer.invalidateComposition();
-        loadPersistedCalibration();
-        if (!calibrated) {
-          calibrationSamples = 0;
-          pitchSum = 0;
-          rollSum = 0;
-        }
         synchronized (motionLock) {
           filteredMotionX = 0f;
           filteredMotionY = 0f;
@@ -120,6 +114,10 @@ public class ParallaxWallpaperService extends WallpaperService {
         AppLog.d("[NATIVE] baselinePitch=" + baselinePitch
             + " baselineRoll=" + baselineRoll
             + " calibrated=" + calibrated);
+        calibrated = false;
+        calibrationSamples = 0;
+        pitchSum = 0f;
+        rollSum = 0f;
         unregisterSensor();
         registerSensor();
         requestFrame();
@@ -191,7 +189,8 @@ public class ParallaxWallpaperService extends WallpaperService {
 
     void onCompositionChangedExternally() {
       if (destroyed) return;
-      loadPersistedCalibration();
+      calibrated = false;
+      calibrationSamples = 0;
       WallpaperRenderer currentRenderer = renderer;
       if (currentRenderer != null) {
         currentRenderer.invalidateComposition();
@@ -239,35 +238,7 @@ public class ParallaxWallpaperService extends WallpaperService {
     }
 
     private boolean loadPersistedCalibration() {
-      String json = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-          .getString(PREF_COMPOSITION, null);
-      if (json == null) return false;
-      try {
-        JSONObject composition = new JSONObject(json);
-        JSONObject calibration = composition.optJSONObject("sensorCalibration");
-        if (calibration == null) return false;
-        double pitch = calibration.optDouble("pitch", Double.NaN);
-        double roll = calibration.optDouble("roll", Double.NaN);
-        if (Double.isNaN(pitch)
-            || Double.isInfinite(pitch)
-            || Double.isNaN(roll)
-            || Double.isInfinite(roll)) {
-          return false;
-        }
-        AppLog.d("[PERSIST→NATIVE] loaded pitch=" + pitch + " roll=" + roll);
-        baselinePitch = (float) pitch;
-        baselineRoll = (float) roll;
-        calibrated = true;
-        calibrationSamples = 0;
-        pitchSum = 0f;
-        rollSum = 0f;
-        lastTimestamp = 0;
-        AppLog.i("PARALLAX_SENSOR_CALIBRATION_LOADED");
-        return true;
-      } catch (Exception error) {
-        AppLog.w("PARALLAX_SENSOR_CALIBRATION_LOAD_FAILED");
-        return false;
-      }
+      return false;
     }
 
     private void registerSensor() {
@@ -329,9 +300,9 @@ public class ParallaxWallpaperService extends WallpaperService {
           18f);
       float targetY = softLimit(
           (float) Math.toDegrees(shortestAngleDelta(pitch, baselinePitch))
-              * 0.4f
+              * 0.45f
               * intensity,
-          15f);
+          18f);
       float filter = 1f - (float) Math.exp(-10f * dt);
       float processedMotionX;
       float processedMotionY;

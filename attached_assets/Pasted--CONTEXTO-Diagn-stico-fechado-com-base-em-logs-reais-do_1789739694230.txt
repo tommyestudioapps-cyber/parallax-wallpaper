@@ -1,0 +1,155 @@
+[CONTEXTO]
+Diagnóstico fechado com base em logs reais do adb logcat. Existem dois
+bugs confirmados no wallpaper nativo:
+
+BUG 1 — Baseline corrompida:
+A persistência da sensorCalibration entre Preview e nativo é inválida
+porque os dois sistemas usam convenções de Euler diferentes.
+Evidência dos logs:
+  [PREVIEW→PERSIST] saving pitch=0.684 rad (39.2°)
+  [NATIVE] baselinePitch=0.68417805
+  [NATIVE] rawPitch=-1.045 rad (-60°) em repouso
+  deltaPitch = -99° → softLimit satura → motionY travado em -14.75
+O movimento vertical está morto por saturação. O cálculo nunca sai do
+limite do softLimit.
+
+BUG 2 — Eixos assimétricos:
+X usa softLimit(delta × 0.45f, 18f)
+Y usa softLimit(delta × 0.40f, 15f)
+O eixo Y tem menos ganho e satura antes. Não é design premium — é
+dívida técnica. Apps como iOS Home Screen, Google Pixel Live Wallpapers
+e Samsung One UI usam eixos simétricos.
+
+Correção: (1) remover a persistência da calibração para o nativo
+voltar a auto-calibrar no próprio referencial, (2) simetrizar os
+eixos Y/X.
+
+────────────────────────────────────────────────
+TAREFA 1 — Parar de salvar sensorCalibration no Preview
+────────────────────────────────────────────────
+Arquivo: artifacts/parallax-wallpaper/app/index.tsx
+
+No ponto onde o JSON é montado (por volta da linha 1687, logo após
+os logs [CANVAS] que você adicionou antes), remova a chave
+"sensorCalibration" do objeto enviado em JSON.stringify.
+
+Antes:
+  JSON.stringify({
+    intensity: project.intensity,
+    canvasWidth: CANVAS_WIDTH,
+    canvasHeight: CANVAS_HEIGHT,
+    sensorCalibration,        ← REMOVER ESTA LINHA
+    layers: LAYER_IDS.reduce(...),
+  })
+
+Depois:
+  JSON.stringify({
+    intensity: project.intensity,
+    canvasWidth: CANVAS_WIDTH,
+    canvasHeight: CANVAS_HEIGHT,
+    layers: LAYER_IDS.reduce(...),
+  })
+
+A variável sensorCalibration pode continuar existindo no Preview
+(para uso interno de animação). Apenas NÃO a envie mais no JSON.
+
+────────────────────────────────────────────────
+TAREFA 2 — Parar de ler sensorCalibration no nativo
+────────────────────────────────────────────────
+Arquivo: ParallaxWallpaperService.java (as DUAS cópias):
+  artifacts/parallax-wallpaper/android/app/src/main/java/com/parallaxwallpaper/app/ParallaxWallpaperService.java
+  artifacts/parallax-wallpaper/plugins/parallax-native/com/parallaxwallpaper/app/ParallaxWallpaperService.java
+
+2.1. Em loadPersistedCalibration():
+    Substitua o corpo inteiro por:
+      return false;
+    Assim a função deixa de ler o JSON sem quebrar chamadas.
+
+2.2. Em onVisibilityChanged(boolean isVisible):
+    Localize o bloco "if (isVisible) { ... }" e remova a chamada:
+      loadPersistedCalibration();
+    No mesmo bloco, ANTES de "unregisterSensor(); registerSensor();",
+    adicione estas 4 linhas:
+      calibrated = false;
+      calibrationSamples = 0;
+      pitchSum = 0f;
+      rollSum = 0f;
+
+2.3. Em onCompositionChangedExternally():
+    Remova a chamada:
+      loadPersistedCalibration();
+    Adicione estas 2 linhas no lugar:
+      calibrated = false;
+      calibrationSamples = 0;
+
+────────────────────────────────────────────────
+TAREFA 3 — Simetrizar os eixos X/Y
+────────────────────────────────────────────────
+Arquivo: ParallaxWallpaperService.java (as DUAS cópias, mesmo caminho):
+
+Em onSensorChanged(), localize:
+  float targetX = softLimit(
+      (float) Math.toDegrees(shortestAngleDelta(roll, baselineRoll))
+          * 0.45f
+          * intensity,
+      18f);
+  float targetY = softLimit(
+      (float) Math.toDegrees(shortestAngleDelta(pitch, baselinePitch))
+          * 0.4f
+          * intensity,
+      15f);
+
+Troque por (mantendo os outros trechos iguais):
+  float targetX = softLimit(
+      (float) Math.toDegrees(shortestAngleDelta(roll, baselineRoll))
+          * 0.45f
+          * intensity,
+      18f);
+  float targetY = softLimit(
+      (float) Math.toDegrees(shortestAngleDelta(pitch, baselinePitch))
+          * 0.45f
+          * intensity,
+      18f);
+
+Diferenças: 0.4f → 0.45f e 15f → 18f.
+
+────────────────────────────────────────────────
+[NÃO FAÇA]
+────────────────────────────────────────────────
+- Não altere a fórmula motionX/motionY no ParallaxGlRenderer.java.
+- Não altere updateLayerMvp nem updateSensorState no GlRenderer.
+- Não altere AppLog.java (FORCE_LOGGING = true permanece).
+- Não altere Dimensions.screen no Preview.
+- Não remova os logs [CANVAS], [NATIVE], [PERSIST→NATIVE].
+- Não altere canvasWidth, canvasHeight, intensity ou layers no JSON.
+- Não altere MOTION_DEAD_ZONE = 0f.
+- Não mexa no shader, no remapCoordinateSystem, no EGL.
+- Não instale dependências.
+
+────────────────────────────────────────────────
+TAREFA 4 — Sincronização e verificação
+────────────────────────────────────────────────
+As duas cópias de ParallaxWallpaperService.java devem ficar
+byte-idênticas nos trechos alterados.
+
+[VERIFICAÇÃO — responda com 5 blocos]
+
+BLOCO 1 — Preview
+  Cole o JSON.stringify final (mostrando ausência de sensorCalibration).
+
+BLOCO 2 — ParallaxWallpaperService.java
+  Cole o trecho final de onVisibilityChanged (mostrando as 4 linhas
+  de auto-calibração).
+  Cole o loadPersistedCalibration() final (retornando false).
+  Cole as linhas finais de targetX e targetY em onSensorChanged.
+
+BLOCO 3 — Sincronização
+  Confirme que as duas cópias estão idênticas nos trechos alterados.
+
+BLOCO 4 — Arquivos NÃO alterados
+  Confirme que GlRenderer, AppLog, index.tsx (fora do JSON) e
+  ParallaxTextureManager permanecem intactos.
+
+BLOCO 5 — Typecheck e build
+  Typecheck: passou?
+  Comando para o git push que dispara o build no GitHub Actions.
