@@ -37,6 +37,7 @@
       "expo-dev-client",
       "expo-web-browser",
       "./plugins/withMlKitSubjectSegmentDependency",
+      "./plugins/withGradleBuildMemory",
       "./plugins/withParallaxLiveWallpaper"
     ],
     "experiments": {
