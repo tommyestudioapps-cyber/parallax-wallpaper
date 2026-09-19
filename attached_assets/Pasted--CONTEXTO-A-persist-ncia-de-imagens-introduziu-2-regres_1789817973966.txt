@@ -1,0 +1,107 @@
+[CONTEXTO]
+A persistência de imagens introduziu 2 regressões:
+
+BUG 1: Depois de escolher uma foto, o usuário não consegue trocá-la.
+Causa: o filename é fixo (background.jpg sempre), e o Image cacheia por
+URI. Novo arquivo é escrito no mesmo URI, mas a UI mostra o antigo.
+
+BUG 2: O recorte de uma camada não funciona mais.
+Causa: clearLayerFiles(id) é chamado ANTES de manipulateAsync(sourceUri).
+Como sourceUri === layer.sourceUri (arquivo persistente), ele é apagado
+antes de ser lido. manipulateAsync falha, cai no catch, nada acontece.
+
+Correção: (a) usar filename único a cada geração, (b) apagar arquivos
+antigos DEPOIS de gerar o novo, nunca antes de ler o source.
+
+[TAREFA]
+
+── PARTE 1: Filename único ──
+Em artifacts/parallax-wallpaper/app/index.tsx, altere persistLayerUri:
+
+  async function persistLayerUri(sourceUri: string, layerId: string): Promise<string> {
+    const source = new File(sourceUri);
+    const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
+    if (!dir.exists) {
+      dir.create({ intermediates: true });
+    }
+    const ext = source.extension || '.jpg';
+    const stamp = Date.now();
+    const filename = `${layerId}-${stamp}${ext}`;
+    const target = new File(dir, filename);
+    source.copy(target);
+    return target.uri;
+  }
+
+(removido o "if (target.exists) target.delete()" — timestamp já garante
+unicidade)
+
+── PARTE 2: Limpeza como "manter apenas o mais recente" ──
+Substitua clearLayerFiles por pruneLayerFiles, que recebe o URI atual:
+
+  async function pruneLayerFiles(layerId: string, keepUri: string): Promise<void> {
+    const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
+    if (!dir.exists) return;
+    for (const entry of dir.list()) {
+      const name = entry.name ?? '';
+      if (!name.startsWith(`${layerId}-`)) continue;
+      if (entry.uri === keepUri) continue;
+      try { entry.delete(); } catch { /* best-effort */ }
+    }
+  }
+
+── PARTE 3: pickLayer — ordem correta ──
+Em pickLayer(), remova qualquer chamada a clearLayerFiles(id).
+
+Após persistLayerUri, ANTES de updateLayer:
+
+  const persistentUri = await persistLayerUri(optimized.uri, id);
+  await pruneLayerFiles(id, persistentUri);
+
+E updateLayer com uri: persistentUri / sourceUri: persistentUri (como já
+está).
+
+── PARTE 4: Handler de remoção de fundo — ordem correta ──
+No handler de removeBackground, remova a chamada a clearLayerFiles(id).
+
+Ordem final deve ser:
+
+  const sourceUri = layer.sourceUri ?? uri;
+  const visibleCrop = getSourceCrop(layer);
+  const croppedImage = visibleCrop
+    ? await ImageManipulator.manipulateAsync(sourceUri, [{ crop: visibleCrop }], {
+        compress: 0.92,
+        format: ImageManipulator.SaveFormat.PNG,
+      })
+    : null;
+  const transparentUri = await removeBackground(
+    croppedImage?.uri ?? sourceUri,
+    { trim: false },
+  );
+  const persistentTransparentUri = await persistLayerUri(transparentUri, id);
+  await pruneLayerFiles(id, persistentTransparentUri);
+  updateLayer(id, {
+    uri: persistentTransparentUri,
+    sourceUri: persistentTransparentUri,
+    // resto do estado preservado
+  });
+
+── PARTE 5: Remover clearLayerFiles se não for mais usada ──
+Se clearLayerFiles não é chamada em nenhum outro lugar, remova a função.
+
+[NÃO FAÇA]
+- Não altere o JSON enviado ao wallpaper.
+- Não altere arquivos nativos (ParallaxGlRenderer, ParallaxWallpaperService,
+  AppLog, ParallaxTextureManager).
+- Não altere os logs [CANVAS], [PREVIEW], [PREVIEW→PERSIST].
+- Não mexa no fluxo de captura, calibração, animação.
+
+[VERIFICAÇÃO]
+1. Cole o persistLayerUri final (com o timestamp).
+2. Cole o pruneLayerFiles final.
+3. Cole o trecho final de pickLayer mostrando a ordem persistLayerUri →
+   pruneLayerFiles → updateLayer.
+4. Cole o trecho final do handler de removeBackground mostrando a ordem
+   correta.
+5. Confirme que clearLayerFiles não é chamada em nenhum lugar.
+6. Typecheck: passou?
+7. git diff --check: passou?

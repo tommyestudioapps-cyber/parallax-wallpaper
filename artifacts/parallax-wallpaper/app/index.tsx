@@ -139,26 +139,24 @@ async function persistLayerUri(sourceUri: string, layerId: string): Promise<stri
     dir.create({ intermediates: true });
   }
   const ext = source.extension || '.jpg';
-  const filename = `${layerId}${ext}`;
+  const stamp = Date.now();
+  const filename = `${layerId}-${stamp}${ext}`;
   const target = new File(dir, filename);
-  if (target.exists) {
-    target.delete();
-  }
   source.copy(target);
   return target.uri;
 }
 
-async function clearLayerFiles(layerId: string): Promise<void> {
+async function pruneLayerFiles(layerId: string, keepUri: string): Promise<void> {
   const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
   if (!dir.exists) return;
   for (const entry of dir.list()) {
     const name = entry.name ?? '';
-    if (name === `${layerId}.jpg` || name === `${layerId}.png` || name === `${layerId}.jpeg`) {
-      try {
-        entry.delete();
-      } catch {
-        // Best-effort cleanup before replacing a layer.
-      }
+    if (!name.startsWith(`${layerId}-`)) continue;
+    if (entry.uri === keepUri) continue;
+    try {
+      entry.delete();
+    } catch {
+      // Best-effort cleanup after the replacement is safely persisted.
     }
   }
 }
@@ -1507,7 +1505,6 @@ export default function HomeScreen() {
       }
       const sourceUri = layer.sourceUri ?? uri;
       const visibleCrop = getSourceCrop(layer);
-      await clearLayerFiles(id);
       const croppedImage = visibleCrop
         ? await ImageManipulator.manipulateAsync(sourceUri, [{ crop: visibleCrop }], {
             compress: 0.92,
@@ -1516,8 +1513,10 @@ export default function HomeScreen() {
         : null;
       const transparentUri = await removeBackground(croppedImage?.uri ?? sourceUri, { trim: false });
       const persistentTransparentUri = await persistLayerUri(transparentUri, id);
+      await pruneLayerFiles(id, persistentTransparentUri);
       updateLayer(id, {
         uri: persistentTransparentUri,
+        sourceUri: persistentTransparentUri,
         enabled: true,
         backgroundRemoved: true,
         imageWidth: layer.imageWidth ?? croppedImage?.width ?? null,
@@ -1550,7 +1549,6 @@ export default function HomeScreen() {
       setProcessing(true);
       try {
         const asset = result.assets[0];
-        await clearLayerFiles(id);
         const maxDimension = 1440;
         const largest = Math.max(asset.width ?? maxDimension, asset.height ?? maxDimension);
         const resize = largest > maxDimension ? [{ resize: { width: asset.width && asset.width >= (asset.height ?? 0) ? maxDimension : undefined, height: asset.height && asset.height > (asset.width ?? 0) ? maxDimension : undefined } }] : [];
@@ -1562,6 +1560,7 @@ export default function HomeScreen() {
           format: isCutoutLayer ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
         });
         const persistentUri = await persistLayerUri(optimized.uri, id);
+        await pruneLayerFiles(id, persistentUri);
         updateLayer(id, {
           uri: persistentUri,
           sourceUri: persistentUri,
