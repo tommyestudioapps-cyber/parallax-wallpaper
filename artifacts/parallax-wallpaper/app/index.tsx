@@ -16,6 +16,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -129,6 +130,38 @@ const LAYER_IDS: LayerId[] = ['background', 'middle', 'foreground'];
 const MIN_GESTURE_SCALE = 0.12;
 const MAX_GESTURE_SCALE = 6;
 const PROJECT_PERSIST_DEBOUNCE_MS = 300;
+const LAYERS_DIR_NAME = 'parallax-layers';
+
+async function persistLayerUri(sourceUri: string, layerId: string): Promise<string> {
+  const source = new File(sourceUri);
+  const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
+  if (!dir.exists) {
+    dir.create({ intermediates: true });
+  }
+  const ext = source.extension || '.jpg';
+  const filename = `${layerId}${ext}`;
+  const target = new File(dir, filename);
+  if (target.exists) {
+    target.delete();
+  }
+  source.copy(target);
+  return target.uri;
+}
+
+async function clearLayerFiles(layerId: string): Promise<void> {
+  const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
+  if (!dir.exists) return;
+  for (const entry of dir.list()) {
+    const name = entry.name ?? '';
+    if (name === `${layerId}.jpg` || name === `${layerId}.png` || name === `${layerId}.jpeg`) {
+      try {
+        entry.delete();
+      } catch {
+        // Best-effort cleanup before replacing a layer.
+      }
+    }
+  }
+}
 
 const layerMeta: Record<LayerId, Pick<Layer, 'label' | 'eyebrow' | 'helper'>> = {
   background: {
@@ -1474,6 +1507,7 @@ export default function HomeScreen() {
       }
       const sourceUri = layer.sourceUri ?? uri;
       const visibleCrop = getSourceCrop(layer);
+      await clearLayerFiles(id);
       const croppedImage = visibleCrop
         ? await ImageManipulator.manipulateAsync(sourceUri, [{ crop: visibleCrop }], {
             compress: 0.92,
@@ -1481,8 +1515,9 @@ export default function HomeScreen() {
           })
         : null;
       const transparentUri = await removeBackground(croppedImage?.uri ?? sourceUri, { trim: false });
+      const persistentTransparentUri = await persistLayerUri(transparentUri, id);
       updateLayer(id, {
-        uri: transparentUri,
+        uri: persistentTransparentUri,
         enabled: true,
         backgroundRemoved: true,
         imageWidth: layer.imageWidth ?? croppedImage?.width ?? null,
@@ -1515,6 +1550,7 @@ export default function HomeScreen() {
       setProcessing(true);
       try {
         const asset = result.assets[0];
+        await clearLayerFiles(id);
         const maxDimension = 1440;
         const largest = Math.max(asset.width ?? maxDimension, asset.height ?? maxDimension);
         const resize = largest > maxDimension ? [{ resize: { width: asset.width && asset.width >= (asset.height ?? 0) ? maxDimension : undefined, height: asset.height && asset.height > (asset.width ?? 0) ? maxDimension : undefined } }] : [];
@@ -1525,9 +1561,10 @@ export default function HomeScreen() {
           // never acquire a black rectangle during composition.
           format: isCutoutLayer ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
         });
+        const persistentUri = await persistLayerUri(optimized.uri, id);
         updateLayer(id, {
-          uri: optimized.uri,
-          sourceUri: optimized.uri,
+          uri: persistentUri,
+          sourceUri: persistentUri,
           imageWidth: optimized.width ?? asset.width ?? null,
           imageHeight: optimized.height ?? asset.height ?? null,
           sourceCrop: null,
