@@ -149,10 +149,11 @@ async function persistLayerUri(sourceUri: string, layerId: string): Promise<stri
 async function pruneLayerFiles(layerId: string, keepUri: string): Promise<void> {
   const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
   if (!dir.exists) return;
+  const keepName = keepUri.split('/').pop() ?? '';
   for (const entry of dir.list()) {
     const name = entry.name ?? '';
     if (!name.startsWith(`${layerId}-`)) continue;
-    if (entry.uri === keepUri) continue;
+    if (name === keepName) continue;
     try {
       entry.delete();
     } catch {
