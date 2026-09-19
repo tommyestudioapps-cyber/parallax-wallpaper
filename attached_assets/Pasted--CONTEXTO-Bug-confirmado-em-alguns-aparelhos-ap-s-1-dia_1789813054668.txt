@@ -1,0 +1,117 @@
+[CONTEXTO]
+Bug confirmado em alguns aparelhos: após ~1 dia, o background do
+wallpaper desaparece e fica preto. Outras camadas podem seguir.
+
+Causa raiz:
+As imagens das camadas são salvas em FileSystem.cacheDirectory, via
+ImageManipulator.manipulateAsync (linha ~1523) e removeBackground
+(linha ~1483). O Android limpa o cache periodicamente. Quando o
+wallpaper é reiniciado pelo sistema, tenta recarregar o JSON e encontra
+URIs apontando para arquivos inexistentes → preto.
+
+Evidência:
+- grep de "documentDirectory|FileSystem" em app/ retornou vazio
+- pickLayer salva optimized.uri direto em updateLayer
+- O handler de removeBackground salva transparentUri direto
+
+Correção: persistir as imagens em documentDirectory antes de enviá-las
+ao wallpaper. documentDirectory NÃO é limpo pelo Android.
+
+[TAREFA]
+
+── PARTE 1: Import ──
+Em artifacts/parallax-wallpaper/app/index.tsx, se ainda não existir,
+importe de expo-file-system:
+
+  import { Directory, File, Paths } from 'expo-file-system';
+
+── PARTE 2: Helper persistLayerUri ──
+Adicione fora do componente, antes do primeiro uso:
+
+  const LAYERS_DIR_NAME = 'parallax-layers';
+
+  async function persistLayerUri(sourceUri: string, layerId: string): Promise<string> {
+    const source = new File(sourceUri);
+    const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
+    if (!dir.exists) {
+      dir.create({ intermediates: true });
+    }
+    const ext = source.extension || '.jpg';
+    const filename = `${layerId}${ext}`;
+    const target = new File(dir, filename);
+    if (target.exists) {
+      target.delete();
+    }
+    source.copy(target);
+    return target.uri;
+  }
+
+Se a assinatura de source.copy(target) divergir na versão instalada,
+ajuste para a forma correta (copyTo ou similar) — o typecheck deve
+passar.
+
+── PARTE 3: Usar no pickLayer ──
+Em pickLayer(), após o manipulateAsync que gera `optimized`, adicione
+antes do updateLayer:
+
+  const persistentUri = await persistLayerUri(optimized.uri, id);
+
+E troque no updateLayer:
+
+  Antes:
+    uri: optimized.uri,
+    sourceUri: optimized.uri,
+  Depois:
+    uri: persistentUri,
+    sourceUri: persistentUri,
+
+── PARTE 4: Usar no handler de removeBackground ──
+Onde existir:
+  const transparentUri = await removeBackground(croppedImage?.uri ?? sourceUri, { trim: false });
+
+Adicione logo depois:
+
+  const persistentTransparentUri = await persistLayerUri(transparentUri, id);
+
+E troque no updateLayer correspondente:
+
+  Antes:
+    uri: transparentUri,
+  Depois:
+    uri: persistentTransparentUri,
+
+── PARTE 5: Limpar arquivos antigos ao trocar imagem ──
+Adicione um helper para evitar acúmulo:
+
+  async function clearLayerFiles(layerId: string): Promise<void> {
+    const dir = new Directory(Paths.document, LAYERS_DIR_NAME);
+    if (!dir.exists) return;
+    for (const entry of dir.list()) {
+      const name = entry.name ?? '';
+      if (name === `${layerId}.jpg` ||
+          name === `${layerId}.png` ||
+          name === `${layerId}.jpeg`) {
+        try { entry.delete(); } catch { /* best-effort */ }
+      }
+    }
+  }
+
+Chame clearLayerFiles(id) no início de pickLayer e do handler de
+removeBackground, antes de gerar a nova imagem.
+
+[NÃO FAÇA]
+- Não altere o formato do JSON enviado ao wallpaper.
+- Não altere ParallaxGlRenderer.java, ParallaxWallpaperService.java,
+  AppLog.java, ParallaxTextureManager.java.
+- Não remova os logs [CANVAS], [PREVIEW], [PREVIEW→PERSIST].
+- Não mexa no fluxo de captura, calibração, animação.
+
+[VERIFICAÇÃO]
+1. Cole o helper persistLayerUri final (com o import).
+2. Cole o trecho final de pickLayer mostrando persistLayerUri chamado
+   e o URI persistente entrando em updateLayer.
+3. Cole o trecho final do handler de removeBackground.
+4. Cole o helper clearLayerFiles.
+5. Typecheck: passou?
+6. git diff --check: passou?
+7. git status --short.
