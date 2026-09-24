@@ -38,7 +38,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import BannerAdFooter from '@/components/BannerAdFooter';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 const STORAGE_KEY = '@parallax-wallpaper/project';
@@ -2293,11 +2292,6 @@ export default function HomeScreen() {
         ) : null}
         <View style={{ height: 20 }} />
       </ScrollView>
-      <BannerAdFooter
-        backgroundColor={colors.background}
-        borderColor={colors.border}
-        bottomInset={insets.bottom}
-      />
     </View>
   );
 }
