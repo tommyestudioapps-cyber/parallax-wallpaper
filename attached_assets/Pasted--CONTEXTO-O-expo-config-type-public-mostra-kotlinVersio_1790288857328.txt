@@ -1,0 +1,51 @@
+[CONTEXTO]
+O expo config --type public mostra kotlinVersion: '2.2.0', mas o Gradle
+continua usando Kotlin 2.1.0 (a mensagem de erro diz "expected version
+is 2.1.0"). Isso prova que o expo-build-properties escreve em um lugar
+e o Gradle lê de outro. Preciso localizar ONDE a versão 2.1.0 está
+definida no projeto Android gerado.
+
+[TAREFA — diagnóstico puro, sem alterar nada]
+
+1. Localizar o arquivo de version catalog (padrão do RN 0.81):
+   find artifacts/parallax-wallpaper/android/gradle -name "*.toml" 2>/dev/null
+   Se existir, colar o conteúdo COMPLETO.
+
+2. Buscar "2.1.0" e "kotlinVersion" em TODOS os arquivos do android/:
+   grep -rn "kotlinVersion\|kotlin_version\|2\.1\.0" \
+     artifacts/parallax-wallpaper/android/ \
+     --include="*.gradle" --include="*.toml" --include="*.properties" \
+     2>/dev/null | grep -i kotlin
+
+3. Colar o conteúdo COMPLETO de:
+   artifacts/parallax-wallpaper/android/build.gradle
+   (só o buildscript block, as primeiras ~40 linhas)
+
+4. Verificar se existe:
+   artifacts/parallax-wallpaper/android/gradle.properties
+   Se sim, colar linhas que mencionam kotlin ou Kotlin.
+
+5. Rodar o prebuild localmente para gerar o android/ fresco e ver o que
+   o expo-build-properties escreveu:
+   cd artifacts/parallax-wallpaper
+   rm -rf android
+   pnpm exec expo prebuild --platform android --no-install
+   Depois: grep -rn "kotlinVersion\|2\.2\.0\|2\.1\.0" android/build.gradle android/gradle.properties android/gradle/*.toml 2>/dev/null
+
+   Se o prebuild falhar no workspace, apenas reporte o erro e continue
+   com os itens acima sem rodar prebuild.
+
+[NÃO FAÇA]
+- Não altere app.json nem nenhum plugin.
+- Não altere arquivos dentro de android/ manualmente.
+- Não modifique o workflow do GitHub.
+- Não faça git commit.
+
+[VERIFICAÇÃO]
+Me devolva:
+1. Caminho e conteúdo do libs.versions.toml (se existir).
+2. Output do grep por "kotlin" no android/ inteiro.
+3. Conteúdo do buildscript block de android/build.gradle.
+4. Conteúdo de android/gradle.properties (só linhas Kotlin).
+5. Resultado do prebuild fresco: onde a versão 2.2.0 aparece e onde
+   2.1.0 ainda persiste.
