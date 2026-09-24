@@ -7,6 +7,10 @@ const {
 const fs = require('fs');
 const path = require('path');
 
+// Why: the AdMob SDK class MobileAds must be resolvable from the :app
+// module. react-native-google-mobile-ads declares it as implementation
+// in its own module, so it is not transitive. We add it explicitly here
+// so the MainApplication.kt code injection compiles.
 const PACKAGE_NAME = 'com.parallaxwallpaper.app';
 const JAVA_PACKAGE_PATH = PACKAGE_NAME.replace(/\./g, '/');
 
