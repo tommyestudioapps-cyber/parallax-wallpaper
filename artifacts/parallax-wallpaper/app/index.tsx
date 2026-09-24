@@ -38,6 +38,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import BannerAdFooter from '@/components/BannerAdFooter';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 const STORAGE_KEY = '@parallax-wallpaper/project';
@@ -2192,7 +2193,7 @@ export default function HomeScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
        <Header title="Parallax Wallpaper Maker" colors={colors} onReset={importedCount > 0 ? resetProject : undefined} />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.homeScroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Progress mode={mode} colors={colors} />
         <View style={styles.hero}>
           <Text style={[styles.heroTitle, { color: colors.foreground }]}>Transforme fotos{'\n'}em <Text style={{ color: colors.primary }}>profundidade.</Text></Text>
@@ -2290,14 +2291,20 @@ export default function HomeScreen() {
             <Text style={[styles.bodyTextSmall, { color: colors.primary }]}>Otimizando sua imagem…</Text>
           </View>
         ) : null}
-        <View style={{ height: insets.bottom + 24 }} />
+        <View style={{ height: 20 }} />
       </ScrollView>
+      <BannerAdFooter
+        backgroundColor={colors.background}
+        borderColor={colors.border}
+        bottomInset={insets.bottom}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  homeScroll: { flex: 1 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   loadingText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
   logoMark: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
