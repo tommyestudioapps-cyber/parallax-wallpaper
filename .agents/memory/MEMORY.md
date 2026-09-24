@@ -5,3 +5,4 @@
 - [Expo build port](expo-build-port.md) — the custom static build assumes Metro owns port 8081, so concurrent workflows can make it time out before bundling.
 - [Expo native splash sync](expo-native-splash-sync.md) — changing app.json does not refresh prebuilt Android/iOS splash resources already used by native builds.
 - [Android wallpaper chooser messaging](android-wallpaper-chooser-messaging.md) — the system “Aplicar a” screen cannot host React Native overlays; confirm activation from the wallpaper service.
+- [Expo config plugin options](expo-config-plugin-options.md) — consolidate installer-added bare entries into one configured plugin before validating Expo config.
