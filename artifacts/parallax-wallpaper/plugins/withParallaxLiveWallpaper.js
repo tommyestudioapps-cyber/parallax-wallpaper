@@ -80,6 +80,13 @@ function withParallaxWallpaperManifest(config) {
 function withParallaxWallpaperMainApplication(config) {
   return withMainApplication(config, (modConfig) => {
     let contents = modConfig.modResults.contents;
+    if (!contents.includes('import com.google.android.gms.ads.MobileAds')) {
+      contents = contents.replace(
+        /^(package [^\n]+\n)/m,
+        '$1\nimport com.google.android.gms.ads.MobileAds\n',
+      );
+    }
+
     if (!contents.includes('ParallaxWallpaperPackage')) {
       contents = contents.replace(
         /^(package [^\n]+\n)/m,
@@ -106,6 +113,25 @@ function withParallaxWallpaperMainApplication(config) {
       );
     } else {
       throw new Error('Parallax wallpaper plugin could not find the React Native package list.');
+    }
+
+    if (!contents.includes('MobileAds.initialize(this)')) {
+      const kotlinOnCreate = '    super.onCreate()\n';
+      const javaOnCreate = '    super.onCreate();\n';
+
+      if (contents.includes(kotlinOnCreate)) {
+        contents = contents.replace(
+          kotlinOnCreate,
+          `${kotlinOnCreate}    MobileAds.initialize(this) { _ -> }\n`,
+        );
+      } else if (contents.includes(javaOnCreate)) {
+        contents = contents.replace(
+          javaOnCreate,
+          `${javaOnCreate}    MobileAds.initialize(this, initializationStatus -> { });\n`,
+        );
+      } else {
+        throw new Error('Parallax wallpaper plugin could not find the MainApplication onCreate method.');
+      }
     }
 
     modConfig.modResults.contents = contents;

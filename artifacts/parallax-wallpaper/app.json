@@ -20,7 +20,9 @@
     "android": {
       "package": "com.parallaxwallpaper.app",
       "permissions": [
-        "android.permission.HIGH_SAMPLING_RATE_SENSORS"
+        "android.permission.HIGH_SAMPLING_RATE_SENSORS",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
       ]
     },
     "web": {
@@ -36,6 +38,13 @@
       "expo-font",
       "expo-dev-client",
       "expo-web-browser",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ],
       "./plugins/withMlKitSubjectSegmentDependency",
       "./plugins/withGradleBuildMemory",
       "./plugins/withParallaxLiveWallpaper"

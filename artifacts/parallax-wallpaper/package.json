@@ -71,6 +71,7 @@
     "expo-image-manipulator": "~14.0.8",
     "expo-sensors": "15.0.8",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "react-native-google-mobile-ads": "16.5.0"
   }
 }
