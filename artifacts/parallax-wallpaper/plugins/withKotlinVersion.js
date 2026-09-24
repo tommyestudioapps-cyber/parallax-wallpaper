@@ -25,7 +25,7 @@ module.exports = function withKotlinVersion(config) {
 
       // Replace the classpath line without a version with an explicit version.
       const before =
-        /classpath\((['"])org\.jetbrains\.kotlin:kotlin-gradle-plugin\1\)/;
+        /classpath\((['"])org\.jetbrains\.kotlin:kotlin-gradle-plugin(:[0-9][^'"]*)?\1\)/;
       const after = `classpath('org.jetbrains.kotlin:kotlin-gradle-plugin:${KOTLIN_VERSION}')`;
       if (!before.test(content)) {
         throw new Error(
