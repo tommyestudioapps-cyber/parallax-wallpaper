@@ -55,7 +55,8 @@
       ],
       "./plugins/withMlKitSubjectSegmentDependency",
       "./plugins/withGradleBuildMemory",
-      "./plugins/withParallaxLiveWallpaper"
+      "./plugins/withParallaxLiveWallpaper",
+      "./plugins/withKotlinVersion"
     ],
     "experiments": {
       "typedRoutes": true,
