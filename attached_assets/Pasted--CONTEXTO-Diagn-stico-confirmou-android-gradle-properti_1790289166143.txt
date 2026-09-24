@@ -1,0 +1,91 @@
+[CONTEXTO]
+Diagnóstico confirmou:
+- android/gradle.properties tem android.kotlinVersion=2.2.0 ✅
+- android/build.gradle tem classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+  SEM versão ❌
+- Gradle usa 2.1.0 (default) e ignora a property do expo-build-properties
+
+A property do expo-build-properties não está chegando ao Kotlin Gradle
+Plugin neste setup (Expo SDK 54 + RN 0.81). Workaround: injetar a versão
+explícita no classpath via plugin config.
+
+O projeto já tem 3 plugins customizados em ./plugins/. Vamos adicionar
+um quarto, seguindo o mesmo padrão.
+
+[TAREFA]
+
+── PARTE 1: Criar o plugin ──
+Crie o arquivo artifacts/parallax-wallpaper/plugins/withKotlinVersion.js:
+
+  const fs = require('fs');
+  const path = require('path');
+  const { withDangerousMod } = require('expo/config-plugins');
+
+  // Workaround: o expo-build-properties escreve android.kotlinVersion em
+  // gradle.properties, mas o Kotlin Gradle Plugin neste setup (Expo SDK 54
+  // + RN 0.81) ignora a property. Injetamos a versão explícita no classpath.
+  // Remover quando o ecossistema passar a consumir a property corretamente.
+  const KOTLIN_VERSION = '2.2.0';
+
+  module.exports = function withKotlinVersion(config) {
+    return withDangerousMod(config, [
+      'android',
+      async (config) => {
+        const buildGradlePath = path.join(
+          config.modRequest.platformProjectRoot,
+          'build.gradle',
+        );
+        if (!fs.existsSync(buildGradlePath)) {
+          throw new Error('withKotlinVersion: android/build.gradle não encontrado');
+        }
+        let content = fs.readFileSync(buildGradlePath, 'utf8');
+
+        // Substitui a linha sem versão pela linha com versão explícita.
+        const before = /classpath\((['"])org\.jetbrains\.kotlin:kotlin-gradle-plugin\1\)/;
+        const after = `classpath('org.jetbrains.kotlin:kotlin-gradle-plugin:${KOTLIN_VERSION}')`;
+        if (!before.test(content)) {
+          throw new Error(
+            'withKotlinVersion: classpath do kotlin-gradle-plugin não encontrado em build.gradle',
+          );
+        }
+        content = content.replace(before, after);
+        fs.writeFileSync(buildGradlePath, content);
+
+        // Sanidade: confirmar que sobrou apenas uma ocorrência com versão.
+        if (!content.includes(`kotlin-gradle-plugin:${KOTLIN_VERSION}`)) {
+          throw new Error('withKotlinVersion: injeção falhou');
+        }
+        return config;
+      },
+    ]);
+  };
+
+── PARTE 2: Registrar no app.json ──
+Em artifacts/parallax-wallpaper/app.json, adicionar a entrada
+"./plugins/withKotlinVersion" no array "plugins", como ÚLTIMO item (após
+"./plugins/withParallaxLiveWallpaper"), para garantir que ele roda depois
+de qualquer outro plugin que mexa em build.gradle.
+
+── PARTE 3: Rodar prebuild local para validar ──
+  cd artifacts/parallax-wallpaper
+  rm -rf android
+  pnpm exec expo prebuild --platform android --no-install
+  grep -n "kotlin-gradle-plugin" android/build.gradle
+
+O grep DEVE mostrar:
+  classpath('org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.0')
+
+[NÃO FAÇA]
+- Não altere expo-build-properties nem sua config no app.json.
+- Não remova android.kotlinVersion=2.2.0 do gradle.properties (deixe
+  redundante, caso algum dia passe a funcionar).
+- Não altere o workflow do GitHub.
+- Não toque em arquivos nativos Java/Kotlin do app.
+
+[VERIFICAÇÃO]
+1. Cole o conteúdo final de ./plugins/withKotlinVersion.js.
+2. Cole o array "plugins" final do app.json.
+3. Cole o output do grep no android/build.gradle.
+4. Typecheck: passou?
+5. git diff --check: passou?
+6. git status --short.
