@@ -1,4 +1,5 @@
 const {
+  withAppBuildGradle,
   withAndroidManifest,
   withDangerousMod,
   withMainApplication,
@@ -139,6 +140,32 @@ function withParallaxWallpaperMainApplication(config) {
   });
 }
 
+function withParallaxWallpaperAdsDependency(config) {
+  return withAppBuildGradle(config, (modConfig) => {
+    const contents = modConfig.modResults.contents;
+    const marker = '// withParallaxLiveWallpaper: ads dependency';
+    if (contents.includes(marker)) {
+      return modConfig;
+    }
+
+    const dependenciesBlock = /^([ \t]*)dependencies[ \t]*\{/m;
+    const match = contents.match(dependenciesBlock);
+    if (!match) {
+      throw new Error(
+        'Parallax wallpaper plugin could not find the dependencies block in android/app/build.gradle.',
+      );
+    }
+
+    const indent = match[1];
+    const replacement = `${match[0]}\n${indent}    ${marker}\n${indent}    implementation 'com.google.android.gms:play-services-ads:25.4.0'`;
+    modConfig.modResults.contents = contents.replace(
+      dependenciesBlock,
+      replacement,
+    );
+    return modConfig;
+  });
+}
+
 function withParallaxWallpaperFiles(config) {
   return withDangerousMod(config, [
     'android',
@@ -203,6 +230,7 @@ const PARALLAX_XML = `<wallpaper xmlns:android="http://schemas.android.com/apk/r
 module.exports = function withParallaxLiveWallpaper(config) {
   config = withParallaxWallpaperManifest(config);
   config = withParallaxWallpaperMainApplication(config);
+  config = withParallaxWallpaperAdsDependency(config);
   config = withParallaxWallpaperFiles(config);
   return config;
 };

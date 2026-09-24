@@ -1,0 +1,92 @@
+[CONTEXTO]
+Build falhou com:
+  MainApplication.kt:5:35 Unresolved reference 'MobileAds'
+  MainApplication.kt:48:5 Unresolved reference 'MobileAds'
+
+Causa: o plugin withParallaxLiveWallpaper.js injeta o import e a chamada
+MobileAds.initialize(this) no MainApplication.kt, mas NÃO adiciona a
+dependência play-services-ads ao módulo :app. A dependência existe no
+módulo interno de react-native-google-mobile-ads, mas não é transitiva.
+
+Fato observado: o build anterior resolveu play-services-ads-25.4.0.
+
+Correção: estender withParallaxLiveWallpaper.js para também adicionar
+a dependência ao android/app/build.gradle. Coeso — o mesmo plugin que
+injeta o código passa a declarar a dependência.
+
+[TAREFA]
+
+── PARTE 1: Estender o plugin ──
+Em artifacts/parallax-wallpaper/plugins/withParallaxLiveWallpaper.js:
+
+1. Se ainda não importado, adicionar withAppBuildGradle ao require de
+   expo/config-plugins.
+
+2. Criar um novo mod interno com withAppBuildGradle, que:
+   a. Lê config.modResults.contents (build.gradle do módulo :app)
+   b. Verifica se já contém o marcador "withParallaxLiveWallpaper: ads dependency"
+      — se sim, retorna sem alterar (idempotência)
+   c. Localiza o primeiro bloco "dependencies {" do arquivo
+   d. Insere logo após a abertura do bloco:
+
+      // withParallaxLiveWallpaper: ads dependency
+      implementation 'com.google.android.gms:play-services-ads:25.4.0'
+
+   e. Se o bloco "dependencies {" não existir, lança erro com mensagem
+      clara
+
+3. Encadear esse mod ao export final do plugin — para rodar junto com o
+   withDangerousMod existente.
+
+Exemplo da estrutura final (a ordem dos mods não importa aqui, ambos
+alteram arquivos diferentes):
+
+  module.exports = function withParallaxLiveWallpaper(config) {
+    config = withAppBuildGradle(config, (cfg) => {
+      // lógica acima
+      return cfg;
+    });
+    config = withDangerousMod(config, ['android', async (cfg) => {
+      // lógica existente — NÃO alterar
+      return cfg;
+    }]);
+    return config;
+  };
+
+── PARTE 2: Rodar prebuild local ──
+  cd artifacts/parallax-wallpaper
+  rm -rf android
+  pnpm exec expo prebuild --platform android --no-install
+
+── PARTE 3: Validar ──
+  grep -n "play-services-ads" android/app/build.gradle
+  # deve mostrar: implementation 'com.google.android.gms:play-services-ads:25.4.0'
+
+  grep -n "MobileAds" android/app/src/main/java/com/parallaxwallpaper/app/MainApplication.kt
+  # deve continuar mostrando import + initialize
+
+── PARTE 4: Documentar ──
+No topo do arquivo do plugin, junto aos outros comentários, adicionar:
+
+  // Why: the AdMob SDK class MobileAds must be resolvable from the :app
+  // module. react-native-google-mobile-ads declares it as implementation
+  // in its own module, so it is not transitive. We add it explicitly here
+  // so the MainApplication.kt code injection compiles.
+
+[NÃO FAÇA]
+- Não remova o import nem a chamada MobileAds.initialize() do
+  MainApplication.kt.
+- Não altere arquivos dentro de android/ manualmente (é gerado).
+- Não toque em outros plugins (withKotlinVersion, withMlKitSubject...,
+  withGradleBuildMemory).
+- Não altere o app.json.
+- Não mexa no workflow do GitHub.
+- Não faça commit.
+
+[VERIFICAÇÃO]
+1. Cole o trecho final do plugin com withAppBuildGradle (bloco completo).
+2. Cole o output de: grep -n "play-services-ads" android/app/build.gradle
+3. Cole o output de: grep -n "MobileAds" android/app/src/main/java/com/parallaxwallpaper/app/MainApplication.kt
+4. Typecheck: passou?
+5. git diff --check: passou?
+6. git status --short.
