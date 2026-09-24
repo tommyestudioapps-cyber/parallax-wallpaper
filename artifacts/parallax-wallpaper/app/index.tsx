@@ -38,6 +38,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { useRewardedAd } from '@/hooks/useRewardedAd';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 const STORAGE_KEY = '@parallax-wallpaper/project';
@@ -1324,6 +1325,10 @@ export default function HomeScreen() {
   const middlePickerAttention = useAttentionAnimation();
   const foregroundPickerAttention = useAttentionAnimation();
   const previewButtonAttention = useAttentionAnimation();
+  const openPreviewAfterReward = useCallback(() => {
+    setMode('preview');
+  }, []);
+  const showRewardedAd = useRewardedAd(openPreviewAfterReward);
   const gestureStart = useRef<{
     mode: CanvasGestureMode;
     x: number;
@@ -2030,7 +2035,7 @@ export default function HomeScreen() {
             </View>
           </View>
           <Animated.View style={[styles.primaryButtonAttention, previewButtonAttention.buttonStyle]}>
-            <PrimaryButton title="Visualizar movimento" onPress={() => setMode('preview')} colors={colors} icon="play" />
+            <PrimaryButton title="Visualizar movimento" onPress={showRewardedAd} colors={colors} icon="play" />
           </Animated.View>
           <View style={{ height: insets.bottom + 24 }} />
         </ScrollView>
