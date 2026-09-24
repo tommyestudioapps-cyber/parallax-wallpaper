@@ -1,0 +1,55 @@
+[CONTEXTO]
+O build do GitHub Actions falhou com erro de incompatibilidade de Kotlin:
+
+  play-services-ads-25.4.0-api.jar: Module was compiled with an
+  incompatible version of Kotlin. The binary version of its metadata
+  is 2.3.0, expected version is 2.1.0.
+  Task :react-native-google-mobile-ads:compileReleaseKotlin FAILED
+
+O projeto é Expo SDK 54 com React Native 0.81.5. O Kotlin padrão do
+Expo SDK 54 (2.1.0) não consegue ler a metadata do play-services-ads
+25.4.0 (Kotlin 2.3.0). Precisamos subir a versão do Kotlin usada pelo
+projeto Android.
+
+[TAREFA]
+1. Verificar se expo-build-properties está instalado:
+   grep expo-build-properties artifacts/parallax-wallpaper/package.json
+
+2. Se NÃO estiver, instalar:
+   cd artifacts/parallax-wallpaper
+   npx expo install expo-build-properties
+
+3. Localizar o app.json ou app.config.js em
+   artifacts/parallax-wallpaper/ e adicionar (ou atualizar) o plugin
+   expo-build-properties na lista "plugins" com esta configuração:
+
+   [
+     "expo-build-properties",
+     {
+       "android": {
+         "kotlinVersion": "2.2.0"
+       }
+     }
+   ]
+
+   Se o plugin já existir, apenas adicionar/atualizar o campo
+   "kotlinVersion" dentro de "android" na configuração dele.
+
+4. Verificar se existe android/build.gradle com um valor de
+   kotlinVersion. Se existir e estiver fixado em 2.1.0, NÃO alterar
+   diretamente — o expo-build-properties sobrescreve no prebuild.
+
+[NÃO FAÇA]
+- Não rode prebuild manualmente.
+- Não altere arquivos dentro de artifacts/parallax-wallpaper/android/
+  (são gerados no build).
+- Não altere o workflow do GitHub.
+- Não mexa em nenhum arquivo nativo Java/Kotlin do projeto.
+
+[VERIFICAÇÃO]
+1. Cole o conteúdo final do app.json (ou app.config.js) na seção
+   plugins.
+2. Confirme que expo-build-properties está em package.json.
+3. Rode pnpm exec expo config --type public e cole o trecho que
+   mostra android.kotlinVersion ou o plugins com expo-build-properties.
+4. git status --short.
