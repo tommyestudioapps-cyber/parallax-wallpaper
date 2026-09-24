@@ -1,8 +1,0 @@
-- [Expo SDK package resolution](expo-sdk-package-resolution.md) — check the workspace registry when SDK-matched module aliases are unavailable.
-- [Canvas bitmap ownership](canvas-bitmap-ownership.md) — decoded Canvas bitmaps need renderer-owned references so lifecycle cleanup can recycle them centrally.
-- [GLES20 attribute state](gles20-attribute-state.md) — Android GLES20 lacks pointer readback; preserve renderer-owned canonical offsets with queryable attribute state.
-- [Wallpaper rendering thread](wallpaper-rendering-thread.md) — never decode images or block on canvas rendering from WallpaperService callbacks.
-- [Expo build port](expo-build-port.md) — the custom static build assumes Metro owns port 8081, so concurrent workflows can make it time out before bundling.
-- [Expo native splash sync](expo-native-splash-sync.md) — changing app.json does not refresh prebuilt Android/iOS splash resources already used by native builds.
-- [Android wallpaper chooser messaging](android-wallpaper-chooser-messaging.md) — the system “Aplicar a” screen cannot host React Native overlays; confirm activation from the wallpaper service.
-- [Expo config plugin options](expo-config-plugin-options.md) — consolidate installer-added bare entries into one configured plugin before validating Expo config.
