@@ -1225,7 +1225,7 @@ function ParallaxPreview({
 
       previewScrollFrame.current = requestAnimationFrame(step);
     });
-  }, [previewAttention.start]);
+  }, [compositionScrollDistance, previewAttention.start]);
 
   useEffect(() => {
     if (previewButtonLayoutReady.current) queuePreviewAttention();
@@ -1764,6 +1764,7 @@ export default function HomeScreen() {
       );
       const startY = Math.min(Math.max(0, composeScrollY.current), maxScrollY);
       const scrollTargetY = Math.min(maxScrollY, Math.max(0, targetY - 24));
+      composeScrollY.current = startY;
       compositionScrollDistance.current = Math.abs(scrollTargetY - startY);
       animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY);
       if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
