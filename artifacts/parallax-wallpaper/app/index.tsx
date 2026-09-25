@@ -1179,6 +1179,11 @@ function ParallaxPreview({
 
       const targetY = Math.max(0, previewApplyButtonY.current - 24);
       const startY = previewScrollY.current;
+      if (targetY <= startY + 1) {
+        previewAttention.start();
+        return;
+      }
+
       const startedAt = performance.now();
       const duration = 900;
       const step = (timestamp: number) => {
@@ -1193,11 +1198,11 @@ function ParallaxPreview({
         } else {
           previewScrollY.current = targetY;
           previewScrollFrame.current = null;
+          previewAttention.start();
         }
       };
 
       previewScrollFrame.current = requestAnimationFrame(step);
-      previewAttention.start(360);
     });
   }, [previewAttention.start]);
 
