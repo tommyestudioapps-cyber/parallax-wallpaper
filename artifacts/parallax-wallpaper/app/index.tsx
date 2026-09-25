@@ -52,6 +52,7 @@ const MAX_CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_WIDTH = Math.min(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT * CANVAS_ASPECT_RATIO);
 const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
 const CONTENT_MAX_WIDTH = 560;
+const COMPOSITION_SCROLL_DURATION_MS = 900;
 const HERO_TITLE_FONT_SIZE = Math.max(34, Math.min(42, SCREEN_WIDTH * 0.1056));
 const HERO_TITLE_LINE_HEIGHT = Math.round(HERO_TITLE_FONT_SIZE * 1.1);
 const COMPOSITION_LAYER_SAFETY_MARGIN = 2;
@@ -84,6 +85,12 @@ const PARALLAX_BASE_LIMIT_Y = Math.max(
 );
 const PARALLAX_SENSOR_SAMPLE_COUNT = 12;
 const PARALLAX_SMOOTHING_RATE = 10;
+
+function easeInOutCubic(progress: number) {
+  return progress < 0.5
+    ? 4 * progress * progress * progress
+    : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+}
 
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
@@ -1113,6 +1120,7 @@ function ParallaxPreview({
   colors,
   applied,
   showAppliedNotice,
+  compositionScrollDistance,
   onBack,
   onApplyWallpaper,
   onDismissAppliedNotice,
@@ -1121,6 +1129,7 @@ function ParallaxPreview({
   colors: ReturnType<typeof useColors>;
   applied: boolean;
   showAppliedNotice: boolean;
+  compositionScrollDistance: number;
   onBack: () => void;
   onApplyWallpaper: (calibration: SensorCalibration | null) => void;
   onDismissAppliedNotice: () => void;
@@ -1128,6 +1137,8 @@ function ParallaxPreview({
   const insets = useSafeAreaInsets();
   const previewScrollRef = useRef<ScrollView | null>(null);
   const previewScrollY = useRef(0);
+  const previewScrollViewportHeight = useRef(0);
+  const previewScrollContentHeight = useRef(0);
   const previewScrollFrame = useRef<number | null>(null);
   const previewKickoffFrame = useRef<number | null>(null);
   const previewApplyButtonY = useRef<number | null>(null);
@@ -1166,6 +1177,8 @@ function ParallaxPreview({
       previewAttentionStarted.current
       || previewAttentionScheduled.current
       || previewApplyButtonY.current === null
+      || previewScrollViewportHeight.current <= 0
+      || previewScrollContentHeight.current <= 0
     ) {
       return;
     }
@@ -1177,20 +1190,28 @@ function ParallaxPreview({
       if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
       previewAttentionStarted.current = true;
 
-      const targetY = Math.max(0, previewApplyButtonY.current - 24);
-      const startY = previewScrollY.current;
-      if (targetY <= startY + 1) {
+      const maxScrollY = Math.max(
+        0,
+        previewScrollContentHeight.current - previewScrollViewportHeight.current,
+      );
+      const startY = Math.min(Math.max(0, previewScrollY.current), maxScrollY);
+      const targetY = Math.min(
+        maxScrollY,
+        Math.max(0, previewApplyButtonY.current - 24),
+      );
+      const previewDistance = Math.abs(targetY - startY);
+      if (previewDistance <= 1) {
         previewAttention.start();
         return;
       }
 
+      const duration = compositionScrollDistance > 1
+        ? COMPOSITION_SCROLL_DURATION_MS * previewDistance / compositionScrollDistance
+        : COMPOSITION_SCROLL_DURATION_MS;
       const startedAt = performance.now();
-      const duration = 900;
       const step = (timestamp: number) => {
         const progress = Math.min(1, (timestamp - startedAt) / duration);
-        const eased = progress < 0.5
-          ? 4 * progress * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        const eased = easeInOutCubic(progress);
         const nextY = startY + (targetY - startY) * eased;
         previewScrollRef.current?.scrollTo({ y: nextY, animated: false });
         if (progress < 1) {
@@ -1234,6 +1255,19 @@ function ParallaxPreview({
         ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
+        onLayout={(event) => {
+          const height = event.nativeEvent.layout.height;
+          if (previewScrollViewportHeight.current !== height) {
+            previewScrollViewportHeight.current = height;
+            queuePreviewAttention();
+          }
+        }}
+        onContentSizeChange={(_width, height) => {
+          if (previewScrollContentHeight.current !== height) {
+            previewScrollContentHeight.current = height;
+            queuePreviewAttention();
+          }
+        }}
         onScroll={(event) => {
           previewScrollY.current = event.nativeEvent.contentOffset.y;
         }}
@@ -1345,6 +1379,9 @@ export default function HomeScreen() {
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editScrollRef = useRef<ScrollView>(null);
   const composeScrollRef = useRef<ScrollView>(null);
+  const composeScrollViewportHeight = useRef(0);
+  const composeScrollContentHeight = useRef(0);
+  const compositionScrollDistance = useRef(0);
   const editCropCardY = useRef<number | null>(null);
   const composeLayerPickerY = useRef<number | null>(null);
   const editAttentionPending = useRef(false);
@@ -1359,6 +1396,7 @@ export default function HomeScreen() {
   const [composeAttentionRequest, setComposeAttentionRequest] = useState(0);
   const [editCropCardLayoutVersion, setEditCropCardLayoutVersion] = useState(0);
   const [composeLayerPickerLayoutVersion, setComposeLayerPickerLayoutVersion] = useState(0);
+  const [composeScrollMetricsVersion, setComposeScrollMetricsVersion] = useState(0);
   const cropAttention = useAttentionAnimation();
   const middlePickerAttention = useAttentionAnimation();
   const foregroundPickerAttention = useAttentionAnimation();
@@ -1677,12 +1715,9 @@ export default function HomeScreen() {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       const startY = currentYRef.current;
       const startedAt = performance.now();
-      const duration = 900;
       const step = (timestamp: number) => {
-        const progress = Math.min(1, (timestamp - startedAt) / duration);
-        const eased = progress < 0.5
-          ? 4 * progress * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        const progress = Math.min(1, (timestamp - startedAt) / COMPOSITION_SCROLL_DURATION_MS);
+        const eased = easeInOutCubic(progress);
         const nextY = startY + (targetY - startY) * eased;
         scrollRef.current?.scrollTo({ y: nextY, animated: false });
         if (progress < 1) {
@@ -1718,11 +1753,19 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (mode !== 'compose' || !composeAttentionPending.current) return;
+    if (composeScrollViewportHeight.current <= 0 || composeScrollContentHeight.current <= 0) return;
     const frame = requestAnimationFrame(() => {
       const targetY = composeLayerPickerY.current;
       if (targetY === null) return;
       composeAttentionPending.current = false;
-      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, Math.max(0, targetY - 24));
+      const maxScrollY = Math.max(
+        0,
+        composeScrollContentHeight.current - composeScrollViewportHeight.current,
+      );
+      const startY = Math.min(Math.max(0, composeScrollY.current), maxScrollY);
+      const scrollTargetY = Math.min(maxScrollY, Math.max(0, targetY - 24));
+      compositionScrollDistance.current = Math.abs(scrollTargetY - startY);
+      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY);
       if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
       composeAttentionTimer.current = setTimeout(() => {
         middlePickerAttention.start(120);
@@ -1739,6 +1782,7 @@ export default function HomeScreen() {
     animateScrollTo,
     composeAttentionRequest,
     composeLayerPickerLayoutVersion,
+    composeScrollMetricsVersion,
     foregroundPickerAttention.start,
     middlePickerAttention,
     mode,
@@ -1947,6 +1991,7 @@ export default function HomeScreen() {
         colors={colors}
         applied={applied}
         showAppliedNotice={showAppliedNotice}
+        compositionScrollDistance={compositionScrollDistance.current}
         onBack={() => setMode('compose')}
         onApplyWallpaper={applyWallpaper}
         onDismissAppliedNotice={() => setShowAppliedNotice(false)}
@@ -1965,6 +2010,19 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
+          onLayout={(event) => {
+            const height = event.nativeEvent.layout.height;
+            if (composeScrollViewportHeight.current !== height) {
+              composeScrollViewportHeight.current = height;
+              setComposeScrollMetricsVersion((current) => current + 1);
+            }
+          }}
+          onContentSizeChange={(_width, height) => {
+            if (composeScrollContentHeight.current !== height) {
+              composeScrollContentHeight.current = height;
+              setComposeScrollMetricsVersion((current) => current + 1);
+            }
+          }}
           onScroll={(event) => {
             composeScrollY.current = event.nativeEvent.contentOffset.y;
           }}
