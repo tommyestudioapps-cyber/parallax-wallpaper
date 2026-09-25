@@ -1242,6 +1242,12 @@ function ParallaxPreview({
                 ? 'Verificando o sensor de movimento…'
                 : 'A suavização está ativa. Incline o celular devagar para explorar as três camadas.'}
           </Text>
+          <View style={styles.previewScrollHint}>
+            <Ionicons name="chevron-down" size={15} color={colors.primary} />
+            <Text style={[styles.previewScrollHintText, { color: colors.mutedForeground }]}>
+              Deslize para baixo para aplicar
+            </Text>
+          </View>
         </View>
         <Animated.View
           style={[styles.primaryButtonAttention, previewAttention.buttonStyle]}
@@ -2035,7 +2041,12 @@ export default function HomeScreen() {
             </View>
           </View>
           <Animated.View style={[styles.primaryButtonAttention, previewButtonAttention.buttonStyle]}>
-            <PrimaryButton title="Visualizar movimento" onPress={showRewardedAd} colors={colors} icon="play" />
+            <PrimaryButton
+              title="Assista ao vídeo e veja o Parallax"
+              onPress={showRewardedAd}
+              colors={colors}
+              icon="play-circle-outline"
+            />
           </Animated.View>
           <View style={{ height: insets.bottom + 24 }} />
         </ScrollView>
@@ -2351,7 +2362,7 @@ const styles = StyleSheet.create({
   layerConnector: { position: 'absolute', width: 1, height: 10, left: 41, bottom: -10, zIndex: 3 },
   tipCard: { borderWidth: 1, borderRadius: 15, padding: 13, flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 16 },
   primaryButton: { minHeight: 54, borderRadius: 16, borderWidth: 1, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  primaryButtonText: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  primaryButtonText: { fontSize: 14, fontFamily: 'Inter_700Bold', flexShrink: 1, textAlign: 'center' },
   processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 14 },
   savedText: { textAlign: 'center', fontSize: 11, fontFamily: 'Inter_500Medium', paddingTop: 12 },
   editPreview: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, alignSelf: 'center', borderRadius: 22, borderWidth: 1, overflow: 'hidden', marginBottom: 20 },
@@ -2407,6 +2418,8 @@ const styles = StyleSheet.create({
   previewFrame: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, borderRadius: 26, borderWidth: 1, overflow: 'hidden', backgroundColor: '#11151D' },
   previewLayer: { ...StyleSheet.absoluteFillObject },
   previewCopy: { width: '100%', paddingVertical: 17 },
+  previewScrollHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 9 },
+  previewScrollHintText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
   previewTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginBottom: 6, letterSpacing: -0.4 },
   footnote: { textAlign: 'center', fontSize: 10, fontFamily: 'Inter_400Regular', paddingTop: 12 },
   appliedNoticeBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
