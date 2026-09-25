@@ -1129,10 +1129,11 @@ function ParallaxPreview({
   const previewScrollRef = useRef<ScrollView | null>(null);
   const previewScrollY = useRef(0);
   const previewScrollFrame = useRef<number | null>(null);
+  const previewKickoffFrame = useRef<number | null>(null);
   const previewApplyButtonY = useRef<number | null>(null);
   const previewButtonLayoutReady = useRef(false);
+  const previewAttentionScheduled = useRef(false);
   const previewAttentionStarted = useRef(false);
-  const [previewButtonLayoutVersion, setPreviewButtonLayoutVersion] = useState(0);
   const previewAttention = useAttentionAnimation();
   const [sensorStatus, setSensorStatus] = useState<'checking' | 'ready' | 'unavailable'>(
     Platform.OS === 'web' ? 'unavailable' : 'checking',
@@ -1160,13 +1161,21 @@ function ParallaxPreview({
     }
     onApplyWallpaper(sensorCalibration);
   }, [onApplyWallpaper, sensorCalibration, sensorStatus]);
-  useEffect(() => {
-    if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
-    let startedOnFrame = false;
-    const kickoffFrame = requestAnimationFrame(() => {
+  const queuePreviewAttention = useCallback(() => {
+    if (
+      previewAttentionStarted.current
+      || previewAttentionScheduled.current
+      || previewApplyButtonY.current === null
+    ) {
+      return;
+    }
+
+    previewAttentionScheduled.current = true;
+    previewKickoffFrame.current = requestAnimationFrame(() => {
+      previewKickoffFrame.current = null;
+      previewAttentionScheduled.current = false;
       if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
       previewAttentionStarted.current = true;
-      startedOnFrame = true;
 
       const targetY = Math.max(0, previewApplyButtonY.current - 24);
       const startY = previewScrollY.current;
@@ -1190,16 +1199,23 @@ function ParallaxPreview({
       previewScrollFrame.current = requestAnimationFrame(step);
       previewAttention.start(360);
     });
+  }, [previewAttention.start]);
 
+  useEffect(() => {
+    if (previewButtonLayoutReady.current) queuePreviewAttention();
     return () => {
-      cancelAnimationFrame(kickoffFrame);
+      if (previewKickoffFrame.current !== null) {
+        cancelAnimationFrame(previewKickoffFrame.current);
+        previewKickoffFrame.current = null;
+      }
       if (previewScrollFrame.current !== null) {
         cancelAnimationFrame(previewScrollFrame.current);
         previewScrollFrame.current = null;
       }
-      if (!startedOnFrame) previewAttentionStarted.current = false;
+      previewAttentionScheduled.current = false;
+      previewAttentionStarted.current = false;
     };
-  }, [previewAttention.start, previewButtonLayoutVersion]);
+  }, [queuePreviewAttention]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -1263,7 +1279,7 @@ function ParallaxPreview({
             previewApplyButtonY.current = event.nativeEvent.layout.y;
             if (!previewButtonLayoutReady.current) {
               previewButtonLayoutReady.current = true;
-              setPreviewButtonLayoutVersion(1);
+              queuePreviewAttention();
             }
           }}
         >
