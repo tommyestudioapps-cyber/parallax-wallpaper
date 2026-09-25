@@ -1130,6 +1130,7 @@ function ParallaxPreview({
   const previewScrollY = useRef(0);
   const previewScrollFrame = useRef<number | null>(null);
   const previewApplyButtonY = useRef<number | null>(null);
+  const previewButtonLayoutReady = useRef(false);
   const previewAttentionStarted = useRef(false);
   const [previewButtonLayoutVersion, setPreviewButtonLayoutVersion] = useState(0);
   const previewAttention = useAttentionAnimation();
@@ -1161,35 +1162,42 @@ function ParallaxPreview({
   }, [onApplyWallpaper, sensorCalibration, sensorStatus]);
   useEffect(() => {
     if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
-    previewAttentionStarted.current = true;
+    let startedOnFrame = false;
+    const kickoffFrame = requestAnimationFrame(() => {
+      if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
+      previewAttentionStarted.current = true;
+      startedOnFrame = true;
 
-    const targetY = Math.max(0, previewApplyButtonY.current - 24);
-    const startY = previewScrollY.current;
-    const startedAt = performance.now();
-    const duration = 1250;
-    const step = (timestamp: number) => {
-      const progress = Math.min(1, (timestamp - startedAt) / duration);
-      const eased = progress < 0.5
-        ? 4 * progress * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-      const nextY = startY + (targetY - startY) * eased;
-      previewScrollRef.current?.scrollTo({ y: nextY, animated: false });
-      if (progress < 1) {
-        previewScrollFrame.current = requestAnimationFrame(step);
-      } else {
-        previewScrollY.current = targetY;
-        previewScrollFrame.current = null;
-      }
-    };
+      const targetY = Math.max(0, previewApplyButtonY.current - 24);
+      const startY = previewScrollY.current;
+      const startedAt = performance.now();
+      const duration = 900;
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        const nextY = startY + (targetY - startY) * eased;
+        previewScrollRef.current?.scrollTo({ y: nextY, animated: false });
+        if (progress < 1) {
+          previewScrollFrame.current = requestAnimationFrame(step);
+        } else {
+          previewScrollY.current = targetY;
+          previewScrollFrame.current = null;
+        }
+      };
 
-    previewScrollFrame.current = requestAnimationFrame(step);
-    previewAttention.start(360);
+      previewScrollFrame.current = requestAnimationFrame(step);
+      previewAttention.start(360);
+    });
 
     return () => {
+      cancelAnimationFrame(kickoffFrame);
       if (previewScrollFrame.current !== null) {
         cancelAnimationFrame(previewScrollFrame.current);
         previewScrollFrame.current = null;
       }
+      if (!startedOnFrame) previewAttentionStarted.current = false;
     };
   }, [previewAttention.start, previewButtonLayoutVersion]);
 
@@ -1253,7 +1261,10 @@ function ParallaxPreview({
           style={[styles.primaryButtonAttention, previewAttention.buttonStyle]}
           onLayout={(event) => {
             previewApplyButtonY.current = event.nativeEvent.layout.y;
-            setPreviewButtonLayoutVersion((current) => current + 1);
+            if (!previewButtonLayoutReady.current) {
+              previewButtonLayoutReady.current = true;
+              setPreviewButtonLayoutVersion(1);
+            }
           }}
         >
           <PrimaryButton
