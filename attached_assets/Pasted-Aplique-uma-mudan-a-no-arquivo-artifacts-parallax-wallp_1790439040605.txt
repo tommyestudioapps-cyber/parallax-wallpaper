@@ -1,0 +1,127 @@
+Aplique uma mudança no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+O useEffect da tela de Edit (para middle/foreground) hoje:
+- começa a rolar imediatamente ao entrar
+- dispara o pulse do crop via setTimeout(..., 760) fixo, que está
+  dessincronizado da rolagem atual
+
+Vamos replicar o comportamento do Preview e da Composição:
+- aguardar 450ms antes de começar a rolar
+- disparar o pulse do crop no fim REAL da rolagem (via callback do
+  animateScrollTo)
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Nova ref no escopo do HomeScreen
+═══════════════════════════════════════════════
+
+Junto das refs da tela de Edit (editCropCardY, editAttentionPending,
+editAttentionTimer, editScrollY, editScrollFrame), adicione:
+
+  const editStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Reorganizar o useEffect do Edit
+═══════════════════════════════════════════════
+
+O useEffect atual do Edit tem esta estrutura (resumida):
+
+  useEffect(() => {
+    if (mode !== 'edit' || editingLayer === 'background' || !editAttentionPending.current) return;
+    const frame = requestAnimationFrame(() => {
+      const targetY = editCropCardY.current;
+      if (targetY === null) return;
+      editAttentionPending.current = false;
+      animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24));
+      if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
+      editAttentionTimer.current = setTimeout(() => {
+        cropAttention.start(180);
+      }, 760);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
+      if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
+    };
+  }, [...]);
+
+Reorganize para:
+
+  useEffect(() => {
+    if (mode !== 'edit' || editingLayer === 'background' || !editAttentionPending.current) return;
+    const frame = requestAnimationFrame(() => {
+      const targetY = editCropCardY.current;
+      if (targetY === null) return;
+      editAttentionPending.current = false;
+      editStartTimeout.current = setTimeout(() => {
+        editStartTimeout.current = null;
+        animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24), () => {
+          cropAttention.start(180);
+        });
+      }, 450);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (editStartTimeout.current !== null) {
+        clearTimeout(editStartTimeout.current);
+        editStartTimeout.current = null;
+      }
+      if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
+    };
+  }, [...]);
+
+Observações:
+- O pulse (cropAttention.start(180)) agora está dentro do callback do
+  animateScrollTo, contando a partir do fim real da rolagem.
+- O valor 180 permanece.
+- O dependency array permanece exatamente igual. Não adicione nem
+  remova itens.
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Remover editAttentionTimer
+═══════════════════════════════════════════════
+
+Como o setTimeout(760) foi removido, a ref editAttentionTimer ficou
+sem uso. Remova:
+
+3a) A declaração:
+      const editAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+3b) A linha de cleanup associada que foi removida no passo 2 (não
+    precisa fazer nada — já foi retirada na MUDANÇA 2).
+
+Confirme após remover que não sobrou nenhuma referência a
+editAttentionTimer no arquivo.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere useAttentionAnimation.
+- NÃO altere queuePreviewAttention nem handlePreviewUserInterrupt.
+- NÃO altere animateScrollTo (a assinatura de 5 parâmetros já existe).
+- NÃO altere calcScrollDuration nem easeOutCubic.
+- NÃO altere o ScrollView do Edit, do Preview ou da Composição.
+- NÃO altere os pulses em si.
+- NÃO altere a lógica de editCropCardY, editAttentionPending ou
+  editScrollY.
+- NÃO mexa no editCropCardLayoutVersion nem editAttentionRequest.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do trecho alterado.
+
+2) Confirme que editAttentionTimer não tem mais nenhuma referência
+   no arquivo.
+
+3) Confirme que cropAttention.start(180) está agora dentro do callback
+   do animateScrollTo.
+
+4) Confirme que editStartTimeout é limpo no return do useEffect.

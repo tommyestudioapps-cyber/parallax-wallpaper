@@ -1431,7 +1431,7 @@ export default function HomeScreen() {
   const composeLayerPickerY = useRef<number | null>(null);
   const editAttentionPending = useRef(false);
   const composeAttentionPending = useRef(false);
-  const editAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editScrollY = useRef(0);
   const composeScrollY = useRef(0);
   const editScrollFrame = useRef<number | null>(null);
@@ -1785,15 +1785,19 @@ export default function HomeScreen() {
       const targetY = editCropCardY.current;
       if (targetY === null) return;
       editAttentionPending.current = false;
-      animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24));
-      if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
-      editAttentionTimer.current = setTimeout(() => {
-        cropAttention.start(180);
-      }, 760);
+      editStartTimeout.current = setTimeout(() => {
+        editStartTimeout.current = null;
+        animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24), () => {
+          cropAttention.start(180);
+        });
+      }, 450);
     });
     return () => {
       cancelAnimationFrame(frame);
-      if (editAttentionTimer.current) clearTimeout(editAttentionTimer.current);
+      if (editStartTimeout.current !== null) {
+        clearTimeout(editStartTimeout.current);
+        editStartTimeout.current = null;
+      }
       if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
     };
   }, [animateScrollTo, cropAttention.start, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
