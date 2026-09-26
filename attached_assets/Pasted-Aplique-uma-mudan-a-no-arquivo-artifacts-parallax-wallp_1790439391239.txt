@@ -1,0 +1,130 @@
+Aplique uma mudança no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+CONTEXTO
+═══════════════════════════════════════════════
+
+A camada "background" da tela de Edit nunca recebeu rolagem automática
+de atenção (diferente do Preview, da Composição e das camadas
+middle/foreground). Para adicionar isso num passo posterior, primeiro
+precisamos INSTRUMENTAR a tela: saber a altura do viewport, a altura
+do conteúdo e a posição Y do elemento informativo (infoRow).
+
+Neste passo, NÃO adicione rolagem. Apenas meça.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Novas refs e um estado de versão
+═══════════════════════════════════════════════
+
+Junto das refs do Edit (editCropCardY, editScrollY, editScrollFrame,
+editStartTimeout, etc.), adicione:
+
+  const editInfoRowY = useRef<number | null>(null);
+  const editScrollViewportHeight = useRef(0);
+  const editScrollContentHeight = useRef(0);
+
+E, junto dos estados que já existem (editAttentionRequest,
+editCropCardLayoutVersion), adicione:
+
+  const [editMetricsVersion, setEditMetricsVersion] = useState(0);
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Instrumentar o ScrollView do Edit
+═══════════════════════════════════════════════
+
+O ScrollView do Edit hoje tem estas props:
+
+  <ScrollView
+    ref={editScrollRef}
+    contentContainerStyle={styles.scrollContent}
+    showsVerticalScrollIndicator={false}
+    scrollEventThrottle={16}
+    onScroll={(event) => {
+      editScrollY.current = event.nativeEvent.contentOffset.y;
+    }}
+  >
+
+Adicione onLayout e onContentSizeChange, sem remover nem alterar
+onScroll:
+
+  <ScrollView
+    ref={editScrollRef}
+    contentContainerStyle={styles.scrollContent}
+    showsVerticalScrollIndicator={false}
+    scrollEventThrottle={16}
+    onLayout={(event) => {
+      const height = event.nativeEvent.layout.height;
+      if (editScrollViewportHeight.current !== height) {
+        editScrollViewportHeight.current = height;
+        setEditMetricsVersion((current) => current + 1);
+      }
+    }}
+    onContentSizeChange={(_width, height) => {
+      if (editScrollContentHeight.current !== height) {
+        editScrollContentHeight.current = height;
+        setEditMetricsVersion((current) => current + 1);
+      }
+    }}
+    onScroll={(event) => {
+      editScrollY.current = event.nativeEvent.contentOffset.y;
+    }}
+  >
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Instrumentar o infoRow
+═══════════════════════════════════════════════
+
+O infoRow é esta View, que só aparece quando editingLayer é 'background'
+e edit.uri existe:
+
+  <View style={[styles.infoRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+    <Ionicons name="layers-outline" size={18} color={colors.primary} />
+    <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>O fundo preserva o quadro inteiro. Sem corte nesta camada.</Text>
+  </View>
+
+Adicione a prop onLayout, sem alterar nada mais:
+
+  <View
+    onLayout={(event) => {
+      const y = event.nativeEvent.layout.y;
+      if (editInfoRowY.current !== y) {
+        editInfoRowY.current = y;
+        setEditMetricsVersion((current) => current + 1);
+      }
+    }}
+    style={[styles.infoRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+  >
+    <Ionicons name="layers-outline" size={18} color={colors.primary} />
+    <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>O fundo preserva o quadro inteiro. Sem corte nesta camada.</Text>
+  </View>
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO adicione rolagem automática ainda. Esse passo é só medição.
+- NÃO altere o useEffect de atenção do Edit. Ele continua como está.
+- NÃO altere pickLayer.
+- NÃO altere useAttentionAnimation, animateScrollTo, queuePreviewAttention,
+  handlePreviewUserInterrupt, nem a Composição.
+- NÃO altere o cropCard nem o onLayout dele.
+- NÃO altere o dependency array de nenhum useEffect.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do arquivo.
+
+2) Confirme que editInfoRowY, editScrollViewportHeight,
+   editScrollContentHeight e editMetricsVersion existem.
+
+3) Confirme que o ScrollView do Edit tem agora onLayout e
+   onContentSizeChange, mantendo onScroll.
+
+4) Confirme que o infoRow tem onLayout.
+
+5) Confirme que nenhuma outra prop ou linha foi alterada em outros
+   trechos do arquivo.

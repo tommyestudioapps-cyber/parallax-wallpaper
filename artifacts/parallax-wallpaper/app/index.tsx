@@ -1428,17 +1428,21 @@ export default function HomeScreen() {
   const composeScrollContentHeight = useRef(0);
   const composeStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editCropCardY = useRef<number | null>(null);
+  const editInfoRowY = useRef<number | null>(null);
   const composeLayerPickerY = useRef<number | null>(null);
   const editAttentionPending = useRef(false);
   const composeAttentionPending = useRef(false);
   const editStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editScrollY = useRef(0);
+  const editScrollViewportHeight = useRef(0);
+  const editScrollContentHeight = useRef(0);
   const composeScrollY = useRef(0);
   const editScrollFrame = useRef<number | null>(null);
   const composeScrollFrame = useRef<number | null>(null);
   const [editAttentionRequest, setEditAttentionRequest] = useState(0);
   const [composeAttentionRequest, setComposeAttentionRequest] = useState(0);
   const [editCropCardLayoutVersion, setEditCropCardLayoutVersion] = useState(0);
+  const [editMetricsVersion, setEditMetricsVersion] = useState(0);
   const [composeLayerPickerLayoutVersion, setComposeLayerPickerLayoutVersion] = useState(0);
   const [composeScrollMetricsVersion, setComposeScrollMetricsVersion] = useState(0);
   const cropAttention = useAttentionAnimation(colors.primary);
@@ -2219,6 +2223,19 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
+          onLayout={(event) => {
+            const height = event.nativeEvent.layout.height;
+            if (editScrollViewportHeight.current !== height) {
+              editScrollViewportHeight.current = height;
+              setEditMetricsVersion((current) => current + 1);
+            }
+          }}
+          onContentSizeChange={(_width, height) => {
+            if (editScrollContentHeight.current !== height) {
+              editScrollContentHeight.current = height;
+              setEditMetricsVersion((current) => current + 1);
+            }
+          }}
           onScroll={(event) => {
             editScrollY.current = event.nativeEvent.contentOffset.y;
           }}
@@ -2332,7 +2349,16 @@ export default function HomeScreen() {
                   </Animated.View>
                 </View>
               ) : (
-                <View style={[styles.infoRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                <View
+                  onLayout={(event) => {
+                    const y = event.nativeEvent.layout.y;
+                    if (editInfoRowY.current !== y) {
+                      editInfoRowY.current = y;
+                      setEditMetricsVersion((current) => current + 1);
+                    }
+                  }}
+                  style={[styles.infoRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                >
                   <Ionicons name="layers-outline" size={18} color={colors.primary} />
                   <Text style={[styles.bodyTextSmall, { color: colors.mutedForeground }]}>O fundo preserva o quadro inteiro. Sem corte nesta camada.</Text>
                 </View>
