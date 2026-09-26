@@ -1431,7 +1431,9 @@ export default function HomeScreen() {
   const editInfoRowY = useRef<number | null>(null);
   const composeLayerPickerY = useRef<number | null>(null);
   const editAttentionPending = useRef(false);
+  const editAttentionStarted = useRef(false);
   const composeAttentionPending = useRef(false);
+  const composeAttentionStarted = useRef(false);
   const editStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editScrollY = useRef(0);
   const editScrollViewportHeight = useRef(0);
@@ -1802,6 +1804,7 @@ export default function HomeScreen() {
         editScrollY.current = startY;
         editStartTimeout.current = setTimeout(() => {
           editStartTimeout.current = null;
+          editAttentionStarted.current = true;
           animateScrollTo(editScrollRef, editScrollY, editScrollFrame, targetY);
         }, 450);
       });
@@ -1822,6 +1825,7 @@ export default function HomeScreen() {
       editStartTimeout.current = setTimeout(() => {
         editStartTimeout.current = null;
         animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24), () => {
+          editAttentionStarted.current = true;
           cropAttention.start(180);
         });
       }, 450);
@@ -1835,6 +1839,22 @@ export default function HomeScreen() {
       if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
     };
   }, [animateScrollTo, cropAttention.start, editAttentionRequest, editCropCardLayoutVersion, editMetricsVersion, editingLayer, mode, edit.uri]);
+
+  const handleEditUserInterrupt = useCallback(() => {
+    if (editStartTimeout.current !== null) {
+      clearTimeout(editStartTimeout.current);
+      editStartTimeout.current = null;
+    }
+    if (editScrollFrame.current !== null) {
+      cancelAnimationFrame(editScrollFrame.current);
+      editScrollFrame.current = null;
+    }
+    if (editingLayer === 'background') return;
+    if (!editAttentionStarted.current) {
+      editAttentionStarted.current = true;
+      cropAttention.start(180);
+    }
+  }, [cropAttention.start, editingLayer]);
 
   useEffect(() => {
     if (mode !== 'compose' || !composeAttentionPending.current) return;
@@ -1853,6 +1873,7 @@ export default function HomeScreen() {
       composeStartTimeout.current = setTimeout(() => {
         composeStartTimeout.current = null;
         animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
+          composeAttentionStarted.current = true;
           middlePickerAttention.start(120);
           foregroundPickerAttention.start(820);
           previewButtonAttention.start(1520);
@@ -1876,6 +1897,27 @@ export default function HomeScreen() {
     middlePickerAttention,
     mode,
     middlePickerAttention.start,
+    previewButtonAttention.start,
+  ]);
+
+  const handleComposeUserInterrupt = useCallback(() => {
+    if (composeStartTimeout.current !== null) {
+      clearTimeout(composeStartTimeout.current);
+      composeStartTimeout.current = null;
+    }
+    if (composeScrollFrame.current !== null) {
+      cancelAnimationFrame(composeScrollFrame.current);
+      composeScrollFrame.current = null;
+    }
+    if (!composeAttentionStarted.current) {
+      composeAttentionStarted.current = true;
+      middlePickerAttention.start(120);
+      foregroundPickerAttention.start(820);
+      previewButtonAttention.start(1520);
+    }
+  }, [
+    middlePickerAttention.start,
+    foregroundPickerAttention.start,
     previewButtonAttention.start,
   ]);
 
@@ -2097,6 +2139,7 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
+          onTouchStart={handleComposeUserInterrupt}
           onLayout={(event) => {
             const height = event.nativeEvent.layout.height;
             if (composeScrollViewportHeight.current !== height) {
@@ -2252,6 +2295,7 @@ export default function HomeScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
+          onTouchStart={handleEditUserInterrupt}
           onLayout={(event) => {
             const height = event.nativeEvent.layout.height;
             if (editScrollViewportHeight.current !== height) {
