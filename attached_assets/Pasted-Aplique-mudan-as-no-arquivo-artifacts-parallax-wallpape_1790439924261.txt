@@ -1,0 +1,180 @@
+Aplique mudanças no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+O Preview tem interrupção por toque: se o usuário toca na tela antes
+da rolagem de atenção terminar, a rolagem é cancelada e o pulse do
+botão ainda dispara (para o convite não se perder).
+
+Replicar EXATAMENTE esse comportamento nas telas de Composição e Edit
+(middle/foreground e background). Em todas as telas, o padrão do app é
+"tocar interrompe a rolagem, mas o convite visual ainda acontece".
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Novas refs
+═══════════════════════════════════════════════
+
+Junto das outras refs de atenção, adicione:
+
+  const composeAttentionStarted = useRef(false);
+  const editAttentionStarted = useRef(false);
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Handler de interrupção da Composição
+═══════════════════════════════════════════════
+
+Logo depois do useEffect da Composição (fora dele), adicione:
+
+  const handleComposeUserInterrupt = useCallback(() => {
+    if (composeStartTimeout.current !== null) {
+      clearTimeout(composeStartTimeout.current);
+      composeStartTimeout.current = null;
+    }
+    if (composeScrollFrame.current !== null) {
+      cancelAnimationFrame(composeScrollFrame.current);
+      composeScrollFrame.current = null;
+    }
+    if (!composeAttentionStarted.current) {
+      composeAttentionStarted.current = true;
+      middlePickerAttention.start(120);
+      foregroundPickerAttention.start(820);
+      previewButtonAttention.start(1520);
+    }
+  }, [
+    middlePickerAttention.start,
+    foregroundPickerAttention.start,
+    previewButtonAttention.start,
+  ]);
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Marcar composeAttentionStarted quando o callback normal dispara
+═══════════════════════════════════════════════
+
+No useEffect da Composição, dentro do callback de animateScrollTo, marque
+a flag antes dos três start(). O trecho hoje está assim:
+
+        animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
+          middlePickerAttention.start(120);
+          foregroundPickerAttention.start(820);
+          previewButtonAttention.start(1520);
+        });
+
+Troque para:
+
+        animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
+          composeAttentionStarted.current = true;
+          middlePickerAttention.start(120);
+          foregroundPickerAttention.start(820);
+          previewButtonAttention.start(1520);
+        });
+
+═══════════════════════════════════════════════
+MUDANÇA 4 — onTouchStart no ScrollView da Composição
+═══════════════════════════════════════════════
+
+No <ScrollView> da Composição, adicione:
+
+  onTouchStart={handleComposeUserInterrupt}
+
+Junto das props existentes. NÃO remova nem altere onLayout,
+onContentSizeChange, onScroll.
+
+═══════════════════════════════════════════════
+MUDANÇA 5 — Handler de interrupção do Edit
+═══════════════════════════════════════════════
+
+Logo depois do useEffect de atenção do Edit (fora dele), adicione:
+
+  const handleEditUserInterrupt = useCallback(() => {
+    if (editStartTimeout.current !== null) {
+      clearTimeout(editStartTimeout.current);
+      editStartTimeout.current = null;
+    }
+    if (editScrollFrame.current !== null) {
+      cancelAnimationFrame(editScrollFrame.current);
+      editScrollFrame.current = null;
+    }
+    if (editingLayer === 'background') return;
+    if (!editAttentionStarted.current) {
+      editAttentionStarted.current = true;
+      cropAttention.start(180);
+    }
+  }, [cropAttention.start, editingLayer]);
+
+Observação: no background NÃO há pulse, então o handler apenas
+cancela e retorna.
+
+═══════════════════════════════════════════════
+MUDANÇA 6 — Marcar editAttentionStarted nos dois pontos que disparam pulse
+═══════════════════════════════════════════════
+
+6a) No ramo middle/foreground do useEffect, dentro do callback de
+    animateScrollTo, marque a flag antes do cropAttention.start:
+
+        animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24), () => {
+          editAttentionStarted.current = true;
+          cropAttention.start(180);
+        });
+
+6b) No ramo background do useEffect NÃO há pulse, então NÃO marque
+    editAttentionStarted lá. Mas marque-a quando o background decide
+    iniciar a rolagem (para o handler de interrupção não disparar pulse
+    inexistente). Faça isso no ponto em que a rolagem é agendada:
+
+        editStartTimeout.current = setTimeout(() => {
+          editStartTimeout.current = null;
+          editAttentionStarted.current = true;
+          animateScrollTo(editScrollRef, editScrollY, editScrollFrame, targetY);
+        }, 450);
+
+═══════════════════════════════════════════════
+MUDANÇA 7 — onTouchStart no ScrollView do Edit
+═══════════════════════════════════════════════
+
+No <ScrollView> do Edit, adicione:
+
+  onTouchStart={handleEditUserInterrupt}
+
+Junto das props existentes. NÃO remova nem altere onLayout,
+onContentSizeChange, onScroll.
+
+IMPORTANTE: o Edit tem PanResponder no canvas interno. O onTouchStart
+do ScrollView NÃO interfere com o PanResponder — os dois coexistem no
+React Native. NÃO adicione nada além do onTouchStart.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere handlePreviewUserInterrupt nem o Preview.
+- NÃO altere useAttentionAnimation, animateScrollTo, calcScrollDuration,
+  easeOutCubic.
+- NÃO altere queuePreviewAttention.
+- NÃO altere o cropCard nem o infoRow.
+- NÃO altere pickLayer além do que já foi feito.
+- NÃO altere a lógica interna dos useEffects da Composição/Edit além
+  das linhas dos callbacks e do set da flag.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo.
+
+2) Confirme:
+   - handleComposeUserInterrupt existe e dispara os 3 pulses se
+     composeAttentionStarted.current for false.
+   - handleEditUserInterrupt existe, retorna se for background, e
+     dispara cropAttention.start(180) se editAttentionStarted for false.
+   - composeAttentionStarted.current = true é setado antes dos start()
+     no callback normal do animateScrollTo da Composição.
+   - editAttentionStarted.current = true é setado no callback normal
+     do Edit middle/foreground E no setTimeout do Edit background.
+   - onTouchStart está nos dois ScrollViews (Composição e Edit).
+
+3) Confirme que o ScrollView do Preview continua com o
+   onTouchStart={handlePreviewUserInterrupt} intacto.
