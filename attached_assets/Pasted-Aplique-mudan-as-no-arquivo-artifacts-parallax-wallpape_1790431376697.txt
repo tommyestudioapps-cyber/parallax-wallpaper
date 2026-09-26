@@ -1,0 +1,95 @@
+Aplique mudanças no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo. Este é um passo de LIMPEZA — remover
+código que ficou órfão após as mudanças anteriores. NÃO altere
+comportamento.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Remover easeInOutCubic
+═══════════════════════════════════════════════
+
+Remova a função easeInOutCubic completa (declaração e corpo).
+
+Antes de remover, verifique no arquivo inteiro se ela ainda é
+referenciada em qualquer lugar. Se for, NÃO remova e me avise onde
+está sendo usada em vez de alterar. Se não for, remova.
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Remover COMPOSITION_SCROLL_DURATION_MS
+═══════════════════════════════════════════════
+
+Remova a declaração da constante COMPOSITION_SCROLL_DURATION_MS.
+
+Antes de remover, verifique no arquivo inteiro se ela ainda é
+referenciada. Se for, NÃO remova e me avise onde. Se não for, remova.
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Remover compositionScrollDistance por completo
+═══════════════════════════════════════════════
+
+A prop compositionScrollDistance era passada ao Preview mas o Preview
+não a usa mais desde que a duração da rolagem passou a usar
+calcPreviewScrollDuration. Vamos remover TODOS os pontos:
+
+3a) No tipo das props do componente de Preview (ParallaxPreviewProps
+    ou nome equivalente), remova a linha:
+
+      compositionScrollDistance: number;
+
+3b) No destructuring das props dentro do componente de Preview,
+    remova a linha:
+
+      compositionScrollDistance,
+
+3c) No dependency array do useCallback queuePreviewAttention, remova
+    compositionScrollDistance. CUIDADO: o array hoje é algo como
+    [compositionScrollDistance, previewAttention.start]. Depois da
+    remoção deve ficar apenas [previewAttention.start]. NÃO remova
+    previewAttention.start junto.
+
+3d) No componente da tela de Composição, remova a declaração da ref:
+
+      const compositionScrollDistance = useRef(0);
+
+3e) No useEffect da Composição que chama animateScrollTo, remova a
+    linha que calcula o valor:
+
+      compositionScrollDistance.current = Math.abs(scrollTargetY - startY);
+
+    NÃO remova outras linhas próximas (startY, scrollTargetY,
+    composeScrollY.current = startY, animateScrollTo, etc).
+
+3f) No JSX onde o Preview é renderizado, remova a prop:
+
+      compositionScrollDistance={compositionScrollDistance.current}
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere o comportamento de nenhuma função. Apenas remoções.
+- NÃO altere useAttentionAnimation nem calcPreviewScrollDuration nem
+  calcCompositionScrollDuration nem easeOutCubic.
+- NÃO altere queuePreviewAttention além do dependency array (item 3c).
+- NÃO altere animateScrollTo.
+- NÃO altere o ScrollView do Preview nem o da Composição.
+- NÃO altere o setTimeout(..., 780) dos pulses da Composição.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do arquivo.
+
+2) Confirme que easeInOutCubic não tem mais nenhuma referência no
+   arquivo.
+
+3) Confirme que COMPOSITION_SCROLL_DURATION_MS não tem mais nenhuma
+   referência no arquivo.
+
+4) Confirme que compositionScrollDistance não aparece em NENHUM lugar
+   do arquivo (nem como tipo, nem como prop, nem como variável, nem
+   como string em JSX).
+
+5) Confirme que o dependency array de queuePreviewAttention agora é
+   [previewAttention.start] (ou equivalente — apenas esse item).

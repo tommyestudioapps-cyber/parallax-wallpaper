@@ -54,7 +54,6 @@ const MAX_CANVAS_HEIGHT = Math.min(SCREEN_HEIGHT * 0.57, 590);
 const CANVAS_WIDTH = Math.min(MAX_CANVAS_WIDTH, MAX_CANVAS_HEIGHT * CANVAS_ASPECT_RATIO);
 const CANVAS_HEIGHT = CANVAS_WIDTH / CANVAS_ASPECT_RATIO;
 const CONTENT_MAX_WIDTH = 560;
-const COMPOSITION_SCROLL_DURATION_MS = 900;
 const HERO_TITLE_FONT_SIZE = Math.max(34, Math.min(42, SCREEN_WIDTH * 0.1056));
 const HERO_TITLE_LINE_HEIGHT = Math.round(HERO_TITLE_FONT_SIZE * 1.1);
 const COMPOSITION_LAYER_SAFETY_MARGIN = 2;
@@ -87,12 +86,6 @@ const PARALLAX_BASE_LIMIT_Y = Math.max(
 );
 const PARALLAX_SENSOR_SAMPLE_COUNT = 12;
 const PARALLAX_SMOOTHING_RATE = 10;
-
-function easeInOutCubic(progress: number) {
-  return progress < 0.5
-    ? 4 * progress * progress * progress
-    : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-}
 
 function easeOutCubic(progress: number) {
   return 1 - Math.pow(1 - progress, 3);
@@ -1151,7 +1144,6 @@ function ParallaxPreview({
   colors,
   applied,
   showAppliedNotice,
-  compositionScrollDistance,
   onBack,
   onApplyWallpaper,
   onDismissAppliedNotice,
@@ -1160,7 +1152,6 @@ function ParallaxPreview({
   colors: ReturnType<typeof useColors>;
   applied: boolean;
   showAppliedNotice: boolean;
-  compositionScrollDistance: number;
   onBack: () => void;
   onApplyWallpaper: (calibration: SensorCalibration | null) => void;
   onDismissAppliedNotice: () => void;
@@ -1260,7 +1251,7 @@ function ParallaxPreview({
         previewScrollFrame.current = requestAnimationFrame(step);
       }, 450);
     });
-  }, [compositionScrollDistance, previewAttention.start]);
+  }, [previewAttention.start]);
 
   const handlePreviewUserInterrupt = useCallback(() => {
     if (previewStartTimeout.current !== null) {
@@ -1440,7 +1431,6 @@ export default function HomeScreen() {
   const composeScrollRef = useRef<ScrollView>(null);
   const composeScrollViewportHeight = useRef(0);
   const composeScrollContentHeight = useRef(0);
-  const compositionScrollDistance = useRef(0);
   const editCropCardY = useRef<number | null>(null);
   const composeLayerPickerY = useRef<number | null>(null);
   const editAttentionPending = useRef(false);
@@ -1825,7 +1815,6 @@ export default function HomeScreen() {
       const startY = Math.min(Math.max(0, composeScrollY.current), maxScrollY);
       const scrollTargetY = Math.min(maxScrollY, Math.max(0, targetY - 24));
       composeScrollY.current = startY;
-      compositionScrollDistance.current = Math.abs(scrollTargetY - startY);
       animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY);
       if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
       composeAttentionTimer.current = setTimeout(() => {
@@ -2052,7 +2041,6 @@ export default function HomeScreen() {
         colors={colors}
         applied={applied}
         showAppliedNotice={showAppliedNotice}
-        compositionScrollDistance={compositionScrollDistance.current}
         onBack={() => setMode('compose')}
         onApplyWallpaper={applyWallpaper}
         onDismissAppliedNotice={() => setShowAppliedNotice(false)}
