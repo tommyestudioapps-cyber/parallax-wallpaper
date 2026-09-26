@@ -1708,10 +1708,8 @@ export default function HomeScreen() {
         });
         setEditingLayer(id);
         setMode('edit');
-         if (id !== 'background') {
-           editAttentionPending.current = true;
-           setEditAttentionRequest((current) => current + 1);
-         }
+        editAttentionPending.current = true;
+        setEditAttentionRequest((current) => current + 1);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch {
         Alert.alert('Não foi possível importar', 'Tente selecionar outra imagem da galeria.');
@@ -1784,7 +1782,37 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    if (mode !== 'edit' || editingLayer === 'background' || !editAttentionPending.current) return;
+    if (mode !== 'edit' || !editAttentionPending.current) return;
+
+    if (editingLayer === 'background') {
+      if (!edit.uri) return;
+      if (editInfoRowY.current === null) return;
+      if (editScrollViewportHeight.current <= 0 || editScrollContentHeight.current <= 0) return;
+      const frame = requestAnimationFrame(() => {
+        if (editInfoRowY.current === null) return;
+        editAttentionPending.current = false;
+        const maxScrollY = Math.max(
+          0,
+          editScrollContentHeight.current - editScrollViewportHeight.current,
+        );
+        const startY = Math.min(Math.max(0, editScrollY.current), maxScrollY);
+        const targetY = Math.min(maxScrollY, Math.max(0, editInfoRowY.current - 24));
+        editScrollY.current = startY;
+        editStartTimeout.current = setTimeout(() => {
+          editStartTimeout.current = null;
+          animateScrollTo(editScrollRef, editScrollY, editScrollFrame, targetY);
+        }, 450);
+      });
+      return () => {
+        cancelAnimationFrame(frame);
+        if (editStartTimeout.current !== null) {
+          clearTimeout(editStartTimeout.current);
+          editStartTimeout.current = null;
+        }
+        if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
+      };
+    }
+
     const frame = requestAnimationFrame(() => {
       const targetY = editCropCardY.current;
       if (targetY === null) return;
@@ -1804,7 +1832,7 @@ export default function HomeScreen() {
       }
       if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
     };
-  }, [animateScrollTo, cropAttention.start, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
+  }, [animateScrollTo, cropAttention.start, editAttentionRequest, editCropCardLayoutVersion, editMetricsVersion, editingLayer, mode, edit.uri]);
 
   useEffect(() => {
     if (mode !== 'compose' || !composeAttentionPending.current) return;

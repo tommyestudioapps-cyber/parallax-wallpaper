@@ -1,0 +1,183 @@
+Aplique uma mudança no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+CONTEXTO
+═══════════════════════════════════════════════
+
+A camada "background" da tela de Edit nunca recebeu rolagem automática.
+Hoje, o useEffect de atenção do Edit retorna cedo quando
+editingLayer === 'background'. Precisamos estender o comportamento para
+também rolar no background — revelando o infoRow (texto "O fundo
+preserva o quadro inteiro..."), que é o elemento informativo dessa
+camada.
+
+IMPORTANTE: no background NÃO existe botão para pulsar. Só há o
+infoRow. Portanto, o ramo do background NÃO dispara cropAttention nem
+nenhum outro pulse.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — pickLayer liga a flag também para background
+═══════════════════════════════════════════════
+
+Em pickLayer, existe hoje:
+
+      setEditingLayer(id);
+      setMode('edit');
+       if (id !== 'background') {
+         editAttentionPending.current = true;
+         setEditAttentionRequest((current) => current + 1);
+       }
+
+Substitua por (removendo a condição):
+
+      setEditingLayer(id);
+      setMode('edit');
+      editAttentionPending.current = true;
+      setEditAttentionRequest((current) => current + 1);
+
+Ou seja: a flag agora liga sempre que uma camada é selecionada,
+inclusive background.
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Reescrever o useEffect de atenção do Edit
+═══════════════════════════════════════════════
+
+O useEffect atual tem esta estrutura:
+
+  useEffect(() => {
+    if (mode !== 'edit' || editingLayer === 'background' || !editAttentionPending.current) return;
+    const frame = requestAnimationFrame(() => {
+      const targetY = editCropCardY.current;
+      if (targetY === null) return;
+      editAttentionPending.current = false;
+      editStartTimeout.current = setTimeout(() => {
+        editStartTimeout.current = null;
+        animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24), () => {
+          cropAttention.start(180);
+        });
+      }, 450);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (editStartTimeout.current !== null) {
+        clearTimeout(editStartTimeout.current);
+        editStartTimeout.current = null;
+      }
+      if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
+    };
+  }, [animateScrollTo, cropAttention.start, editAttentionRequest, editCropCardLayoutVersion, editingLayer, mode]);
+
+Substitua por esta versão:
+
+  useEffect(() => {
+    if (mode !== 'edit' || !editAttentionPending.current) return;
+
+    if (editingLayer === 'background') {
+      if (!edit.uri) return;
+      if (editInfoRowY.current === null) return;
+      if (editScrollViewportHeight.current <= 0 || editScrollContentHeight.current <= 0) return;
+      const frame = requestAnimationFrame(() => {
+        if (editInfoRowY.current === null) return;
+        editAttentionPending.current = false;
+        const maxScrollY = Math.max(
+          0,
+          editScrollContentHeight.current - editScrollViewportHeight.current,
+        );
+        const startY = Math.min(Math.max(0, editScrollY.current), maxScrollY);
+        const targetY = Math.min(maxScrollY, Math.max(0, editInfoRowY.current - 24));
+        editScrollY.current = startY;
+        editStartTimeout.current = setTimeout(() => {
+          editStartTimeout.current = null;
+          animateScrollTo(editScrollRef, editScrollY, editScrollFrame, targetY);
+        }, 450);
+      });
+      return () => {
+        cancelAnimationFrame(frame);
+        if (editStartTimeout.current !== null) {
+          clearTimeout(editStartTimeout.current);
+          editStartTimeout.current = null;
+        }
+        if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
+      };
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const targetY = editCropCardY.current;
+      if (targetY === null) return;
+      editAttentionPending.current = false;
+      editStartTimeout.current = setTimeout(() => {
+        editStartTimeout.current = null;
+        animateScrollTo(editScrollRef, editScrollY, editScrollFrame, Math.max(0, targetY - 24), () => {
+          cropAttention.start(180);
+        });
+      }, 450);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (editStartTimeout.current !== null) {
+        clearTimeout(editStartTimeout.current);
+        editStartTimeout.current = null;
+      }
+      if (editScrollFrame.current !== null) cancelAnimationFrame(editScrollFrame.current);
+    };
+  }, [animateScrollTo, cropAttention.start, editAttentionRequest, editCropCardLayoutVersion, editMetricsVersion, editingLayer, mode, edit.uri]);
+
+Observações importantes:
+- O ramo do background NÃO chama cropAttention.start (não tem pulse).
+- O ramo do background NÃO passa callback para animateScrollTo (não há
+  nada para disparar no fim).
+- A condição inicial NÃO retorna mais cedo para background.
+- Foram adicionadas duas dependências: editMetricsVersion e edit.uri.
+- O ramo middle/foreground permanece idêntico ao de hoje.
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Reset da flag ao sair do Edit (opcional)
+═══════════════════════════════════════════════
+
+Se, ao sair de mode === 'edit' e voltar depois, você quiser que a
+animação do background seja reproduzida novamente, NÃO faça nada —
+editAttentionPending já é resetada pelo pickLayer quando a camada é
+selecionada de novo.
+
+Se quiser que ela NUNCA repita depois da primeira vez, adicione uma ref
+extra e um cleanup. Mas, POR PADRÃO, NÃO adicione nada. Deixe como está.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere useAttentionAnimation.
+- NÃO altere queuePreviewAttention nem handlePreviewUserInterrupt nem
+  a lógica do Preview.
+- NÃO altere animateScrollTo, calcScrollDuration nem easeOutCubic.
+- NÃO altere o ScrollView do Preview nem o da Composição.
+- NÃO altere o useEffect da Composição.
+- NÃO altere o cropCard nem o onLayout dele.
+- NÃO altere o JSX do infoRow além do que já foi feito (o onLayout já
+  está lá — não remova).
+- NÃO altere editCropCardY, editInfoRowY, editScrollViewportHeight,
+  editScrollContentHeight, editMetricsVersion, editScrollY,
+  editScrollFrame, editStartTimeout (declarações).
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do trecho alterado.
+
+2) Confirme que o ramo do background:
+   - não chama cropAttention.start
+   - não passa callback para animateScrollTo
+   - checa edit.uri, editInfoRowY, editScrollViewportHeight e
+     editScrollContentHeight antes de agendar
+
+3) Confirme que o ramo middle/foreground permanece idêntico ao de hoje
+   (mesmos parâmetros, mesmo callback de pulse).
+
+4) Confirme que o dependency array agora inclui editMetricsVersion e
+   edit.uri, além dos itens que já existiam.
+
+5) Confirme que pickLayer agora liga editAttentionPending
+   independente do layer selecionado.
