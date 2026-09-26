@@ -1781,6 +1781,8 @@ export default function HomeScreen() {
     [],
   );
 
+  const edit = project.layers[editingLayer];
+
   useEffect(() => {
     if (mode !== 'edit' || !editAttentionPending.current) return;
 
@@ -1920,7 +1922,6 @@ export default function HomeScreen() {
     }
   };
 
-  const edit = project.layers[editingLayer];
   const importedCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri)).length;
   const readyCount = Object.values(project.layers).filter((layer) => Boolean(layer.uri) && layer.enabled).length;
   const canCompose = readyCount >= 2;
