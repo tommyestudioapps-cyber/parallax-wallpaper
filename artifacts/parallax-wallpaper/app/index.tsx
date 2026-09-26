@@ -101,6 +101,11 @@ function calcPreviewScrollDuration(distance: number) {
   return Math.min(480, Math.max(320, raw));
 }
 
+function calcCompositionScrollDuration(distance: number) {
+  const raw = 300 + distance * 0.5;
+  return Math.min(620, Math.max(360, raw));
+}
+
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
 type ImageCrop = {
@@ -1751,10 +1756,11 @@ export default function HomeScreen() {
     ) => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       const startY = currentYRef.current;
+      const duration = calcCompositionScrollDuration(Math.abs(targetY - startY));
       const startedAt = performance.now();
       const step = (timestamp: number) => {
-        const progress = Math.min(1, (timestamp - startedAt) / COMPOSITION_SCROLL_DURATION_MS);
-        const eased = easeInOutCubic(progress);
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const eased = easeOutCubic(progress);
         const nextY = startY + (targetY - startY) * eased;
         scrollRef.current?.scrollTo({ y: nextY, animated: false });
         if (progress < 1) {

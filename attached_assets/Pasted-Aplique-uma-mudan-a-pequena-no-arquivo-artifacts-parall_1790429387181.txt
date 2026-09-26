@@ -1,0 +1,97 @@
+Aplique uma mudança pequena no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo. Não altere mais nada.
+
+═══════════════════════════════════════════════
+CONTEXTO
+═══════════════════════════════════════════════
+
+A função animateScrollTo (linha ~1749) faz a rolagem automática da tela
+de Composição. Hoje ela usa:
+- easeInOutCubic (curva que trava no início, por isso a rolagem parece
+  "abrir já no final")
+- COMPOSITION_SCROLL_DURATION_MS = 900 fixo, indiferente à distância
+
+Queremos que ela use:
+- easeOutCubic (dispara e freia, movimento visível desde o primeiro frame)
+- duração adaptativa curta, calculada a partir da distância real da rolagem
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Nova função de duração
+═══════════════════════════════════════════════
+
+Adicione, junto da função calcPreviewScrollDuration que já existe:
+
+function calcCompositionScrollDuration(distance: number) {
+  const raw = 300 + distance * 0.5;
+  return Math.min(620, Math.max(360, raw));
+}
+
+Essa função é separada da do Preview porque a Composição pode rolar
+distâncias maiores.
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Curva e duração em animateScrollTo
+═══════════════════════════════════════════════
+
+Dentro de animateScrollTo, existem hoje estas linhas:
+
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      const startY = currentYRef.current;
+      const startedAt = performance.now();
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - startedAt) / COMPOSITION_SCROLL_DURATION_MS);
+        const eased = easeInOutCubic(progress);
+
+Substitua APENAS essas linhas por:
+
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      const startY = currentYRef.current;
+      const duration = calcCompositionScrollDuration(Math.abs(targetY - startY));
+      const startedAt = performance.now();
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const eased = easeOutCubic(progress);
+
+Ou seja:
+- adiciona uma linha calculando a duração adaptativa, logo após a
+  declaração de startY
+- troca COMPOSITION_SCROLL_DURATION_MS por duration na linha do progress
+- troca easeInOutCubic por easeOutCubic na linha do eased
+
+NÃO altere mais NADA dentro de animateScrollTo. O resto do step
+(scrollTo, o if progress < 1, o frameRef.current = null no final)
+permanece exatamente igual.
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Deixar a constante sem uso por enquanto
+═══════════════════════════════════════════════
+
+A constante COMPOSITION_SCROLL_DURATION_MS = 900 continua declarada.
+NÃO remova. Ela será removida em um passo posterior.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO remova easeInOutCubic do arquivo (mesmo que agora fique sem uso
+  em animateScrollTo, ela pode aparecer em outro lugar no futuro).
+- NÃO altere o useEffect da Composição que chama animateScrollTo.
+- NÃO altere o setTimeout(..., 780) nem os pulses
+  (middlePickerAttention, foregroundPickerAttention, previewButtonAttention).
+- NÃO altere o ScrollView da Composição.
+- NÃO altere a rolagem do Preview.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do trecho alterado.
+
+2) Diga se easeInOutCubic ainda é usada em algum outro lugar do arquivo
+   após essa mudança (procure todas as ocorrências). Se sim, mostre
+   onde. Se não, diga "não é mais usada em nenhum lugar".
+
+3) Diga se COMPOSITION_SCROLL_DURATION_MS ainda é usada em algum outro
+   lugar do arquivo após essa mudança (procure todas as ocorrências).
+   Se sim, mostre onde. Se não, diga "não é mais usada em nenhum lugar".
