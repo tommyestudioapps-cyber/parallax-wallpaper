@@ -121,7 +121,100 @@ function assertAllConsumersUseAttentionHook() {
   }
 }
 
+function evaluateAppFunction(functionName, signaturePattern) {
+  const match = appSource.match(signaturePattern);
+  assert.ok(match, `${functionName} must remain defined in app/index.tsx`);
+  const functionSource = ts.transpileModule(match[0], {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const sandbox = {};
+  vm.runInNewContext(
+    `${functionSource}\nglobalThis.testedFunction = ${functionName};`,
+    sandbox,
+    { filename: appPath },
+  );
+  return sandbox.testedFunction;
+}
+
+function assertEditScrollAnimationContract() {
+  const duration = evaluateAppFunction(
+    'calcScrollDuration',
+    /function calcScrollDuration\(distance: number\) \{[\s\S]*?\n\}/,
+  );
+  assert.equal(duration(0), 380, 'scroll duration must keep its 380ms minimum');
+  assert.equal(duration(100), 390, 'scroll duration must retain 320 + 0.7 × distance');
+  assert.equal(duration(343), 560, 'scroll duration must keep its 560ms maximum');
+  assert.equal(duration(1000), 560, 'long scrolls must remain capped at 560ms');
+
+  const easeOutCubic = evaluateAppFunction(
+    'easeOutCubic',
+    /function easeOutCubic\(progress: number\) \{[\s\S]*?\n\}/,
+  );
+  assert.equal(easeOutCubic(0), 0);
+  assert.equal(easeOutCubic(0.5), 0.875, 'scroll must retain cubic ease-out');
+  assert.equal(easeOutCubic(1), 1);
+
+  const editEffectStart = appSource.indexOf(
+    "useEffect(() => {\n    if (mode !== 'edit' || !editAttentionPending.current) return;",
+  );
+  const editEffectEndMarker = appSource.indexOf(
+    '\n  const handleEditUserInterrupt',
+    editEffectStart,
+  );
+  assert.ok(editEffectStart >= 0 && editEffectEndMarker > editEffectStart);
+  const editEffect = appSource.slice(editEffectStart, editEffectEndMarker);
+  const foregroundPathStart = editEffect.indexOf(
+    'if (editScrollViewportHeight.current <= 0 || editScrollContentHeight.current <= 0) return;',
+  );
+  assert.ok(foregroundPathStart >= 0, 'middle and foreground must wait for scroll measurements');
+  const foregroundPath = editEffect.slice(foregroundPathStart);
+
+  assert.match(
+    foregroundPath,
+    /const clampedTargetY = Math\.min\(maxScrollY, Math\.max\(0, cropCardY - 24\)\)/,
+    'middle and foreground must clamp the crop-card target to the reachable scroll range',
+  );
+  assert.match(
+    foregroundPath,
+    /animateScrollTo\(editScrollRef, editScrollY, editScrollFrame, clampedTargetY, \(\) => \{[\s\S]*?cropAttention\.start\(180\)/,
+    'the clamped target must animate before the crop attention cue starts',
+  );
+  assert.match(foregroundPath, /\}, 450\);/, 'edit scroll must retain its 450ms start delay');
+
+  const animateScrollMatch = appSource.match(
+    /const animateScrollTo = useCallback\([\s\S]*?\n  \);\n\n  const edit =/,
+  );
+  assert.ok(animateScrollMatch, 'the shared scroll animator must remain defined');
+  assert.match(
+    animateScrollMatch[0],
+    /calcScrollDuration\(Math\.abs\(targetY - startY\)\)/,
+    'duration must use the distance to the supplied, reachable target',
+  );
+  assert.match(animateScrollMatch[0], /easeOutCubic\(progress\)/);
+  assert.match(animateScrollMatch[0], /scrollTo\(\{ y: nextY, animated: false \}\)/);
+
+  const interruptHandlerStart = appSource.indexOf(
+    'const handleEditUserInterrupt = useCallback(() => {',
+  );
+  const interruptHandlerEnd = appSource.indexOf(
+    '\n  }, [cropAttention.start, editingLayer]);',
+    interruptHandlerStart,
+  );
+  assert.ok(interruptHandlerStart >= 0 && interruptHandlerEnd > interruptHandlerStart);
+  const interruptHandler = appSource.slice(interruptHandlerStart, interruptHandlerEnd);
+  assert.match(interruptHandler, /clearTimeout\(editStartTimeout\.current\)/);
+  assert.match(interruptHandler, /cancelAnimationFrame\(editScrollFrame\.current\)/);
+  assert.match(
+    appSource.slice(appSource.indexOf("if (mode === 'edit') {")),
+    /onTouchStart=\{handleEditUserInterrupt\}/,
+    'touching the edit screen must continue to interrupt the automatic scroll',
+  );
+}
+
 assertNormalPulseBehavior();
 assertReducedMotionBehavior();
 assertAllConsumersUseAttentionHook();
-console.log('Attention motion validation passed: normal pulse, reduced-motion reset, and all five consumers.');
+assertEditScrollAnimationContract();
+console.log(
+  'Attention motion validation passed: pulse behavior, scroll timing and easing, reachable edit targets, interruption, and all consumers.',
+);
