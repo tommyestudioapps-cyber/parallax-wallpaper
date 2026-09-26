@@ -1,0 +1,112 @@
+Aplique mudanças no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+CONTEXTO
+═══════════════════════════════════════════════
+
+Hoje a rolagem da Composição dispara os pulses (middlePicker,
+foregroundPicker, previewButton) via setTimeout(..., 780) fixo, que
+foi calibrado para a rolagem antiga de 900ms. Agora que a rolagem
+usa duração adaptativa (360–620ms), o timing fica dessincronizado.
+
+Solução: em vez de timeout fixo, amarrar os pulses ao FIM REAL da
+rolagem, via callback opcional em animateScrollTo.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — animateScrollTo aceita callback de conclusão
+═══════════════════════════════════════════════
+
+A assinatura atual de animateScrollTo é:
+
+  const animateScrollTo = useCallback(
+    (
+      scrollRef: React.MutableRefObject<ScrollView | null>,
+      currentYRef: React.MutableRefObject<number>,
+      frameRef: React.MutableRefObject<number | null>,
+      targetY: number,
+    ) => {
+
+Adicione um quinto parâmetro opcional:
+
+      onComplete?: () => void,
+
+E, dentro do step, no ramo em que a rolagem termina (onde hoje está
+"currentYRef.current = targetY; frameRef.current = null;"), chame o
+callback depois de zerar o frame:
+
+      } else {
+        currentYRef.current = targetY;
+        frameRef.current = null;
+        onComplete?.();
+      }
+
+NÃO altere mais nada dentro de animateScrollTo.
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Composição usa o callback
+═══════════════════════════════════════════════
+
+No useEffect da Composição, existe hoje este bloco:
+
+      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY);
+      if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
+      composeAttentionTimer.current = setTimeout(() => {
+        middlePickerAttention.start(120);
+        foregroundPickerAttention.start(820);
+        previewButtonAttention.start(1520);
+      }, 780);
+
+Substitua por:
+
+      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
+        middlePickerAttention.start(120);
+        foregroundPickerAttention.start(820);
+        previewButtonAttention.start(1520);
+      });
+
+Os três valores (120/820/1520) permanecem como estão. Agora contam a
+partir do fim da rolagem.
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Remover composeAttentionTimer
+═══════════════════════════════════════════════
+
+Como o setTimeout foi removido, a ref composeAttentionTimer ficou sem
+uso. Remova:
+
+3a) A declaração:
+      const composeAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+3b) No cleanup do useEffect da Composição, a linha:
+      if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
+
+NÃO remova nenhuma outra linha do cleanup.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere useAttentionAnimation.
+- NÃO altere queuePreviewAttention nem handlePreviewUserInterrupt.
+- NÃO altere calcPreviewScrollDuration nem calcCompositionScrollDuration
+  nem easeOutCubic.
+- NÃO altere o ScrollView da Composição nem o do Preview.
+- NÃO altere os pulses em si.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do arquivo.
+
+2) Confirme que composeAttentionTimer não tem mais NENHUMA referência
+   no arquivo.
+
+3) Confirme que animateScrollTo tem agora 5 parâmetros (4 obrigatórios
+   + onComplete opcional) e que o onComplete?.() é chamado apenas no
+   ramo final do step.
+
+4) Confirme que start(120), start(820) e start(1520) continuam
+   presentes, agora dentro do callback do animateScrollTo.

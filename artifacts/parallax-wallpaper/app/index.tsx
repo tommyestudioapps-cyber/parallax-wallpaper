@@ -1436,7 +1436,6 @@ export default function HomeScreen() {
   const editAttentionPending = useRef(false);
   const composeAttentionPending = useRef(false);
   const editAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const composeAttentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editScrollY = useRef(0);
   const composeScrollY = useRef(0);
   const editScrollFrame = useRef<number | null>(null);
@@ -1760,6 +1759,7 @@ export default function HomeScreen() {
       currentYRef: React.MutableRefObject<number>,
       frameRef: React.MutableRefObject<number | null>,
       targetY: number,
+      onComplete?: () => void,
     ) => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       const startY = currentYRef.current;
@@ -1775,6 +1775,7 @@ export default function HomeScreen() {
         } else {
           currentYRef.current = targetY;
           frameRef.current = null;
+          onComplete?.();
         }
       };
       frameRef.current = requestAnimationFrame(step);
@@ -1815,17 +1816,14 @@ export default function HomeScreen() {
       const startY = Math.min(Math.max(0, composeScrollY.current), maxScrollY);
       const scrollTargetY = Math.min(maxScrollY, Math.max(0, targetY - 24));
       composeScrollY.current = startY;
-      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY);
-      if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
-      composeAttentionTimer.current = setTimeout(() => {
+      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
         middlePickerAttention.start(120);
         foregroundPickerAttention.start(820);
         previewButtonAttention.start(1520);
-      }, 780);
+      });
     });
     return () => {
       cancelAnimationFrame(frame);
-      if (composeAttentionTimer.current) clearTimeout(composeAttentionTimer.current);
       if (composeScrollFrame.current !== null) cancelAnimationFrame(composeScrollFrame.current);
     };
   }, [
