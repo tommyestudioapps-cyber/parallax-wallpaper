@@ -1,0 +1,59 @@
+Não altere nenhum arquivo. Apenas leia e me reporte o que for pedido.
+
+═══════════════════════════════════════════════
+ARQUIVO: artifacts/parallax-wallpaper/app/index.tsx
+═══════════════════════════════════════════════
+
+Preciso entender a estrutura da tela de EDIT quando a camada selecionada
+é "fundos" (background). Hoje essa tela não tem rolagem automática, e
+queremos adicionar (num passo posterior). Antes preciso ver a estrutura.
+
+Me mostre, copiando os trechos exatos:
+
+1) O componente (ou bloco JSX) que renderiza a tela de Edit quando a
+   camada ativa é "background". Se houver um mesmo componente para as
+   três camadas (background, middle, foreground), me diga isso e mostre
+   o componente inteiro. Se a tela de fundos for diferente das outras,
+   mostre só ela.
+
+2) Se existe ScrollView nessa tela. Se sim, mostre o bloco JSX completo
+   com TODAS as props (ref, onLayout, onScroll, onContentSizeChange,
+   scrollEventThrottle, etc).
+
+3) Se existe um botão de "avançar" / "próximo" / "continuar" nessa tela.
+   Se sim:
+   - Mostre o JSX dele com todas as props, incluindo onLayout se houver.
+   - Diga se ele tem um Animated.View envolvendo, e se usa algum
+     useAttentionAnimation.
+   - Diga se existe uma ref guardando a posição Y dele (algo como
+     editXxxButtonY.current).
+
+4) Liste todas as refs relacionadas à tela de Edit que existem no
+   arquivo. Copie cada declaração. Exemplos que já conhecemos:
+   editCropCardY, editAttentionPending, editAttentionTimer, editScrollY.
+   Liste TODAS as outras que começam com "edit" ou que estão no escopo
+   do Edit.
+
+5) Existe algum useEffect que dispara animação ou rolagem quando a tela
+   de Edit entra em modo "background"? Se sim, copie o bloco completo.
+
+6) Existe alguma diferença visível de layout entre a tela de Edit para
+   "background" e para "middle"/"foreground"?
+   - Mesmo número de campos?
+   - Mesmos botões?
+   - Mesma altura de conteúdo?
+   Me diga com base no que está no código.
+
+7) A tela de Edit (qualquer camada) tem instruções textuais na parte de
+   baixo, abaixo do botão de avançar? Se sim, mostre o JSX dessas
+   instruções.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere nada.
+- NÃO sugira mudanças.
+- NÃO escreva código novo.
+- Apenas leia, copie e responda o que foi pedido.
+- Se algum item não existir, diga "não existe" em vez de inventar.
