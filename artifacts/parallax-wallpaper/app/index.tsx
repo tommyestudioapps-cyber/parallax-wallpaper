@@ -1818,6 +1818,8 @@ export default function HomeScreen() {
       };
     }
 
+    if (editScrollViewportHeight.current <= 0 || editScrollContentHeight.current <= 0) return;
+
     const frame = requestAnimationFrame(() => {
       const targetY = editCropCardY.current;
       if (targetY === null) return;
