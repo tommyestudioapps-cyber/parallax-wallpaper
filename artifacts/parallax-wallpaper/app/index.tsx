@@ -1426,6 +1426,7 @@ export default function HomeScreen() {
   const composeScrollRef = useRef<ScrollView>(null);
   const composeScrollViewportHeight = useRef(0);
   const composeScrollContentHeight = useRef(0);
+  const composeStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editCropCardY = useRef<number | null>(null);
   const composeLayerPickerY = useRef<number | null>(null);
   const editAttentionPending = useRef(false);
@@ -1811,14 +1812,21 @@ export default function HomeScreen() {
       const startY = Math.min(Math.max(0, composeScrollY.current), maxScrollY);
       const scrollTargetY = Math.min(maxScrollY, Math.max(0, targetY - 24));
       composeScrollY.current = startY;
-      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
-        middlePickerAttention.start(120);
-        foregroundPickerAttention.start(820);
-        previewButtonAttention.start(1520);
-      });
+      composeStartTimeout.current = setTimeout(() => {
+        composeStartTimeout.current = null;
+        animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
+          middlePickerAttention.start(120);
+          foregroundPickerAttention.start(820);
+          previewButtonAttention.start(1520);
+        });
+      }, 450);
     });
     return () => {
       cancelAnimationFrame(frame);
+      if (composeStartTimeout.current !== null) {
+        clearTimeout(composeStartTimeout.current);
+        composeStartTimeout.current = null;
+      }
       if (composeScrollFrame.current !== null) cancelAnimationFrame(composeScrollFrame.current);
     };
   }, [

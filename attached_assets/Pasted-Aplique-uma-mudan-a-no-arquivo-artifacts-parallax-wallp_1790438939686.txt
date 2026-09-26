@@ -1,0 +1,123 @@
+Aplique uma mudança no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+Hoje, quando a tela de Composição entra, a rolagem automática começa
+quase imediatamente — o usuário nem chega a "ver" a tela antes de ela
+rolar. O Preview já tem um delay de 450ms antes de começar a rolar,
+que dá tempo ao olho de perceber que falta algo abaixo. Vamos replicar
+esse mesmo delay na Composição.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Nova ref no escopo do HomeScreen
+═══════════════════════════════════════════════
+
+Junto das outras refs da tela de Composição (composeAttentionPending,
+composeScrollFrame, composeScrollY, etc.), adicione:
+
+  const composeStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Envolver a rolagem da Composição num setTimeout
+═══════════════════════════════════════════════
+
+No useEffect da Composição, existe hoje este trecho (resumido):
+
+  useEffect(() => {
+    if (mode !== 'compose' || !composeAttentionPending.current) return;
+    if (composeScrollViewportHeight.current <= 0 || composeScrollContentHeight.current <= 0) return;
+    const frame = requestAnimationFrame(() => {
+      const targetY = composeLayerPickerY.current;
+      if (targetY === null) return;
+      composeAttentionPending.current = false;
+      const maxScrollY = ...;
+      const startY = ...;
+      const scrollTargetY = ...;
+      composeScrollY.current = startY;
+      animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
+        middlePickerAttention.start(120);
+        foregroundPickerAttention.start(820);
+        previewButtonAttention.start(1520);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (composeScrollFrame.current !== null) cancelAnimationFrame(composeScrollFrame.current);
+    };
+  }, [...]);
+
+Reorganize para que a chamada de animateScrollTo fique dentro de um
+setTimeout de 450ms, guardado na nova ref. Ou seja:
+
+  useEffect(() => {
+    if (mode !== 'compose' || !composeAttentionPending.current) return;
+    if (composeScrollViewportHeight.current <= 0 || composeScrollContentHeight.current <= 0) return;
+    const frame = requestAnimationFrame(() => {
+      const targetY = composeLayerPickerY.current;
+      if (targetY === null) return;
+      composeAttentionPending.current = false;
+      const maxScrollY = Math.max(
+        0,
+        composeScrollContentHeight.current - composeScrollViewportHeight.current,
+      );
+      const startY = Math.min(Math.max(0, composeScrollY.current), maxScrollY);
+      const scrollTargetY = Math.min(maxScrollY, Math.max(0, targetY - 24));
+      composeScrollY.current = startY;
+      composeStartTimeout.current = setTimeout(() => {
+        composeStartTimeout.current = null;
+        animateScrollTo(composeScrollRef, composeScrollY, composeScrollFrame, scrollTargetY, () => {
+          middlePickerAttention.start(120);
+          foregroundPickerAttention.start(820);
+          previewButtonAttention.start(1520);
+        });
+      }, 450);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (composeStartTimeout.current !== null) {
+        clearTimeout(composeStartTimeout.current);
+        composeStartTimeout.current = null;
+      }
+      if (composeScrollFrame.current !== null) cancelAnimationFrame(composeScrollFrame.current);
+    };
+  }, [...]);
+
+Observações:
+- O cálculo de maxScrollY, startY, scrollTargetY e composeScrollY.current
+  continua FORA do setTimeout, como no Preview. Só a chamada de
+  animateScrollTo é que fica adiada.
+- Os três pulses (start(120), start(820), start(1520)) continuam dentro
+  do callback do animateScrollTo, sem alteração.
+- O dependency array permanece exatamente igual. Não adicione nem
+  remova itens.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere useAttentionAnimation.
+- NÃO altere queuePreviewAttention nem handlePreviewUserInterrupt.
+- NÃO altere animateScrollTo.
+- NÃO altere calcScrollDuration nem easeOutCubic.
+- NÃO altere o ScrollView da Composição nem o do Preview.
+- NÃO altere os pulses em si.
+- NÃO adicione interrupção por toque na Composição. Isso vem em
+  prompt futuro, se necessário.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do trecho alterado.
+
+2) Confirme que composeStartTimeout é limpo no return do useEffect.
+
+3) Confirme que o cálculo de maxScrollY, startY e scrollTargetY continua
+   fora do setTimeout.
+
+4) Confirme que os três start(120/820/1520) continuam dentro do
+   callback do animateScrollTo.
