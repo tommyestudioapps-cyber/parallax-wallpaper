@@ -9,6 +9,7 @@
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:egl": "node scripts/validate-egl-lifecycle.js",
+    "test:attention-motion": "node scripts/validate-attention-motion.js",
     "android:preflight": "node scripts/android-preflight.js",
     "android:alpha-matrix": "node scripts/android-alpha-matrix.js",
     "android": "node scripts/android-preflight.js && expo run:android",
