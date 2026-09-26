@@ -1,0 +1,52 @@
+Não altere nenhum arquivo. Apenas leia e me reporte o que for pedido.
+
+═══════════════════════════════════════════════
+ARQUIVO: artifacts/parallax-wallpaper/app/index.tsx
+═══════════════════════════════════════════════
+
+Me mostre, copiando o trecho exato como está no arquivo:
+
+1) A função animateScrollTo COMPLETA. Copie do início ao fim, incluindo
+   a assinatura, o corpo e o fechamento.
+
+2) A declaração COMPLETA da constante COMPOSITION_SCROLL_DURATION_MS,
+   como está no topo do arquivo.
+
+3) Todos os usos de compositionScrollDistance no arquivo. Para cada
+   ocorrência, mostre a linha e 3 linhas de contexto (acima e abaixo).
+
+4) A declaração da ref compositionScrollDistance (procure por
+   useRef). Copie a linha exata.
+
+5) Onde animateScrollTo é chamado (o ponto de disparo). Mostre 10 linhas
+   acima e 10 linhas abaixo da chamada.
+
+6) A declaração da ref do scroll da Composição (procure por
+   composeScrollRef ou similar). Copie a linha exata. Diga se é useRef
+   ou useAnimatedRef.
+
+7) O bloco JSX do ScrollView da Composição (ou Animated.ScrollView).
+   Copie TODAS as props dele.
+
+8) Qual função calcula compositionScrollDistance.current (procure por
+   compositionScrollDistance.current = ...). Copie o bloco completo
+   que faz esse cálculo.
+
+9) A função easeInOutCubic ainda está sendo usada só em animateScrollTo?
+   Procure por "easeInOutCubic" no arquivo inteiro e me liste todas as
+   ocorrências (linha + contexto mínimo).
+
+10) Existe alguma outra rolagem animada no arquivo além de
+    animateScrollTo e da rolagem do Preview (queuePreviewAttention)?
+    Procure por padrões requestAnimationFrame(step) ou
+    requestAnimationFrame(...). Me liste cada ocorrência.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere nada.
+- NÃO sugira mudanças.
+- NÃO escreva código novo.
+- Apenas leia, copie e responda o que foi pedido.
+- Se algum item não existir, diga "não existe" em vez de inventar.
