@@ -1,0 +1,140 @@
+Aplique uma mudança pequena no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo. Não altere mais nada.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+Hoje, quando o botão do Preview ganha layout, a rolagem automática começa
+imediatamente no frame seguinte. Queremos um delay de 450ms antes de
+começar, para que o usuário tenha tempo de olhar a tela e perceber que
+não há botão visível. A rolagem vem como resposta a essa percepção.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Nova ref
+═══════════════════════════════════════════════
+
+Junto das refs existentes (previewScrollY, previewScrollFrame, etc.),
+adicione:
+
+  const previewStartTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Envolver o início da rolagem em setTimeout
+═══════════════════════════════════════════════
+
+Dentro de queuePreviewAttention, o callback do previewKickoffFrame tem
+esta estrutura hoje (resumida):
+
+  previewKickoffFrame.current = requestAnimationFrame(() => {
+    previewKickoffFrame.current = null;
+    previewAttentionScheduled.current = false;
+    if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
+    previewAttentionStarted.current = true;
+    const maxScrollY = ...;
+    const startY = ...;
+    const targetY = ...;
+    const previewDistance = Math.abs(targetY - startY);
+    if (previewDistance <= 1) {
+      previewAttention.start();
+      return;
+    }
+    const duration = calcPreviewScrollDuration(previewDistance);
+    const startedAt = performance.now();
+    const step = (timestamp: number) => {
+      ...
+    };
+    previewScrollFrame.current = requestAnimationFrame(step);
+  });
+
+Reorganize para que fique assim:
+
+  previewKickoffFrame.current = requestAnimationFrame(() => {
+    previewKickoffFrame.current = null;
+    previewAttentionScheduled.current = false;
+    if (previewAttentionStarted.current || previewApplyButtonY.current === null) return;
+
+    const maxScrollY = Math.max(
+      0,
+      previewScrollContentHeight.current - previewScrollViewportHeight.current,
+    );
+    const startY = Math.min(Math.max(0, previewScrollY.current), maxScrollY);
+    const targetY = Math.min(
+      maxScrollY,
+      Math.max(0, previewApplyButtonY.current - 24),
+    );
+    const previewDistance = Math.abs(targetY - startY);
+
+    if (previewDistance <= 1) {
+      previewAttentionStarted.current = true;
+      previewAttention.start();
+      return;
+    }
+
+    previewStartTimeout.current = setTimeout(() => {
+      previewStartTimeout.current = null;
+      if (previewAttentionStarted.current) return;
+      previewAttentionStarted.current = true;
+      const duration = calcPreviewScrollDuration(previewDistance);
+      const startedAt = performance.now();
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const eased = easeOutCubic(progress);
+        const nextY = startY + (targetY - startY) * eased;
+        previewScrollRef.current?.scrollTo({ y: nextY, animated: false });
+        if (progress < 1) {
+          previewScrollFrame.current = requestAnimationFrame(step);
+        } else {
+          previewScrollY.current = targetY;
+          previewScrollFrame.current = null;
+          previewAttention.start();
+        }
+      };
+      previewScrollFrame.current = requestAnimationFrame(step);
+    }, 450);
+  });
+
+Pontos importantes:
+- A linha previewAttentionStarted.current = true que existia ANTES do
+  cálculo de maxScrollY agora NÃO existe mais nesse lugar. Ela passa a
+  ser setada em dois pontos: no ramo previewDistance <= 1 (imediatamente)
+  e dentro do setTimeout (antes de iniciar o step).
+- O step interno permanece IDÊNTICO ao que está hoje. Não altere nada
+  dentro dele.
+- Não altere maxScrollY, startY, targetY, previewDistance. Só mova a
+  flag para os dois pontos novos.
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Cleanup no useEffect
+═══════════════════════════════════════════════
+
+No useEffect que hoje faz cleanup de previewKickoffFrame e
+previewScrollFrame, adicione também o cancelamento do timeout:
+
+  if (previewStartTimeout.current !== null) {
+    clearTimeout(previewStartTimeout.current);
+    previewStartTimeout.current = null;
+  }
+
+Coloque junto das outras limpezas, dentro do return do useEffect.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere easeOutCubic, calcPreviewScrollDuration nem o step interno.
+- NÃO altere o ScrollView.
+- NÃO adicione onTouchStart. Isso vem em prompt futuro.
+- NÃO altere o hook useAttentionAnimation.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do trecho alterado.
+
+2) Confirme que previewAttentionStarted.current = true aparece agora
+   em exatamente dois lugares novos (um dentro do ramo previewDistance
+   <= 1, outro dentro do setTimeout), e em NENHUM outro lugar dentro
+   de queuePreviewAttention.
