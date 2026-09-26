@@ -1,0 +1,90 @@
+Aplique uma mudança no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+Hoje existem duas funções de duração de rolagem:
+
+  function calcPreviewScrollDuration(distance: number) {
+    const raw = 260 + distance * 0.6;
+    return Math.min(480, Math.max(320, raw));
+  }
+
+  function calcCompositionScrollDuration(distance: number) {
+    const raw = 300 + distance * 0.5;
+    return Math.min(620, Math.max(360, raw));
+  }
+
+Todas as telas devem ter o MESMO comportamento de rolagem. Vamos
+unificar numa única função, mais lenta que as duas atuais, para que a
+rolagem fique mais visível.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Substituir as duas funções por uma
+═══════════════════════════════════════════════
+
+Remova calcPreviewScrollDuration e calcCompositionScrollDuration por
+completo. Adicione em seus lugares UMA função:
+
+  function calcScrollDuration(distance: number) {
+    const raw = 320 + distance * 0.7;
+    return Math.min(560, Math.max(380, raw));
+  }
+
+Comparação rápida com o que existia:
+- Preview antigo: 320–480ms. Agora: 380–560ms (mais lento).
+- Composição/Edit antigo: 360–620ms. Agora: 380–560ms (levemente
+  mais lento em distâncias médias, mais rápido em distâncias longas
+  — mas o clamp superior maior garante que continua perceptível).
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Atualizar os usos
+═══════════════════════════════════════════════
+
+Localize TODOS os usos das duas funções antigas e troque por
+calcScrollDuration:
+
+2a) Em queuePreviewAttention, dentro do setTimeout, existe:
+
+      const duration = calcPreviewScrollDuration(previewDistance);
+
+    Troque para:
+
+      const duration = calcScrollDuration(previewDistance);
+
+2b) Dentro de animateScrollTo, existe:
+
+      const duration = calcCompositionScrollDuration(Math.abs(targetY - startY));
+
+    Troque para:
+
+      const duration = calcScrollDuration(Math.abs(targetY - startY));
+
+Não há outros usos além desses dois.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere mais nada.
+- NÃO altere calcPreviewScrollDuration como nome de variável em outro
+  lugar (se aparecer em comentário, ignore).
+- NÃO altere o delay de 450ms do Preview.
+- NÃO altere animateScrollTo além da linha de duration.
+- NÃO altere o hook useAttentionAnimation.
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do arquivo.
+
+2) Confirme que calcPreviewScrollDuration e calcCompositionScrollDuration
+   não têm mais nenhuma referência no arquivo (nem declaração nem uso).
+
+3) Confirme que calcScrollDuration aparece exatamente duas vezes: uma
+   como declaração, uma vez em queuePreviewAttention e uma vez em
+   animateScrollTo (ou seja, 1 declaração + 2 usos = 3 ocorrências).

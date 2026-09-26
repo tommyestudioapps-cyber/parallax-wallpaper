@@ -91,14 +91,9 @@ function easeOutCubic(progress: number) {
   return 1 - Math.pow(1 - progress, 3);
 }
 
-function calcPreviewScrollDuration(distance: number) {
-  const raw = 260 + distance * 0.6;
-  return Math.min(480, Math.max(320, raw));
-}
-
-function calcCompositionScrollDuration(distance: number) {
-  const raw = 300 + distance * 0.5;
-  return Math.min(620, Math.max(360, raw));
+function calcScrollDuration(distance: number) {
+  const raw = 320 + distance * 0.7;
+  return Math.min(560, Math.max(380, raw));
 }
 
 type LayerId = 'background' | 'middle' | 'foreground';
@@ -1232,7 +1227,7 @@ function ParallaxPreview({
         previewStartTimeout.current = null;
         if (previewAttentionStarted.current) return;
         previewAttentionStarted.current = true;
-        const duration = calcPreviewScrollDuration(previewDistance);
+        const duration = calcScrollDuration(previewDistance);
         const startedAt = performance.now();
         const step = (timestamp: number) => {
           const progress = Math.min(1, (timestamp - startedAt) / duration);
@@ -1763,7 +1758,7 @@ export default function HomeScreen() {
     ) => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       const startY = currentYRef.current;
-      const duration = calcCompositionScrollDuration(Math.abs(targetY - startY));
+      const duration = calcScrollDuration(Math.abs(targetY - startY));
       const startedAt = performance.now();
       const step = (timestamp: number) => {
         const progress = Math.min(1, (timestamp - startedAt) / duration);
