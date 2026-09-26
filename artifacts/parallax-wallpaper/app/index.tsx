@@ -1240,6 +1240,25 @@ function ParallaxPreview({
     });
   }, [compositionScrollDistance, previewAttention.start]);
 
+  const handlePreviewUserInterrupt = useCallback(() => {
+    if (previewStartTimeout.current !== null) {
+      clearTimeout(previewStartTimeout.current);
+      previewStartTimeout.current = null;
+    }
+    if (previewKickoffFrame.current !== null) {
+      cancelAnimationFrame(previewKickoffFrame.current);
+      previewKickoffFrame.current = null;
+    }
+    if (previewScrollFrame.current !== null) {
+      cancelAnimationFrame(previewScrollFrame.current);
+      previewScrollFrame.current = null;
+    }
+    if (!previewAttentionStarted.current) {
+      previewAttentionStarted.current = true;
+      previewAttention.start();
+    }
+  }, [previewAttention.start]);
+
   useEffect(() => {
     if (previewButtonLayoutReady.current) queuePreviewAttention();
     return () => {
@@ -1272,6 +1291,7 @@ function ParallaxPreview({
         ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
+        onTouchStart={handlePreviewUserInterrupt}
         onLayout={(event) => {
           const height = event.nativeEvent.layout.height;
           if (previewScrollViewportHeight.current !== height) {

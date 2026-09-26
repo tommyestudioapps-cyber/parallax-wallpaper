@@ -1,0 +1,84 @@
+Aplique uma mudança pequena no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo. Não altere mais nada.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+Se o usuário tocar na tela do Preview antes da rolagem automática
+terminar, queremos:
+- cancelar o delay pendente (se ainda não começou)
+- cancelar o kickoff frame (se ainda não rodou)
+- cancelar a rolagem em andamento (se já começou)
+- disparar a animação do botão (pulse) mesmo assim, para o usuário
+  não perder o convite visual
+
+O botão continua clicável em qualquer momento. A animação de pulse
+usa apenas transform, que não bloqueia toques no React Native.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Nova função handlePreviewUserInterrupt
+═══════════════════════════════════════════════
+
+Logo DEPOIS da declaração de queuePreviewAttention (fora dela, no mesmo
+nível), adicione:
+
+  const handlePreviewUserInterrupt = useCallback(() => {
+    if (previewStartTimeout.current !== null) {
+      clearTimeout(previewStartTimeout.current);
+      previewStartTimeout.current = null;
+    }
+    if (previewKickoffFrame.current !== null) {
+      cancelAnimationFrame(previewKickoffFrame.current);
+      previewKickoffFrame.current = null;
+    }
+    if (previewScrollFrame.current !== null) {
+      cancelAnimationFrame(previewScrollFrame.current);
+      previewScrollFrame.current = null;
+    }
+    if (!previewAttentionStarted.current) {
+      previewAttentionStarted.current = true;
+      previewAttention.start();
+    }
+  }, [previewAttention.start]);
+
+Não coloque delay nenhum no previewAttention.start(). O pulse começa
+imediatamente ao toque.
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Plugar no ScrollView
+═══════════════════════════════════════════════
+
+No <ScrollView> do Preview, adicione a prop:
+
+  onTouchStart={handlePreviewUserInterrupt}
+
+Coloque junto das props existentes. NÃO remova nem altere onLayout,
+onScroll, onContentSizeChange, onScrollBeginDrag (se houver) ou
+qualquer outra prop.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO adicione pointerEvents="none" em nenhum lugar.
+- NÃO envolva o Animated.View do botão em nada que bloqueie toque.
+- NÃO altere queuePreviewAttention.
+- NÃO altere easeOutCubic, calcPreviewScrollDuration, o step interno.
+- NÃO altere o hook useAttentionAnimation.
+- NÃO altere o setTimeout de 450ms nem o cleanup do useEffect.
+- NÃO adicione onScrollBeginDrag (onTouchStart é suficiente).
+- Mantenha o estilo de código atual.
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do arquivo.
+
+2) Confirme que handlePreviewUserInterrupt só cancela os três pendentes
+   (timeout, kickoff frame, scroll frame) e que o previewAttention.start()
+   só é chamado dentro do if (!previewAttentionStarted.current).
+
+3) Confirme que nenhuma prop nova além de onTouchStart foi adicionada
+   ao ScrollView do Preview.
