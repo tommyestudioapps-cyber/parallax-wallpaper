@@ -92,6 +92,15 @@ function easeInOutCubic(progress: number) {
     : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 }
 
+function easeOutCubic(progress: number) {
+  return 1 - Math.pow(1 - progress, 3);
+}
+
+function calcPreviewScrollDuration(distance: number) {
+  const raw = 260 + distance * 0.6;
+  return Math.min(480, Math.max(320, raw));
+}
+
 type LayerId = 'background' | 'middle' | 'foreground';
 type ScreenMode = 'home' | 'edit' | 'compose' | 'preview';
 type ImageCrop = {
@@ -1205,13 +1214,11 @@ function ParallaxPreview({
         return;
       }
 
-      const duration = compositionScrollDistance > 1
-        ? COMPOSITION_SCROLL_DURATION_MS * previewDistance / compositionScrollDistance
-        : COMPOSITION_SCROLL_DURATION_MS;
+      const duration = calcPreviewScrollDuration(previewDistance);
       const startedAt = performance.now();
       const step = (timestamp: number) => {
         const progress = Math.min(1, (timestamp - startedAt) / duration);
-        const eased = easeInOutCubic(progress);
+        const eased = easeOutCubic(progress);
         const nextY = startY + (targetY - startY) * eased;
         previewScrollRef.current?.scrollTo({ y: nextY, animated: false });
         if (progress < 1) {

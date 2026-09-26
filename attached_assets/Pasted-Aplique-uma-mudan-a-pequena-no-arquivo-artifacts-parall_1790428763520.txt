@@ -1,0 +1,97 @@
+Aplique uma mudança pequena no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo. Não altere mais nada além do que foi pedido.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+A rolagem automática do Preview hoje usa easeInOutCubic e tem duração
+calculada a partir da distância da Composição. Isso faz a rolagem
+parecer travada no início e sem ritmo próprio.
+
+Queremos:
+- curva easeOutCubic (dispara e freia)
+- duração adaptativa curta, baseada na distância REAL da rolagem do
+  Preview, não mais na distância da Composição
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Nova função de easing
+═══════════════════════════════════════════════
+
+Adicione, logo ABAIXO da função easeInOutCubic existente (não substitua,
+não remova a antiga):
+
+function easeOutCubic(progress: number) {
+  return 1 - Math.pow(1 - progress, 3);
+}
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Nova função de duração
+═══════════════════════════════════════════════
+
+Adicione, junto das outras funções utilitárias do arquivo:
+
+function calcPreviewScrollDuration(distance: number) {
+  const raw = 260 + distance * 0.6;
+  return Math.min(480, Math.max(320, raw));
+}
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Trocar curva e duração dentro do step
+═══════════════════════════════════════════════
+
+Dentro da função queuePreviewAttention, no trecho que faz a rolagem
+animada, existem hoje estas linhas:
+
+      const duration = compositionScrollDistance > 1
+        ? COMPOSITION_SCROLL_DURATION_MS * previewDistance / compositionScrollDistance
+        : COMPOSITION_SCROLL_DURATION_MS;
+      const startedAt = performance.now();
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const eased = easeInOutCubic(progress);
+
+Substitua APENAS essas linhas por:
+
+      const duration = calcPreviewScrollDuration(previewDistance);
+      const startedAt = performance.now();
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - startedAt) / duration);
+        const eased = easeOutCubic(progress);
+
+Ou seja:
+- a linha do "const duration" deixa de consultar compositionScrollDistance
+  e COMPOSITION_SCROLL_DURATION_MS, e passa a usar calcPreviewScrollDuration
+- a linha do "const eased" passa a usar easeOutCubic em vez de easeInOutCubic
+
+NÃO altere mais NADA dentro do step. O resto do step (scrollTo, o if
+progress < 1, o previewAttention.start() no final) permanece exatamente
+igual.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO remova easeInOutCubic do arquivo (mesmo que pareça sem uso agora).
+- NÃO altere o cálculo de maxScrollY, startY, targetY ou previewDistance.
+- NÃO adicione setTimeout, delay ou cancelamento. Isso vem em prompts
+  futuros.
+- NÃO altere o hook useAttentionAnimation.
+- NÃO altere o ScrollView (props, handlers, nada).
+- NÃO mexa em compositionScrollDistance nem COMPOSITION_SCROLL_DURATION_MS
+  em outros pontos do arquivo. Só remove o uso delas neste cálculo.
+- Mantenha o estilo de código atual (aspas, indentação, vírgulas).
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do arquivo (só os trechos alterados).
+
+2) Diga se easeInOutCubic ainda é usada em algum outro lugar do
+   arquivo (procure). Se sim, mostre onde. Se não, diga "não é mais
+   usada".
+
+3) Diga se compositionScrollDistance ou COMPOSITION_SCROLL_DURATION_MS
+   ainda são usadas em algum outro lugar do arquivo (procure). Se sim,
+   mostre onde. Se não, diga "não são mais usadas".
