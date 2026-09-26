@@ -1,0 +1,48 @@
+Não altere nenhum arquivo. Apenas leia e me reporte.
+
+═══════════════════════════════════════════════
+ARQUIVO: artifacts/parallax-wallpaper/app/index.tsx
+═══════════════════════════════════════════════
+
+1) Procure por editAttentionPending.current = true. Me diga TODOS os
+   lugares onde essa linha aparece e o contexto (o que dispara cada
+   uma). Preciso entender quando a "atenção" do Edit é ligada.
+
+2) A prop editingLayer é setada em quais pontos do código?
+   Especificamente, quando o usuário entra no Edit com layer
+   background, existe algum caminho que também liga
+   editAttentionPending? Se sim, mostre.
+
+3) No JSX do Edit, o "infoRow" (a View com styles.infoRow que aparece
+   quando editingLayer === 'background') está envolvido por alguma
+   View externa? Ou está solto direto como filho do ScrollView?
+   Copie o trecho exato incluindo as Views que o contêm.
+
+4) Existe algum outro elemento abaixo do infoRow no Edit com layer
+   background (algum texto, algum botão, um spacer)? Liste em ordem
+   tudo que é renderizado abaixo do infoRow quando editingLayer é
+   background.
+
+5) No mesmo componente, quando editingLayer é middle ou foreground,
+   o useEffect de atenção depende de editCropCardY.current estar setado
+   pelo onLayout do cropCard. Existe algo equivalente para o infoRow
+   hoje? (Procure por um onLayout em qualquer View que renderize quando
+   editingLayer === 'background'.)
+
+6) O componente Progress (que fica no header) usa hasLayerNavigation.
+   Isso significa que o botão de avançar aparece tanto no background
+   quanto em middle/foreground? Confirme.
+
+7) Existe um caminho no código onde o usuário pode chegar ao Edit já
+   com editingLayer === 'background'? Ou o padrão é sempre começar por
+   outra camada e o usuário navega até background?
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere nada.
+- NÃO sugira mudanças.
+- NÃO escreva código novo.
+- Apenas leia, copie e responda.
+- Se algum item não existir, diga "não existe".
