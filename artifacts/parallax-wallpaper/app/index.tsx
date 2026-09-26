@@ -1829,11 +1829,11 @@ export default function HomeScreen() {
         editScrollContentHeight.current - editScrollViewportHeight.current,
       );
       const startY = Math.min(Math.max(0, editScrollY.current), maxScrollY);
-      const targetY = Math.min(maxScrollY, Math.max(0, cropCardY - 24));
+      const clampedTargetY = Math.min(maxScrollY, Math.max(0, cropCardY - 24));
       editScrollY.current = startY;
       editStartTimeout.current = setTimeout(() => {
         editStartTimeout.current = null;
-        animateScrollTo(editScrollRef, editScrollY, editScrollFrame, targetY, () => {
+        animateScrollTo(editScrollRef, editScrollY, editScrollFrame, clampedTargetY, () => {
           editAttentionStarted.current = true;
           cropAttention.start(180);
         });
