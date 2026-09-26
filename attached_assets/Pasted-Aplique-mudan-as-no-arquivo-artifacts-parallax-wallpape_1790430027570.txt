@@ -1,0 +1,135 @@
+Aplique mudanças no arquivo artifacts/parallax-wallpaper/app/index.tsx.
+Trabalhe SOMENTE nesse arquivo.
+
+═══════════════════════════════════════════════
+OBJETIVO
+═══════════════════════════════════════════════
+
+Substituir o hook useAttentionAnimation (hoje um shake lateral de 5
+timings) por uma animação de "pulse" — 3 batidas rápidas com escala
+crescente e decrescente, translateY derivado, e sombra reagindo à
+escala. Preservar a API pública do hook: start(delay) e buttonStyle.
+
+═══════════════════════════════════════════════
+MUDANÇA 1 — Imports do Reanimated
+═══════════════════════════════════════════════
+
+No bloco de imports de 'react-native-reanimated', adicione:
+  Easing,
+  useReducedMotion,
+
+Verifique se withRepeat ainda é usado em OUTRO lugar do arquivo depois
+das mudanças. Se não for, remova withRepeat do import. Se for,
+mantenha.
+
+═══════════════════════════════════════════════
+MUDANÇA 2 — Novo hook useAttentionAnimation
+═══════════════════════════════════════════════
+
+Substitua o hook inteiro por este (mantenha o mesmo nome de função e
+mesma assinatura de retorno):
+
+function useAttentionAnimation(shadowColor: string) {
+  const scale = useSharedValue(1);
+  const reducedMotion = useReducedMotion();
+
+  const start = useCallback((delay = 0) => {
+    if (reducedMotion) {
+      scale.value = 1;
+      return;
+    }
+    scale.value = withDelay(
+      delay,
+      withSequence(
+        // 1ª batida — forte
+        withTiming(1.06, { duration: 110, easing: Easing.out(Easing.back(1.7)) }),
+        withTiming(1.00, { duration:  90, easing: Easing.in(Easing.quad) }),
+        withDelay(70, withTiming(1.00, { duration: 1 })),
+        // 2ª batida — média
+        withTiming(1.04, { duration: 100, easing: Easing.out(Easing.back(1.7)) }),
+        withTiming(1.00, { duration:  90, easing: Easing.in(Easing.quad) }),
+        withDelay(70, withTiming(1.00, { duration: 1 })),
+        // 3ª batida — sutil
+        withTiming(1.02, { duration:  90, easing: Easing.out(Easing.back(1.7)) }),
+        withTiming(1.00, { duration:  80, easing: Easing.in(Easing.quad) }),
+      ),
+    );
+  }, [scale, reducedMotion]);
+
+  const buttonStyle = useAnimatedStyle(() => {
+    const s = scale.value;
+    const lift = (s - 1) * -40;
+    return {
+      transform: [
+        { translateY: lift },
+        { scale: s },
+      ],
+      shadowColor,
+      shadowOpacity: 0.28 + (s - 1) * 1.5,
+      shadowRadius:  18 + (s - 1) * 300,
+      shadowOffset: { width: 0, height: 6 + (s - 1) * 200 },
+      elevation: 6 + (s - 1) * 200,
+    };
+  });
+
+  return { buttonStyle, start };
+}
+
+Observações:
+- O parâmetro shadowColor é usado direto no estilo (não é animado).
+- O `withDelay(70, withTiming(1.00, { duration: 1 }))` representa a
+  pausa entre batidas. Reanimated exige uma animação de duração mínima
+  dentro do withDelay para segurar o valor.
+- NÃO use withRepeat. NÃO use withSpring.
+- O parâmetro reducedMotion vem do useReducedMotion() do Reanimated.
+  Se o usuário tiver "Reduce Motion" ativo no sistema, o start() apenas
+  reseta a escala para 1 sem animar.
+
+═══════════════════════════════════════════════
+MUDANÇA 3 — Atualizar as chamadas do hook
+═══════════════════════════════════════════════
+
+O hook agora recebe um argumento shadowColor. Localize TODAS as
+chamadas de useAttentionAnimation() no arquivo e passe colors.primary.
+
+Exemplo:
+  const previewAttention = useAttentionAnimation(colors.primary);
+
+Procure por:
+  const previewAttention = useAttentionAnimation()
+  const middlePickerAttention = useAttentionAnimation()
+  const foregroundPickerAttention = useAttentionAnimation()
+  const previewButtonAttention = useAttentionAnimation()
+
+Todos devem receber colors.primary. Se alguma chamada estiver fora do
+escopo onde `colors` existe, avise antes de alterar em vez de inventar.
+
+═══════════════════════════════════════════════
+REGRAS
+═══════════════════════════════════════════════
+
+- NÃO altere queuePreviewAttention, handlePreviewUserInterrupt,
+  animateScrollTo, calcPreviewScrollDuration,
+  calcCompositionScrollDuration, easeOutCubic, easeInOutCubic.
+- NÃO altere o ScrollView do Preview nem o da Composição.
+- NÃO remova easeInOutCubic nem COMPOSITION_SCROLL_DURATION_MS.
+- NÃO altere o setTimeout(..., 780) dos pulses da Composição.
+- NÃO altere o JSX onde previewAttention.buttonStyle é aplicado.
+- NÃO altere usos de withDelay, withSequence, withTiming em outros
+  lugares do arquivo.
+- Mantenha o estilo de código atual (aspas, indentação, vírgulas).
+
+═══════════════════════════════════════════════
+AO FINAL, ME RESPONDA
+═══════════════════════════════════════════════
+
+1) Mostre o diff completo do arquivo.
+
+2) Liste TODAS as chamadas de useAttentionAnimation no arquivo,
+   mostrando o argumento que cada uma recebeu.
+
+3) Confirme se withRepeat ainda é usado no arquivo. Se sim, onde. Se
+   não, diga "removido do import".
+
+4) Confirme que useSharedValue, useAnimatedStyle, withDelay,
+   withSequence, withTiming continuam sendo importados e usados.

@@ -25,11 +25,13 @@ import { isNativeBackgroundRemovalSupported, removeBackground } from '@six33/rea
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Defs, Image as SvgImage, Pattern, Rect } from 'react-native-svg';
 import Animated, {
+  Easing,
   SensorType,
   useAnimatedSensor,
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
+  useReducedMotion,
   withDelay,
   withSequence,
   withRepeat,
@@ -386,35 +388,50 @@ function PrimaryButton({
   );
 }
 
-function useAttentionAnimation() {
-  const shake = useSharedValue(0);
+function useAttentionAnimation(shadowColor: string) {
+  const scale = useSharedValue(1);
+  const reducedMotion = useReducedMotion();
 
   const start = useCallback((delay = 0) => {
-    shake.value = 0;
-    shake.value = withDelay(
+    if (reducedMotion) {
+      scale.value = 1;
+      return;
+    }
+    scale.value = withDelay(
       delay,
-      withRepeat(
-        withSequence(
-          withTiming(-6, { duration: 160 }),
-          withTiming(6, { duration: 160 }),
-          withTiming(-4, { duration: 120 }),
-          withTiming(4, { duration: 120 }),
-          withTiming(0, { duration: 240 }),
-        ),
-        1,
-        false,
+      withSequence(
+        // 1ª batida — forte
+        withTiming(1.06, { duration: 110, easing: Easing.out(Easing.back(1.7)) }),
+        withTiming(1.00, { duration:  90, easing: Easing.in(Easing.quad) }),
+        withDelay(70, withTiming(1.00, { duration: 1 })),
+        // 2ª batida — média
+        withTiming(1.04, { duration: 100, easing: Easing.out(Easing.back(1.7)) }),
+        withTiming(1.00, { duration:  90, easing: Easing.in(Easing.quad) }),
+        withDelay(70, withTiming(1.00, { duration: 1 })),
+        // 3ª batida — sutil
+        withTiming(1.02, { duration:  90, easing: Easing.out(Easing.back(1.7)) }),
+        withTiming(1.00, { duration:  80, easing: Easing.in(Easing.quad) }),
       ),
     );
-  }, [shake]);
+  }, [scale, reducedMotion]);
 
-  const buttonStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shake.value }],
-  }));
+  const buttonStyle = useAnimatedStyle(() => {
+    const s = scale.value;
+    const lift = (s - 1) * -40;
+    return {
+      transform: [
+        { translateY: lift },
+        { scale: s },
+      ],
+      shadowColor,
+      shadowOpacity: 0.28 + (s - 1) * 1.5,
+      shadowRadius:  18 + (s - 1) * 300,
+      shadowOffset: { width: 0, height: 6 + (s - 1) * 200 },
+      elevation: 6 + (s - 1) * 200,
+    };
+  });
 
-  return {
-    buttonStyle,
-    start,
-  };
+  return { buttonStyle, start };
 }
 
 function Progress({
@@ -1160,7 +1177,7 @@ function ParallaxPreview({
   const previewButtonLayoutReady = useRef(false);
   const previewAttentionScheduled = useRef(false);
   const previewAttentionStarted = useRef(false);
-  const previewAttention = useAttentionAnimation();
+  const previewAttention = useAttentionAnimation(colors.primary);
   const [sensorStatus, setSensorStatus] = useState<'checking' | 'ready' | 'unavailable'>(
     Platform.OS === 'web' ? 'unavailable' : 'checking',
   );
@@ -1439,10 +1456,10 @@ export default function HomeScreen() {
   const [editCropCardLayoutVersion, setEditCropCardLayoutVersion] = useState(0);
   const [composeLayerPickerLayoutVersion, setComposeLayerPickerLayoutVersion] = useState(0);
   const [composeScrollMetricsVersion, setComposeScrollMetricsVersion] = useState(0);
-  const cropAttention = useAttentionAnimation();
-  const middlePickerAttention = useAttentionAnimation();
-  const foregroundPickerAttention = useAttentionAnimation();
-  const previewButtonAttention = useAttentionAnimation();
+  const cropAttention = useAttentionAnimation(colors.primary);
+  const middlePickerAttention = useAttentionAnimation(colors.primary);
+  const foregroundPickerAttention = useAttentionAnimation(colors.primary);
+  const previewButtonAttention = useAttentionAnimation(colors.primary);
   const openPreviewAfterReward = useCallback(() => {
     setMode('preview');
   }, []);
