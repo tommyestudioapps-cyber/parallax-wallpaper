@@ -1,0 +1,81 @@
+Não altere nenhum arquivo. Apenas leia e me reporte o que for pedido abaixo.
+Vou usar essas informações para planejar mudanças depois.
+
+═══════════════════════════════════════════════
+ARQUIVO: artifacts/parallax-wallpaper/app/index.tsx
+═══════════════════════════════════════════════
+
+Me mostre, copiando o trecho exato como está no arquivo:
+
+1) O bloco completo do ScrollView (ou Animated.ScrollView) do Preview,
+   incluindo TODAS as props: ref, onScroll, scrollEventThrottle,
+   onScrollBeginDrag, onMomentumScrollEnd, contentContainerStyle,
+   e qualquer outra prop que esteja nele.
+
+2) A declaração da ref do scroll do Preview (previewScrollRef). Copie
+   a linha exata. Diga se é useRef ou useAnimatedRef.
+
+3) A função completa que faz a rolagem animada do Preview usando
+   requestAnimationFrame. Copie do início ao fim, incluindo a
+   declaração de variáveis antes (startedAt, duration, etc.).
+
+4) A função easeInOutCubic completa, como está no arquivo.
+
+5) A função (ou bloco) que DISPARA a rolagem do Preview. Ou seja, o
+   ponto onde previewScrollFrame.current = requestAnimationFrame(step)
+   é acionado pela primeira vez. Preciso ver o contexto acima e abaixo
+   desse ponto — pelo menos 15 linhas para cada lado.
+
+6) De onde vem a variável targetY. Se for parâmetro de função, mostre
+   a assinatura da função. Se for estado, mostre a declaração. Se for
+   de um onLayout ou measure(), mostre o código completo desse cálculo.
+
+7) A linha exata onde previewAttention.start() é chamado.
+
+8) A declaração completa do hook useAttentionAnimation (a função toda,
+   como está hoje no arquivo).
+
+9) Onde estão declaradas as refs: previewScrollY, previewScrollFrame,
+   compositionScrollDistance, composeScrollContentHeight,
+   composeScrollViewportHeight, composeScrollY. Copie cada uma.
+
+10) Liste TODOS os imports no topo do arquivo. Copie a lista inteira.
+
+═══════════════════════════════════════════════
+ARQUIVO: package.json (raiz do projeto)
+═══════════════════════════════════════════════
+
+Me diga a versão exata destes pacotes (só a linha, não o arquivo todo):
+
+- react-native
+- react-native-reanimated
+- react-native-gesture-handler
+- expo (se existir)
+- react
+
+═══════════════════════════════════════════════
+PERGUNTAS DIRETAS
+═══════════════════════════════════════════════
+
+Responda com sim/não + uma linha de explicação:
+
+a) O projeto é Expo ou React Native CLI puro?
+
+b) O Reanimated está configurado no babel.config.js? (procure por
+   'react-native-reanimated/plugin')
+
+c) Existe algum arquivo além de app/index.tsx que também usa
+   easeInOutCubic ou useAttentionAnimation? Procure no projeto todo.
+
+d) A tela de Preview é um componente separado ou está inline dentro
+   de app/index.tsx? Se for separado, qual o caminho do arquivo?
+
+═══════════════════════════════════════════════
+
+Regras:
+- NÃO altere nada.
+- NÃO sugira mudanças.
+- NÃO escreva código novo.
+- Apenas leia, copie e responda o que foi pedido.
+- Se algum item não existir no arquivo, diga "não existe" em vez de
+  inventar ou adaptar.
