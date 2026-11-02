@@ -9,6 +9,10 @@ import {
 
 type Cleanup = () => void;
 
+const REWARDED_AD_UNIT_ID = __DEV__
+  ? TestIds.REWARDED
+  : 'ca-app-pub-6305008666977043/9437175696';
+
 export function useRewardedAd(onRewardEarned: () => void) {
   const onRewardEarnedRef = useRef(onRewardEarned);
   const rewardedAdRef = useRef<RewardedAd | null>(null);
@@ -35,7 +39,7 @@ export function useRewardedAd(onRewardEarned: () => void) {
 
     let rewardedAd: RewardedAd;
     try {
-      rewardedAd = RewardedAd.createForAdRequest(TestIds.REWARDED);
+      rewardedAd = RewardedAd.createForAdRequest(REWARDED_AD_UNIT_ID);
     } catch {
       loadingRef.current = false;
       return;
@@ -111,8 +115,17 @@ export function useRewardedAd(onRewardEarned: () => void) {
     const rewardedAd = rewardedAdRef.current;
     if (!rewardedAd || !loadedRef.current || !rewardedAd.loaded) {
       Alert.alert(
-        'Anúncio carregando',
-        'Carregando o vídeo. Tente novamente em alguns instantes.',
+        'Anúncio em carregamento',
+        'O vídeo do anúncio ainda não está pronto. Deseja aguardar ou prosseguir direto para a pré-visualização?',
+        [
+          { text: 'Aguardar', style: 'cancel' },
+          {
+            text: 'Prosseguir',
+            onPress: () => {
+              onRewardEarnedRef.current();
+            },
+          },
+        ],
       );
       loadRewardedAdRef.current();
       return;
@@ -127,7 +140,19 @@ export function useRewardedAd(onRewardEarned: () => void) {
       loadedRef.current = false;
       rewardedAdRef.current = null;
       clearListeners();
-      Alert.alert('Não foi possível reproduzir o vídeo', 'Tente novamente em alguns instantes.');
+      Alert.alert(
+        'Não foi possível reproduzir o vídeo',
+        'Ocorreu uma falha na exibição. Deseja prosseguir para a pré-visualização?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Prosseguir',
+            onPress: () => {
+              onRewardEarnedRef.current();
+            },
+          },
+        ],
+      );
       loadRewardedAdRef.current();
     });
   }, [clearListeners]);

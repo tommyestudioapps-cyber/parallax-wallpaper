@@ -8,6 +8,10 @@ type BannerAdFooterProps = {
   bottomInset: number;
 };
 
+const BANNER_AD_UNIT_ID = __DEV__
+  ? TestIds.BANNER
+  : 'ca-app-pub-6305008666977043/7435940728';
+
 export default function BannerAdFooter({
   backgroundColor,
   borderColor,
@@ -25,7 +29,7 @@ export default function BannerAdFooter({
       ]}
     >
       <BannerAd
-        unitId={TestIds.BANNER}
+        unitId={BANNER_AD_UNIT_ID}
         size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         onAdFailedToLoad={() => {}}
       />

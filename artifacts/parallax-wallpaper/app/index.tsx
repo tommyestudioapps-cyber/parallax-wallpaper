@@ -41,6 +41,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useRewardedAd } from '@/hooks/useRewardedAd';
+import AboutSettingsModal from '@/components/AboutSettingsModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 const STORAGE_KEY = '@parallax-wallpaper/project';
@@ -818,16 +819,24 @@ function Header({
   colors,
   onBack,
   onReset,
+  onSettings,
 }: {
   title: string;
   subtitle?: string;
   colors: ReturnType<typeof useColors>;
   onBack?: () => void;
   onReset?: () => void;
+  onSettings?: () => void;
 }) {
   return (
     <View style={styles.header}>
-      {onBack ? <IconButton name="chevron-back" onPress={onBack} colors={colors} label="Voltar" /> : <View style={styles.headerSpacer} />}
+      {onBack ? (
+        <IconButton name="chevron-back" onPress={onBack} colors={colors} label="Voltar" />
+      ) : onSettings ? (
+        <IconButton name="options-outline" onPress={onSettings} colors={colors} label="Sobre e Suporte" />
+      ) : (
+        <View style={styles.headerSpacer} />
+      )}
       <View style={styles.headerTitleWrap}>
         <Text
           numberOfLines={1}
@@ -1419,6 +1428,7 @@ export default function HomeScreen() {
   const [showAppliedNotice, setShowAppliedNotice] = useState(false);
   const [pinchHintEligible, setPinchHintEligible] = useState(false);
   const [showPinchHint, setShowPinchHint] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const projectRef = useRef(project);
   const pinchHintShownThisSession = useRef(false);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2459,7 +2469,12 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-       <Header title="Parallax Wallpaper Maker" colors={colors} onReset={importedCount > 0 ? resetProject : undefined} />
+       <Header
+         title="Parallax Wallpaper Maker"
+         colors={colors}
+         onSettings={() => setShowSettingsModal(true)}
+         onReset={importedCount > 0 ? resetProject : undefined}
+       />
       <ScrollView style={styles.homeScroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Progress mode={mode} colors={colors} />
         <View style={styles.hero}>
@@ -2560,6 +2575,10 @@ export default function HomeScreen() {
         ) : null}
         <View style={{ height: 20 }} />
       </ScrollView>
+      <AboutSettingsModal
+        visible={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+      />
     </View>
   );
 }
