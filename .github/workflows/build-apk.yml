@@ -57,13 +57,20 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Compilar APK (release)
+      - name: Compilar APK e AAB Bundle (release)
         working-directory: artifacts/parallax-wallpaper/android
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
 
       - name: Publicar APK como artefato
         uses: actions/upload-artifact@v4
         with:
           name: parallax-apk
           path: artifacts/parallax-wallpaper/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+      - name: Publicar AAB (Google Play Store Bundle) como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: parallax-release-aab
+          path: artifacts/parallax-wallpaper/android/app/build/outputs/bundle/release/*.aab
           retention-days: 30

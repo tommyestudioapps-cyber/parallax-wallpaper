@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.parallaxwallpaper.app",
+      "versionCode": 1,
       "permissions": [
         "android.permission.HIGH_SAMPLING_RATE_SENSORS",
         "android.permission.INTERNET",
