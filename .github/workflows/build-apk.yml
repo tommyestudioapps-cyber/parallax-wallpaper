@@ -63,22 +63,34 @@ jobs:
           p = pathlib.Path('build.gradle')
           s = p.read_text()
 
-          # Adicionar bloco de assinatura de release
-          target_signing = "    signingConfigs {\n"
-          release_signing = "    signingConfigs {\n        release {\n            storeFile file('release.keystore')\n            storePassword 'tommy123456'\n            keyAlias 'parallaxkey'\n            keyPassword 'tommy123456'\n        }\n"
-          if target_signing in s and "release {" not in s:
-              s = s.replace(target_signing, release_signing, 1)
+          debug_block = """        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }"""
 
-          # Trocar signingConfig do release de debug para release
-          target_buildtype = "        release {\n            // Caution! In production, you need to generate your own keystore file.\n            // see https://reactnative.dev/docs/signed-apk-android.\n            signingConfig signingConfigs.debug"
-          replacement_buildtype = "        release {\n            signingConfig signingConfigs.release"
-          if target_buildtype in s:
-              s = s.replace(target_buildtype, replacement_buildtype, 1)
-          else:
-              s = s.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+          release_block = debug_block + """
+        release {
+            storeFile file('release.keystore')
+            storePassword 'tommy123456'
+            keyAlias 'parallaxkey'
+            keyPassword 'tommy123456'
+        }"""
+
+          if debug_block in s and "release {" not in s:
+              s = s.replace(debug_block, release_block, 1)
+
+          # Trocar signingConfig apenas dentro do bloco release { ... }
+          idx_release = s.find("release {")
+          if idx_release != -1:
+              target_sig = "signingConfig signingConfigs.debug"
+              sig_pos = s.find(target_sig, idx_release)
+              if sig_pos != -1:
+                  s = s[:sig_pos] + "signingConfig signingConfigs.release" + s[sig_pos + len(target_sig):]
 
           p.write_text(s)
-          print("build.gradle assinado com release.keystore com sucesso")
+          print("build.gradle atualizado com signingConfigs.release com sucesso")
           PYEOF
 
       - name: Compilar APK e AAB Bundle (release)
