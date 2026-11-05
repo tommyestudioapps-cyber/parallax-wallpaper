@@ -41,21 +41,45 @@ jobs:
         working-directory: artifacts/parallax-wallpaper/android
         run: chmod +x gradlew
 
-      - name: Garantir debug keystore
+      - name: Configurar chave de release oficial (keystore)
         working-directory: artifacts/parallax-wallpaper/android/app
         run: |
-          if [ ! -f debug.keystore ]; then
-            keytool -genkeypair \
-              -v \
-              -keystore debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          keytool -genkeypair \
+            -v \
+            -keystore release.keystore \
+            -storepass tommy123456 \
+            -alias parallaxkey \
+            -keypass tommy123456 \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Tommy Studio Apps,OU=Mobile,O=Tommy Studio,L=Curitiba,ST=PR,C=BR"
+
+      - name: Configurar assinatura de release no build.gradle
+        working-directory: artifacts/parallax-wallpaper/android/app
+        run: |
+          python3 - << 'PYEOF'
+          import pathlib
+          p = pathlib.Path('build.gradle')
+          s = p.read_text()
+
+          # Adicionar bloco de assinatura de release
+          target_signing = "    signingConfigs {\n"
+          release_signing = "    signingConfigs {\n        release {\n            storeFile file('release.keystore')\n            storePassword 'tommy123456'\n            keyAlias 'parallaxkey'\n            keyPassword 'tommy123456'\n        }\n"
+          if target_signing in s and "release {" not in s:
+              s = s.replace(target_signing, release_signing, 1)
+
+          # Trocar signingConfig do release de debug para release
+          target_buildtype = "        release {\n            // Caution! In production, you need to generate your own keystore file.\n            // see https://reactnative.dev/docs/signed-apk-android.\n            signingConfig signingConfigs.debug"
+          replacement_buildtype = "        release {\n            signingConfig signingConfigs.release"
+          if target_buildtype in s:
+              s = s.replace(target_buildtype, replacement_buildtype, 1)
+          else:
+              s = s.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+
+          p.write_text(s)
+          print("build.gradle assinado com release.keystore com sucesso")
+          PYEOF
 
       - name: Compilar APK e AAB Bundle (release)
         working-directory: artifacts/parallax-wallpaper/android
